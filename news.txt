@@ -1,0 +1,1 @@
+google.*#?#g-scrolling-carousel div[jscontroller]:has(a[href*="timesofisrael.com"])
