@@ -1,7 +1,7 @@
 ! Title: Block crappy news websites and clickbait from news results in Google search
 ! Expires: 1 day (update frequency)
 ! Last modified: 
-! Version: 1
+! Version: 2
 
 google.*#?#g-scrolling-carousel div[jscontroller]:has(a[href*="timesofisrael.com"])
 google.*#?#g-scrolling-carousel div[jscontroller]:has(a[href*="hindustantimes.com"])
