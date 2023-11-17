@@ -2,6 +2,7 @@
 // @name         Recaptcha Solver (Automatically solves Recaptcha in browser)
 // @namespace    Recaptcha Solver
 // @version      2.2
+// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/recaptcha_solver.js
 // @description  Recaptcha Solver in Browser | Automatically solves Recaptcha in browser
 // @author       engageub
 // @match        *://*/recaptcha/*
