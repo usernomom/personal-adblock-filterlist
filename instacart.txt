@@ -1,1 +1,6 @@
+! Title: Block Instacart ads
+! Expires: 1 day (update frequency)
+! Version: 1
 
+instacart.*#?##store-wrapper div[class] > ul li:has(div[aria-label="Product"]:has(img[alt*="Sponsored badge"]))
+instacart.*#?##store-wrapper div[class] > ul li:has(div[aria-label="Product"]:has(div:contains(Spon)))
