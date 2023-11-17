@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Google interface cleanup
+// @version      3
+// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
 // @match        https://*.google.fr/search*
 // @match        https://*.google.co.uk/search*
-// @version      3
 // ==/UserScript==
 
 const websitesToBlock = [
