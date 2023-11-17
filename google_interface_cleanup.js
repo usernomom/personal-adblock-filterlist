@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      3
+// @version      4
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -40,7 +40,8 @@ const websitesToBlock = [
     "dailymail.co.uk",
     "express.co.uk",
     "gbnews.com",
-    "thesun.co.uk"
+    "thesun.co.uk",
+    "ynetnews.com"
 ]
 
 var processed = false;
