@@ -41,7 +41,8 @@ const websitesToBlock = [
     "express.co.uk",
     "gbnews.com",
     "thesun.co.uk",
-    "ynetnews.com"
+    "ynetnews.com",
+    "cp24.com"
 ]
 
 var processed = false;
