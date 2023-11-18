@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  3
+// @version  4
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require  https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -13,12 +13,16 @@ function isSponsored(elem) {
 }
 
 function blockAdsInHome() {
-  let items = document.querySelectorAll('#store-wrapper div[data-testid="mobile-ssr-item"]')
+  let items = document.querySelectorAll('#store-wrapper .u-noscrollbar > div')
 
   items.forEach(item => {
     if (isSponsored(item)) {
       item.style.display = 'none';
     }
+  })
+
+  document.querySelectorAll('#store-wrapper div[data-testid="async-item-list"]').forEach(div => {
+    div.style.display = 'none';
   })
 }
 
