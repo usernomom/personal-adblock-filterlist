@@ -13,7 +13,7 @@ function isSponsored(elem) {
 }
 
 function blockAdsInHome() {
-  let items = document.querySelectorAll('#store-wrapper .u-noscrollbar > div')
+  let items = document.querySelectorAll('#store-wrapper .u-noscrollbar > div:not([style*="display:none"]):not([style*="display: none"])')
 
   items.forEach(item => {
     if (isSponsored(item)) {
@@ -21,13 +21,21 @@ function blockAdsInHome() {
     }
   })
 
-  document.querySelectorAll('#store-wrapper div[data-testid="async-item-list"]').forEach(div => {
+  document.querySelectorAll('#store-wrapper div[data-testid="async-item-list"]:not([style*="display:none"]):not([style*="display: none"])').forEach(div => {
     div.style.display = 'none';
+  })
+
+  document.querySelectorAll('#store-wrapper div[aria-label="item carousel"]:not([style*="display:none"]):not([style*="display: none"])').forEach(div => {
+    let spans = div.querySelectorAll('span')
+
+    if ([...spans].filter(span => span.innerHTML == ' nsored').length > 0) {
+      div.style.display = 'none';
+    }
   })
 }
 
 function blockAdsInSearch() {
-  let [head, ...tail] = document.querySelectorAll('#store-wrapper .e-wqerce')
+  let [head, ...tail] = document.querySelectorAll('#store-wrapper .e-wqerce:not([style*="display:none"]):not([style*="display: none"])')
 
   if (head) {
     let mainList = head.querySelector('ul')
@@ -43,11 +51,27 @@ function blockAdsInSearch() {
       }
     })
   }
+
+  document.querySelectorAll('#store-wrapper .e-ijs5rh').forEach(div => {
+    div.style.display = 'none';
+  })
+}
+
+function blockAdsInCart() {
+  let cartBodyDivs = document.querySelectorAll('#cart-body > div:not([style*="display:none"]):not([style*="display: none"])')
+
+  cartBodyDivs.forEach(div => {
+    console.log(div)
+    if (div.innerHTML.indexOf('Suggested items') != -1) {
+      div.style.display = 'none'
+    }
+  })
 }
 
 function block() {
   blockAdsInSearch();
   blockAdsInHome();
+  blockAdsInCart();
 }
 
 waitForKeyElements('div[aria-label="Product"]', block);
