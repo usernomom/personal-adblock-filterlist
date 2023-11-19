@@ -88,8 +88,6 @@ function otherCrap(jNode) {
         let hiddenClue = div.querySelector('.U3THc');
 
         if (hiddenClue === null) {
-            console.log(`hiding because of ${matchingAnnoyance}`)
-            console.log(div)
             div.style.display = 'none';
         }
     }
@@ -118,4 +116,3 @@ waitForKeyElements('#kp-wp-tab-overview > div', otherCrap);
 waitForKeyElements('#bres > div', otherCrap);
 waitForKeyElements('#rso > div', otherCrap)
 waitForKeyElements('#iur div[jscontroller]', images)
-waitForKeyElements('#lb', images)
