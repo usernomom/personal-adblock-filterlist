@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      6
+// @version      7
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -47,18 +47,62 @@ const websitesToBlock = [
     "cp24.com"
 ]
 
+// Where el is the DOM element you'd like to test for visibility
+function isHidden(el) {
+    if (el === null) {
+        return true;
+    } else {
+        return (el.offsetParent === null)
+    }
+}
+
+function getbyXpath(xpath, contextNode) {
+    let results = [];
+    let query = document.evaluate(xpath, contextNode || document,
+        null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    for (let i = 0, length = query.snapshotLength; i < length; ++i) {
+        results.push(query.snapshotItem(i));
+    }
+    return results;
+}
+
 function otherCrap(jNode) {
     let div = jNode[0]
 
-    if ((div.innerHTML.indexOf('People also ask') != -1) || (div.innerHTML.indexOf('People also search for') != -1) || div.innerHTML.indexOf('Videos') != -1 || div.innerHTML.indexOf('Short videos') != -1) {
+    let annoyances = [
+        'People also ask',
+        'People also search for',
+        'Videos',
+        'Short videos',
+        'Refine this search',
+        'Search a song'
+    ]
+
+    let matchingAnnoyance =
+        annoyances
+        .filter(annoyance => div.innerHTML.indexOf(annoyance) != -1)
+        .flatMap(a => getbyXpath(`//*[text()='${a}']`, div))
+        .find(node => !isHidden(node, div));
+
+    if (matchingAnnoyance) {
         let hiddenClue = div.querySelector('.U3THc');
 
         if (hiddenClue === null) {
-            div.remove();
+            console.log(`hiding because of ${matchingAnnoyance}`)
+            console.log(div)
+            div.style.display = 'none';
         }
     }
 
-    if(div.querySelector("#iur") !== null) {
+    // if (matchingAnnoyance) {
+    //     let hiddenClue = div.querySelector('.U3THc');
+
+    //     if (hiddenClue === null) {
+    //         div.remove();
+    //     }
+    // }
+
+    if (div.querySelector("#iur") !== null) {
         div.style.display = 'none';
     }
 }
@@ -71,7 +115,7 @@ function clickbaitNews(jNode) {
     let div = jNode[0]
 
     let matchingLink = websitesToBlock.find(websiteToBlock => div.querySelector(`a[href*="${websiteToBlock}"]`))
-    
+
     if (matchingLink) {
         div.closest('div[jscontroller]').style.display = 'none';
     }
