@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Recaptcha Solver (Automatically solves Recaptcha in browser)
 // @namespace    Recaptcha Solver
-// @version      2.2
+// @version      3
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/recaptcha_solver.js
 // @description  Recaptcha Solver in Browser | Automatically solves Recaptcha in browser
 // @author       engageub
@@ -222,6 +222,6 @@ This script uses audio in order to solve the captcha. Use it wisely and do not a
             console.log("An error occurred while solving. Stopping the solver.");
             clearInterval(startInterval);
         }
-    }, 500);
+    }, 5000);
 
 })();
