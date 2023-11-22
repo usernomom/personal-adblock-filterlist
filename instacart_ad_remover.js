@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  5
+// @version  7
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require  https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -12,26 +12,31 @@ function isSponsored(elem) {
   return elem.querySelector('img[alt="Sponsored badge"]') !== null
 }
 
-function blockAdsInHome() {
-  let items = document.querySelectorAll('#store-wrapper .u-noscrollbar > div:not([style*="display:none"]):not([style*="display: none"])')
+function individualItems(jNode) {
+  let li = jNode[0]
 
-  items.forEach(item => {
-    if (isSponsored(item)) {
-      item.style.display = 'none';
+  if (isSponsored(li)) {
+    let parent = li.parentNode;
+    if (parent.tagName == 'DIV') {
+      parent.style.display = 'none'
+    } else {
+      li.style.display = 'none';
     }
-  })
+  }
+}
 
-  document.querySelectorAll('#store-wrapper div[data-testid="async-item-list"]:not([style*="display:none"]):not([style*="display: none"])').forEach(div => {
+function sponsoredCarousel(jNode) {
+  let div = jNode[0];
+
+  let spans = div.querySelectorAll('span')
+
+  if ([...spans].filter(span => span.innerHTML == ' nsored').length > 0) {
     div.style.display = 'none';
-  })
+  }
+}
 
-  document.querySelectorAll('#store-wrapper div[aria-label="item carousel"]:not([style*="display:none"]):not([style*="display: none"])').forEach(div => {
-    let spans = div.querySelectorAll('span')
-
-    if ([...spans].filter(span => span.innerHTML == ' nsored').length > 0) {
-      div.style.display = 'none';
-    }
-  })
+function undesiredElement(jNode) {
+  jNode[0].style.display = 'none'
 }
 
 function blockAdsInSearch() {
@@ -51,27 +56,21 @@ function blockAdsInSearch() {
       }
     })
   }
-
-  document.querySelectorAll('#store-wrapper .e-ijs5rh').forEach(div => {
-    div.style.display = 'none';
-  })
 }
 
-function blockAdsInCart() {
-  let cartBodyDivs = document.querySelectorAll('#cart-body > div:not([style*="display:none"]):not([style*="display: none"])')
+function blockAdsInCart(jNode) {
+  let div = jNode[0]
 
-  cartBodyDivs.forEach(div => {
-    console.log(div)
-    if (div.innerHTML.indexOf('Suggested items') != -1) {
-      div.style.display = 'none'
-    }
-  })
+  if (div.innerHTML.indexOf('Suggested items') != -1) {
+    div.style.display = 'none'
+  }
 }
 
-function block() {
-  blockAdsInSearch();
-  blockAdsInHome();
-  blockAdsInCart();
-}
-
-waitForKeyElements('div[aria-label="Product"]', block);
+waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
+waitForKeyElements('#store ul li', individualItems);
+waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel);
+waitForKeyElements('#store-wrapper div[aria-label="item carousel"]', sponsoredCarousel);
+waitForKeyElements('#store-wrapper div.e-7nkw5n', sponsoredCarousel);
+waitForKeyElements('#store-wrapper .e-ijs5rh', sponsoredCarousel); // Sponsored carousel in search results
+waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
+waitForKeyElements('#cart-body > div', blockAdsInCart);
