@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      10
+// @version      12
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -75,13 +75,14 @@ function otherCrap(jNode) {
         'Videos',
         'Short videos',
         'Refine this search',
-        'Search a song'
+        'Search a song',
+        'Related searches'
     ]
 
     let matchingAnnoyance =
         annoyances
         .filter(annoyance => div.innerHTML.indexOf(annoyance) != -1)
-        .flatMap(a => getbyXpath(`//*[text()='${a}']`, div))
+        .flatMap(a => getbyXpath(`//div[text()='${a}']|//span[text()='${a}']`, div))
         .find(node => !isHidden(node, div));
 
     if (matchingAnnoyance) {
@@ -114,5 +115,5 @@ function clickbaitNews(jNode) {
 waitForKeyElements('#rso g-scrolling-carousel div[role="list"] > div > div', clickbaitNews)
 waitForKeyElements('#kp-wp-tab-overview > div', otherCrap);
 waitForKeyElements('#bres > div', otherCrap);
-waitForKeyElements('#rso > div', otherCrap)
+waitForKeyElements('#rso div.MjjYud', otherCrap)
 waitForKeyElements('#iur div[jscontroller]', images)
