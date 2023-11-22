@@ -72,5 +72,7 @@ waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsore
 waitForKeyElements('#store-wrapper div[aria-label="item carousel"]', sponsoredCarousel);
 waitForKeyElements('#store-wrapper div.e-7nkw5n', sponsoredCarousel);
 waitForKeyElements('#store-wrapper .e-ijs5rh', sponsoredCarousel); // Sponsored carousel in search results
+waitForKeyElements('#store-wrapper div[data-testid="carousel"]', sponsoredCarousel); // Sponsored carousel when an item is selected
+waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
