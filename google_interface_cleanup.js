@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      12
+// @version      13
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -76,7 +76,8 @@ function otherCrap(jNode) {
         'Short videos',
         'Refine this search',
         'Search a song',
-        'Related searches'
+        'Related searches',
+        'Hum to search'
     ]
 
     let matchingAnnoyance =
