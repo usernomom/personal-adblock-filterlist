@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      16
+// @version      17
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -106,16 +106,16 @@ function undesiredElement(jNode) {
 }
 
 function clickbaitNews(jNode) {
-    let div = jNode[0]
+    let a = jNode[0]
 
-    let matchingLink = websitesToBlock.find(websiteToBlock => div.querySelector(`a[href*="${websiteToBlock}"]`))
+    let matchingLink = websitesToBlock.find(websiteToBlock => a.href.indexOf(websiteToBlock) > -1)
 
     if (matchingLink) {
-        div.closest('div[jscontroller]').style.display = 'none';
+        a.closest('div[jscontroller]').style.display = 'none';
     }
 }
 
-waitForKeyElements('#rso g-scrolling-carousel div[role="list"] > div > div', clickbaitNews)
+waitForKeyElements('g-scrolling-carousel div[jscontroller] a', clickbaitNews)
 waitForKeyElements('#kp-wp-tab-overview > div', otherCrap);
 waitForKeyElements('#bres > div', otherCrap);
 waitForKeyElements('#rso div.MjjYud', otherCrap);
