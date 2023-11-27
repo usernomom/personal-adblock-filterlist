@@ -46,7 +46,8 @@ const websitesToBlock = [
     "ynetnews.com",
     "cp24.com",
     "ctvnews.ca",
-    "iranintl.com"
+    "iranintl.com",
+    "wionews.com"
 ]
 
 // Where el is the DOM element you'd like to test for visibility
