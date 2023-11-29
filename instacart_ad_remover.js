@@ -78,6 +78,35 @@ function placeOrderButton() {
   }
 }
 
+function getbyXpath(xpath, contextNode) {
+  let results = [];
+  let query = document.evaluate(xpath, contextNode || document,
+    null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+  for (let i = 0, length = query.snapshotLength; i < length; ++i) {
+    results.push(query.snapshotItem(i));
+  }
+  return results;
+}
+
+function checkoutButton(jNode) {
+  let button = jNode[0];
+
+  button.click();
+
+  waitForKeyElements('#store .__reakit-portal input[id="radio-base-option-4"]', function (jNode) {
+    jNode[0].click();
+
+    waitForKeyElements('#store .__reakit-portal input[placeholder="Other amount"]', function (jNode) {
+      jNode[0].value = '0.00';
+
+      jNode[0].dispatchEvent(new Event('input', { bubbles: true }));
+
+      getbyXpath('//span[text()="Save Tip"]')[0].click();
+      setTimeout(function() { getbyXpath('//span[text()="Continue"]')[1].click(); }, 1000);
+    })
+  })
+}
+
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
 waitForKeyElements('#store ul li', individualItems);
 waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel);
@@ -89,3 +118,4 @@ waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesire
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
 waitForKeyElements('#store-wrapper button[disabled=""]', placeOrderButton)
+waitForKeyElements('#store-wrapper dl button[aria-haspopup="dialog"]', checkoutButton)
