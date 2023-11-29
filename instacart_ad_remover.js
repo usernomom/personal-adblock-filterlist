@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  10
+// @version  11
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require  https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -102,7 +102,7 @@ function checkoutButton(jNode) {
       jNode[0].dispatchEvent(new Event('input', { bubbles: true }));
 
       getbyXpath('//span[text()="Save Tip"]')[0].click();
-      setTimeout(function() { getbyXpath('//span[text()="Continue"]')[1].click(); }, 1000);
+      setTimeout(function() { getbyXpath('//button[not(@disabled) and .//span[text()="Continue"]]')[1].click(); }, 1000);
     })
   })
 }
