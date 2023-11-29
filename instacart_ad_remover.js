@@ -88,29 +88,29 @@ function getbyXpath(xpath, contextNode) {
   return results;
 }
 
-function checkoutButton(jNode) {
-  let button = jNode[0];
+// function checkoutButton(jNode) {
+//   let button = jNode[0];
 
-  button.click();
+//   button.click();
 
-  waitForKeyElements('#store .__reakit-portal input[id="radio-base-option-4"]', function (jNode) {
-    jNode[0].click();
+//   waitForKeyElements('#store .__reakit-portal input[id="radio-base-option-4"]', function (jNode) {
+//     jNode[0].click();
 
-    waitForKeyElements('#store .__reakit-portal input[placeholder="Other amount"]', function (jNode) {
-      jNode[0].value = '0.00';
+//     waitForKeyElements('#store .__reakit-portal input[placeholder="Other amount"]', function (jNode) {
+//       jNode[0].value = '0.00';
 
-      jNode[0].dispatchEvent(new Event('input', { bubbles: true }));
+//       jNode[0].dispatchEvent(new Event('input', { bubbles: true }));
 
-      getbyXpath('//span[text()="Save Tip"]')[0].click();
+//       getbyXpath('//span[text()="Save Tip"]')[0].click();
 
-      waitForKeyElements('#store .__reakit-portal button > span', function (jNode) {
-        if(jNode[0].textContent === 'Continue' && !jNode[0].parentElement.hasAttribute('disabled')) {
-          jNode[0].click();
-        }
-      })
-    })
-  })
-}
+//       waitForKeyElements('#store .__reakit-portal button > span', function (jNode) {
+//         if(jNode[0].textContent === 'Continue' && !jNode[0].parentElement.hasAttribute('disabled')) {
+//           jNode[0].click();
+//         }
+//       })
+//     })
+//   })
+// }
 
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
 waitForKeyElements('#store ul li', individualItems);
@@ -123,4 +123,4 @@ waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesire
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
 waitForKeyElements('#store-wrapper button[disabled=""]', placeOrderButton)
-waitForKeyElements('#store-wrapper dl button[aria-haspopup="dialog"]', checkoutButton)
+// waitForKeyElements('#store-wrapper dl button[aria-haspopup="dialog"]', checkoutButton)
