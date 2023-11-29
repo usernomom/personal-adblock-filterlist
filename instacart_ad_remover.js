@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  8
+// @version  9
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require  https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -66,6 +66,18 @@ function blockAdsInCart(jNode) {
   }
 }
 
+function placeOrderButton() {
+  let placeOrderFirstButton = document.querySelector('#store-wrapper button[disabled=""]')
+
+  if (placeOrderFirstButton) {
+    let span = placeOrderFirstButton.querySelector('span')
+
+    if (span && span.textContent === 'Place order') {
+      placeOrderFirstButton.closest("div").style.display = 'none'
+    }
+  }
+}
+
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
 waitForKeyElements('#store ul li', individualItems);
 waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel);
@@ -76,3 +88,4 @@ waitForKeyElements('#store-wrapper div[data-testid="carousel"]', sponsoredCarous
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
+waitForKeyElements('#store-wrapper button[disabled=""]', placeOrderButton)
