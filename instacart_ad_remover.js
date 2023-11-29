@@ -89,6 +89,7 @@ function getbyXpath(xpath, contextNode) {
 }
 
 function checkoutButton(jNode) {
+  console.log(jNode[0])
   let button = jNode[0];
 
   button.click();
@@ -102,7 +103,7 @@ function checkoutButton(jNode) {
       jNode[0].dispatchEvent(new Event('input', { bubbles: true }));
 
       getbyXpath('//span[text()="Save Tip"]')[0].click();
-      setTimeout(function() { getbyXpath('//button[not(@disabled) and .//span[text()="Continue"]]')[1].click(); }, 1000);
+      setTimeout(function() { getbyXpath('//button[not(@disabled) and .//span[text()="Continue"]]')[0].click(); }, 1000);
     })
   })
 }
