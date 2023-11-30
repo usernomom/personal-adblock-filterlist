@@ -1,15 +1,17 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  13
+// @version  15
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
-// @require  https://gist.github.com/raw/2625891/waitForKeyElements.js
+// @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
 // @downloadURL https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.js
 // @grant    GM_addStyle
 // ==/UserScript==
 
 function isSponsored(elem) {
-  return elem.querySelector('img[alt="Sponsored badge"]') !== null
+  if (elem) {
+    return elem.querySelector('img[alt="Sponsored badge"]') !== null
+  } else return false
 }
 
 function individualItems(jNode) {
@@ -66,15 +68,11 @@ function blockAdsInCart(jNode) {
   }
 }
 
-function placeOrderButton() {
-  let placeOrderFirstButton = document.querySelector('#store-wrapper button[disabled=""]')
+function homeBanner(jNode) {
+  let carousel = jNode[0].closest('div[aria-label="carousel"]')
 
-  if (placeOrderFirstButton) {
-    let span = placeOrderFirstButton.querySelector('span')
-
-    if (span && span.textContent === 'Place order') {
-      placeOrderFirstButton.closest("div").style.display = 'none'
-    }
+  if (carousel) {
+    carousel.style.display = "none"
   }
 }
 
@@ -88,29 +86,30 @@ function getbyXpath(xpath, contextNode) {
   return results;
 }
 
-// function checkoutButton(jNode) {
-//   let button = jNode[0];
+function checkoutButton(jNode) {
+  if (jNode[0].textContent === "Continue") {
+    let continueButton = jNode[0].closest("button")
 
-//   button.click();
+    continueButton.addEventListener("click", function () {
+      let otherAmountRadio = document.querySelector('#store .__reakit-portal input[id="radio-base-option-4"]')
+    
+      if (otherAmountRadio) {
+        otherAmountRadio.click();
 
-//   waitForKeyElements('#store .__reakit-portal input[id="radio-base-option-4"]', function (jNode) {
-//     jNode[0].click();
+        setTimeout(function () {
+          let input = document.querySelector('#store .__reakit-portal input[placeholder="Other amount"]')
 
-//     waitForKeyElements('#store .__reakit-portal input[placeholder="Other amount"]', function (jNode) {
-//       jNode[0].value = '0.00';
-
-//       jNode[0].dispatchEvent(new Event('input', { bubbles: true }));
-
-//       getbyXpath('//span[text()="Save Tip"]')[0].click();
-
-//       waitForKeyElements('#store .__reakit-portal button > span', function (jNode) {
-//         if(jNode[0].textContent === 'Continue' && !jNode[0].parentElement.hasAttribute('disabled')) {
-//           jNode[0].click();
-//         }
-//       })
-//     })
-//   })
-// }
+          if (input) {
+            input.value = '0.00';
+            input.dispatchEvent(new Event('input', {
+              bubbles: true
+            }));
+          }
+        }, 500);
+      }
+    });
+  }
+}
 
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
 waitForKeyElements('#store ul li', individualItems);
@@ -122,5 +121,5 @@ waitForKeyElements('#store-wrapper div[data-testid="carousel"]', sponsoredCarous
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
-waitForKeyElements('#store-wrapper button[disabled=""]', placeOrderButton)
-// waitForKeyElements('#store-wrapper dl button[aria-haspopup="dialog"]', checkoutButton)
+waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner)
+waitForKeyElements('#store-wrapper button[aria-disabled="false"] > span[aria-hidden="false"]', checkoutButton)
