@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  16
+// @version  17
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -86,31 +86,6 @@ function getbyXpath(xpath, contextNode) {
   return results;
 }
 
-function checkoutButton(jNode) {
-  if (jNode[0].textContent === "Continue") {
-    let continueButton = jNode[0].closest("button")
-
-    continueButton.addEventListener("click", function () {
-      let otherAmountRadio = document.querySelector('#store .__reakit-portal input[id="radio-base-option-4"]')
-    
-      if (otherAmountRadio) {
-        otherAmountRadio.click();
-
-        setTimeout(function () {
-          let input = document.querySelector('#store .__reakit-portal input[placeholder="Other amount"]')
-
-          if (input) {
-            input.value = '0.00';
-            input.dispatchEvent(new Event('input', {
-              bubbles: true
-            }));
-          }
-        }, 2000);
-      }
-    });
-  }
-}
-
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
 waitForKeyElements('#store ul li', individualItems);
 waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel);
@@ -122,4 +97,5 @@ waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesire
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
 waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner)
-waitForKeyElements('#store-wrapper button[aria-disabled="false"] > span[aria-hidden="false"]', checkoutButton)
+waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement) // offer banner at bottom
+waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
