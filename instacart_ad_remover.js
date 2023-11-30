@@ -105,7 +105,7 @@ function checkoutButton(jNode) {
               bubbles: true
             }));
           }
-        }, 500);
+        }, 2000);
       }
     });
   }
