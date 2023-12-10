@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      25
+// @version      26
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
 // @match        https://*.google.fr/search*
-// @match        https://*.google.co.uk/search*
+// @match        https://*.google.co.uk/search
+// @run-at       document-start
 // ==/UserScript==
 
 const websitesToBlock = [
