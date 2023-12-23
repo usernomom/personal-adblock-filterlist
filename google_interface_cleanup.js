@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      26
+// @version      27
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -88,7 +88,8 @@ function otherCrap(jNode) {
         'For context',
         'Also searched for',
         'Often searched together',
-        'Others searched'
+        'Others searched',
+        'Local news'
     ]
 
     let matchingAnnoyance =
@@ -124,7 +125,8 @@ function clickbaitNews(jNode) {
     }
 }
 
-waitForKeyElements('g-scrolling-carousel div[jscontroller] a', clickbaitNews)
+// waitForKeyElements('g-scrolling-carousel div[jscontroller] a', clickbaitNews)
+waitForKeyElements('div[role="listitem"] a', clickbaitNews)
 waitForKeyElements('#kp-wp-tab-overview > div', otherCrap);
 waitForKeyElements('#bres > div', otherCrap);
 waitForKeyElements('#rso div.MjjYud', otherCrap);
