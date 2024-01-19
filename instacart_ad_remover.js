@@ -1,16 +1,21 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  17
+// @version  18
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
-// @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
+// @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
 // @downloadURL https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.js
 // @grant    GM_addStyle
 // ==/UserScript==
 
+unsafeWindow.Element.prototype._attachShadow = unsafeWindow.Element.prototype.attachShadow;
+unsafeWindow.Element.prototype.attachShadow = function () {
+    return this._attachShadow( { mode: "open" } );
+};
+
 function isSponsored(elem) {
   if (elem) {
-    return elem.querySelector('img[alt="Sponsored badge"]') !== null
+    return elem.querySelector('img[alt="Sponsored"]') !== null
   } else return false
 }
 
@@ -41,7 +46,14 @@ function undesiredElement(jNode) {
   jNode[0].style.display = 'none'
 }
 
-function blockAdsInSearch() {
+function blockAdsInSearch(jNode) {
+  var parentDiv = jNode[0]
+
+  var childDiv = parentDiv.querySelector(':scope > div')
+  if (childDiv.shadowRoot !== null) {
+    parentDiv.style.display = 'none'
+  }
+
   let [head, ...tail] = document.querySelectorAll('#store-wrapper .e-wqerce:not([style*="display:none"]):not([style*="display: none"])')
 
   if (head) {
