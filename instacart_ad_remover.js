@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  18
+// @version  19
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -10,17 +10,26 @@
 
 unsafeWindow.Element.prototype._attachShadow = unsafeWindow.Element.prototype.attachShadow;
 unsafeWindow.Element.prototype.attachShadow = function () {
-    return this._attachShadow( { mode: "open" } );
+  return this._attachShadow({
+    mode: "open"
+  });
 };
 
 function isSponsored(elem) {
   if (elem) {
-    return elem.querySelector('img[alt="Sponsored"]') !== null
+    var descendentDivs = elem.querySelectorAll('div')
+
+    var sponsored = Array.from(descendentDivs).find(div => div !== null && div.shadowRoot !== null)
+
+    if (sponsored) {
+      return true;
+    } else return false;
+
   } else return false
 }
 
 function individualItems(jNode) {
-  let li = jNode[0]
+  let li = jNode[0].closest('li')
 
   if (isSponsored(li)) {
     let parent = li.parentNode;
@@ -46,14 +55,7 @@ function undesiredElement(jNode) {
   jNode[0].style.display = 'none'
 }
 
-function blockAdsInSearch(jNode) {
-  var parentDiv = jNode[0]
-
-  var childDiv = parentDiv.querySelector(':scope > div')
-  if (childDiv.shadowRoot !== null) {
-    parentDiv.style.display = 'none'
-  }
-
+function blockAdsInSearch() {
   let [head, ...tail] = document.querySelectorAll('#store-wrapper .e-wqerce:not([style*="display:none"]):not([style*="display: none"])')
 
   if (head) {
@@ -99,7 +101,7 @@ function getbyXpath(xpath, contextNode) {
 }
 
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
-waitForKeyElements('#store ul li', individualItems);
+waitForKeyElements('#store ul li div[aria-label="Product"]', individualItems);
 waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel);
 waitForKeyElements('#store-wrapper div[aria-label="item carousel"]', sponsoredCarousel);
 waitForKeyElements('#store-wrapper div.e-7nkw5n', sponsoredCarousel);
