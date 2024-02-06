@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      28
+// @version      29
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -12,7 +12,6 @@
 // ==/UserScript==
 
 const websitesToBlock = [
-    "timesofisrael.com",
     "hindustantimes.com",
     "nbcnews.com",
     "abcnews.go.com",
@@ -50,7 +49,12 @@ const websitesToBlock = [
     "iranintl.com",
     "wionews.com",
     "calgaryherald.com",
-    "dw.com"
+    "dw.com",
+    "almayadeen.net",
+    "electronicintifada.net",
+    "palestinechronicle.com",
+    "presstv.ir",
+    "timesofisrael.com"
 ]
 
 // Where el is the DOM element you'd like to test for visibility
