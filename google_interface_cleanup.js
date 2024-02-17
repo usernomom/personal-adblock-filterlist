@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      29
+// @version      30
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -57,6 +57,25 @@ const websitesToBlock = [
     "timesofisrael.com"
 ]
 
+const annoyances = [
+    'People also ask',
+    'People also search for',
+    'People also search',
+    'Videos',
+    'Short videos',
+    'Refine this search',
+    'Search a song',
+    'Related searches',
+    'Hum to search',
+    'Trending videos',
+    'For context',
+    'Also searched for',
+    'Often searched together',
+    'Others searched',
+    'Local news',
+    'Popular on X'
+]
+
 // Where el is the DOM element you'd like to test for visibility
 function isHidden(el) {
     if (el === null) {
@@ -76,27 +95,35 @@ function getbyXpath(xpath, contextNode) {
     return results;
 }
 
-function otherCrap(jNode) {
+function otherCrap2(jNode) {
     let div = jNode[0]
 
-    let annoyances = [
-        'People also ask',
-        'People also search for',
-        'People also search',
-        'Videos',
-        'Short videos',
-        'Refine this search',
-        'Search a song',
-        'Related searches',
-        'Hum to search',
-        'Trending videos',
-        'For context',
-        'Also searched for',
-        'Often searched together',
-        'Others searched',
-        'Local news',
-        'Popular on X'
-    ]
+    let matchingAnnoyance =
+        annoyances
+        .filter(annoyance => div.innerHTML.indexOf(annoyance) != -1)
+        .flatMap(a => getbyXpath(`//div[text()='${a}']|//span[text()='${a}']`, div))
+        .find(node => !isHidden(node, div));
+
+    if (matchingAnnoyance) {
+        console.log(matchingAnnoyance)
+        let hiddenClue = div.querySelector('.U3THc');
+
+        if ((hiddenClue === null) && !(div.closest('#appbar'))) {
+            let jsname = matchingAnnoyance.closest('div[data-abe]')
+            
+            if(jsname) {
+                jsname.style.display = 'none';
+            }
+        }
+    }
+
+    if (div.querySelector("#iur") !== null) {
+        div.style.display = 'none';
+    }
+}
+
+function otherCrap(jNode) {
+    let div = jNode[0]
 
     let matchingAnnoyance =
         annoyances
@@ -108,7 +135,11 @@ function otherCrap(jNode) {
         let hiddenClue = div.querySelector('.U3THc');
 
         if ((hiddenClue === null) && !(div.closest('#appbar'))) {
-            div.style.display = 'none';
+            jsdata = matchingAnnoyance.closest('div[jsdata]')
+            
+            if(jsdata) {
+                jsdata.style.display = 'none';
+            }
         }
     }
 
@@ -136,5 +167,6 @@ waitForKeyElements('div[role="listitem"] a', clickbaitNews)
 waitForKeyElements('#kp-wp-tab-overview > div', otherCrap);
 waitForKeyElements('#bres > div', otherCrap);
 waitForKeyElements('#rso div.MjjYud', otherCrap);
-waitForKeyElements('div[jsname]', otherCrap)
+waitForKeyElements('div[jsname]', otherCrap2);
 waitForKeyElements('#iur div[jscontroller]', undesiredElement)
+waitForKeyElements('div[data-abe]', undesiredElement);
