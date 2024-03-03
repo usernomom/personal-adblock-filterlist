@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      31
+// @version      32
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -198,7 +198,7 @@ function otherCrap2(jNode) {
 
 // waitForKeyElements('g-scrolling-carousel div[jscontroller] a', clickbaitNews)
 waitForKeyElements('div[role="listitem"] a', clickbaitNews)
-waitForKeyElements('#kp-wp-tab-overview > div', otherCrap3);
+waitForKeyElements('#kp-wp-tab-overview > div', otherCrap2);
 waitForKeyElements('#bres > div', otherCrap2);
 waitForKeyElements('#rso div.MjjYud', otherCrap);
 waitForKeyElements('#iur div[jscontroller]', undesiredElement)
