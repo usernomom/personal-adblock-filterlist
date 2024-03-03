@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      32
+// @version      33
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -98,13 +98,14 @@ function getbyXpath(xpath, contextNode) {
 
 function otherCrap(jNode) {
     let div = jNode[0]
+    let annoyances2 = annoyances.filter(a => a != 'Videos')
 
     let matchingAnnoyances =
-        annoyances
+        annoyances2
         .filter(annoyance => div.innerHTML.indexOf(annoyance) != -1)
         .flatMap(a => {
             let k = getbyXpath(`.//div[text()='${a}']|//span[text()='${a}']`, div)
-            console.log(a, k)
+            // console.log(a, k)
             return k
         })
     // .filter(node => !isHidden(node));
@@ -118,23 +119,32 @@ function otherCrap(jNode) {
     } else {
         matchingAnnoyances.forEach(matchingAnnoyance => {
             if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
-                console.log(div, matchingAnnoyance)
+                // console.log(div, matchingAnnoyance)
 
-                datavt = matchingAnnoyance.closest('div[data-vt]')
+                jsdata = matchingAnnoyance.closest('div[jsdata]')
+
+                if (jsdata && !(jsdata.closest('#appbar'))) {
+                    jsdata.style.display = 'none';
+                }
+            }
+        });
+    }
+
+    if (div.innerHTML.indexOf('Videos') != -1) {
+        // Videos requires special treatment
+        let videosAnnoyances = getbyXpath(`.//div[text()='Videos']|//span[text()='Videos']`, div)
+
+        videosAnnoyances.forEach(videosAnnoyance => {
+            if (videosAnnoyance && !isHidden(videosAnnoyance)) {
+                datavt = videosAnnoyance.closest('div[data-vt]')
 
                 if (datavt && !(datavt.closest('#appbar'))) {
                     datavt.style.display = 'none';
                 } else {
-                    dataart = matchingAnnoyance.closest('div[data-art]')
+                    dataart = videosAnnoyance.closest('div[data-art]')
 
                     if (dataart && !(dataart.closest('#appbar'))) {
                         dataart.style.display = 'none';
-                    } else {
-                        jsdata = matchingAnnoyance.closest('div[jsdata]')
-
-                        if (jsdata && !(jsdata.closest('#appbar'))) {
-                            jsdata.style.display = 'none';
-                        }
                     }
                 }
             }
