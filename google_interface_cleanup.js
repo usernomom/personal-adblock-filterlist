@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      36
+// @version      37
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -121,7 +121,7 @@ function otherCrap(jNode) {
     } else {
         matchingAnnoyances.forEach(matchingAnnoyance => {
             if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
-                // console.log(div, matchingAnnoyance)
+                console.log(div, matchingAnnoyance)
 
                 jsdata = matchingAnnoyance.closest('div[jsdata]')
 
@@ -207,6 +207,7 @@ waitForKeyElements('div[role="listitem"] a', clickbaitNews)
 waitForKeyElements('#kp-wp-tab-overview > div', otherCrap2);
 waitForKeyElements('#bres > div', otherCrap2);
 waitForKeyElements('#rso div.MjjYud', otherCrap);
+waitForKeyElements('#botstuff div.MjjYud', otherCrap);
 waitForKeyElements('#iur div[jscontroller]', undesiredElement)
 waitForKeyElements('div[data-abe]', undesiredElement);
 waitForKeyElements('g-popup', undesiredElement)
