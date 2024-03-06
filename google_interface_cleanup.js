@@ -55,7 +55,9 @@ const websitesToBlock = [
     "palestinechronicle.com",
     "presstv.ir",
     "timesofisrael.com",
-    "aljazeera.com"
+    "aljazeera.com",
+    "arabnews.com",
+    "middleeasteye.net"
 ]
 
 const annoyances = [
