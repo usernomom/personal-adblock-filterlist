@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      40
+// @version      41
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -126,7 +126,7 @@ function otherCrap(jNode) {
             if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
                 console.log(div, matchingAnnoyance)
 
-                jsdata = matchingAnnoyance.closest('div[jsdata]')
+                let jsdata = matchingAnnoyance.closest('div[jsdata]')
 
                 if (jsdata && !(jsdata.closest('#appbar'))) {
                     jsdata.style.display = 'none';
@@ -141,12 +141,12 @@ function otherCrap(jNode) {
 
         videosAnnoyances.forEach(videosAnnoyance => {
             if (videosAnnoyance && !isHidden(videosAnnoyance)) {
-                datavt = videosAnnoyance.closest('div[data-vt]')
+                let datavt = videosAnnoyance.closest('div[data-vt]')
 
                 if (datavt && !(datavt.closest('#appbar'))) {
                     datavt.style.display = 'none';
                 } else {
-                    dataart = videosAnnoyance.closest('div[data-art]')
+                    let dataart = videosAnnoyance.closest('div[data-art]')
 
                     if (dataart && !(dataart.closest('#appbar'))) {
                         dataart.style.display = 'none';
@@ -163,6 +163,10 @@ function otherCrap(jNode) {
 
 function undesiredElement(jNode) {
     jNode[0].style.display = 'none'
+}
+
+function destroyElement(jNode) {
+    jNode[0].remove()
 }
 
 function clickbaitNews(jNode) {
@@ -216,3 +220,4 @@ waitForKeyElements('div[data-abe]', undesiredElement);
 waitForKeyElements('g-popup', undesiredElement)
 waitForKeyElements('div[data-peekaboo]', undesiredElement)
 waitForKeyElements('.U3THc', undesiredElement)
+waitForKeyElements('body #lb', destroyElement)
