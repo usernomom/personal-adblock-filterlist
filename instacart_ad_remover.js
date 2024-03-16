@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  20
+// @version  21
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -17,7 +17,7 @@ unsafeWindow.Element.prototype.attachShadow = function () {
 
 function isSponsored(elem) {
   if (elem) {
-    var descendentDivs = elem.querySelectorAll('section')
+    var descendentDivs = elem.querySelectorAll('section, div')
 
     var sponsored = Array.from(descendentDivs).find(div => div !== null && div.shadowRoot !== null)
 
