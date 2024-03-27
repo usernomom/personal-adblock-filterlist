@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      44
+// @version      45
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -60,7 +60,8 @@ const websitesToBlock = [
     "middleeasteye.net",
     "eurasiantimes.com",
     "scmp.com",
-    "haaretz.com"
+    "haaretz.com",
+    "aa.com.tr"
 ]
 
 const annoyances = [
