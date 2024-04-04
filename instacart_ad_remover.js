@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  22
+// @version  23
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -27,7 +27,7 @@ function isSponsored(elem) {
 
     const sponsored = elem.querySelector('article[data-cfp-eligible]')
 
-    if(sponsored) {
+    if (sponsored) {
       return true
     } else return false;
 
@@ -106,6 +106,16 @@ function getbyXpath(xpath, contextNode) {
   return results;
 }
 
+function defaultTip(jNode) {
+  const spans = jNode[0].querySelectorAll('span');
+
+  const otherBtn = [...spans].filter(span => span.innerHTML == 'Other')[0].closest('button')
+  otherBtn.click()
+
+  const tipDiv = document.querySelector('div[aria-label="Say thanks with a tip"]')
+  tipDiv.querySelector('#radio-base-option-4').click()
+}
+
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
 waitForKeyElements('#store ul li div[aria-label="Product"]', individualItems);
 waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel);
@@ -113,9 +123,12 @@ waitForKeyElements('#store-wrapper div[aria-label="item carousel"]', sponsoredCa
 waitForKeyElements('#store-wrapper div.e-7nkw5n', sponsoredCarousel);
 waitForKeyElements('#store-wrapper .e-ijs5rh', sponsoredCarousel); // Sponsored carousel in search results
 waitForKeyElements('#store-wrapper div[data-testid="carousel"]', sponsoredCarousel); // Sponsored carousel when an item is selected
+waitForKeyElements('#store .e-1dclc8o', sponsoredCarousel); // Sponsored carousel when an item is selected
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
 waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner)
+waitForKeyElements('#store-wrapper #home-content-tab-panel div[aria-label="carousel"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement) // offer banner at bottom
 waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
+waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip)
