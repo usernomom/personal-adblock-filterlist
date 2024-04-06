@@ -25,7 +25,7 @@ function isSponsored(elem) {
     //   return true;
     // } else return false;
 
-    const sponsored = elem.querySelector('div[data-cfp-eligible]')
+    const sponsored = elem.querySelector('article[data-cfp-eligible]')
 
     if (sponsored) {
       return true
@@ -114,6 +114,17 @@ function defaultTip(jNode) {
 
   const tipDiv = document.querySelector('div[aria-label="Say thanks with a tip"]')
   tipDiv.querySelector('#radio-base-option-4').click()
+
+  const otherInput = tipDiv.querySelector('input[placeholder="Other amount"]')
+  otherInput.focus();
+  
+  waitForKeyElements('div[aria-label="Say thanks with a tip"] button:has(span)', function(jNode) {
+    const btn = jNode[0]
+
+    if(btn.innerText.includes('Continue')) {
+      btn.click()
+    }
+  })
 }
 
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
