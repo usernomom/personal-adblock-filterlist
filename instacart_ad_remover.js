@@ -25,7 +25,7 @@ function isSponsored(elem) {
     //   return true;
     // } else return false;
 
-    const sponsored = elem.querySelector('article[data-cfp-eligible]')
+    const sponsored = elem.querySelector('div[data-cfp-eligible]')
 
     if (sponsored) {
       return true
