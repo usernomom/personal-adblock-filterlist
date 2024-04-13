@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  28
+// @version  29
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -47,17 +47,17 @@ function individualItems(jNode) {
   }
 }
 
-function sponsoredCarousel(jNode) {
-  let div = jNode[0];
+// function sponsoredCarousel(jNode) {
+//   let div = jNode[0];
 
-  let spans = div.querySelectorAll('span')
-  let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
-  let individualSponsored = isSponsored(div)
+//   let spans = div.querySelectorAll('span')
+//   let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
+//   let individualSponsored = isSponsored(div)
 
-  if ((sponsoredSpans.length > 0) && (!individualSponsored)) {
-    div.style.display = 'none';
-  }
-}
+//   if ((sponsoredSpans.length > 0) && (!individualSponsored)) {
+//     div.style.display = 'none';
+//   }
+// }
 
 function undesiredElement(jNode) {
   jNode[0].style.display = 'none'
@@ -119,26 +119,49 @@ function defaultTip(jNode) {
 
   const otherInput = tipDiv.querySelector('input[placeholder="Other amount"]')
   otherInput.focus();
-  
-  waitForKeyElements('div[aria-label="Say thanks with a tip"] button:has(span)', function(jNode) {
+
+  waitForKeyElements('div[aria-label="Say thanks with a tip"] button:has(span)', function (jNode) {
     const btn = jNode[0]
 
-    if(btn.innerText.includes('Continue')) {
+    if (btn.innerText.includes('Continue')) {
       btn.click()
     }
   })
 }
 
+function sponsoredCarousel(jNode) {
+  let elem = jNode[0]
+
+  function traverseAncestors(node) {
+    if (node.tagName == 'DIV') {
+      let spans = node.querySelectorAll('span')
+      let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
+      let individualSponsored = isSponsored(node)
+      let scrollbars = node.querySelectorAll('.u-noscrollbar')
+
+      if ((sponsoredSpans.length > 0) && (!individualSponsored) && (scrollbars.length == 1)) {
+        node.style.display = 'none';
+      } else if (scrollbars.length > 1) {
+        return;
+      } else {
+        traverseAncestors(node.parentNode);
+      }
+    } else traverseAncestors(node.parentNode)
+  }
+
+  traverseAncestors(elem.parentNode)
+}
+
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
 waitForKeyElements('#store ul li div[aria-label="Product"]', individualItems);
-waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel);
-waitForKeyElements('#store-wrapper div[aria-label="item carousel"]', sponsoredCarousel);
-waitForKeyElements('#store-wrapper .e-7nkw5n', sponsoredCarousel);
-waitForKeyElements('#store-wrapper .e-ijs5rh', sponsoredCarousel); // Sponsored carousel in search results
-waitForKeyElements('#store-wrapper .e-1yrpusx > div', sponsoredCarousel);
-waitForKeyElements('#store-wrapper .e-1jbawm2', sponsoredCarousel);
-waitForKeyElements('#store-wrapper div[data-testid="carousel"]', sponsoredCarousel); // Sponsored carousel when an item is selected
-waitForKeyElements('#store .e-1dclc8o', sponsoredCarousel); // Sponsored carousel when an item is selected
+// waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel);
+// waitForKeyElements('#store-wrapper div[aria-label="item carousel"]', sponsoredCarousel);
+// waitForKeyElements('#store-wrapper .e-7nkw5n', sponsoredCarousel);
+// waitForKeyElements('#store-wrapper .e-ijs5rh', sponsoredCarousel); // Sponsored carousel in search results
+// waitForKeyElements('#store-wrapper .e-1yrpusx > div', sponsoredCarousel);
+// waitForKeyElements('#store-wrapper .e-1jbawm2', sponsoredCarousel);
+// waitForKeyElements('#store-wrapper div[data-testid="carousel"]', sponsoredCarousel); // Sponsored carousel when an item is selected
+// waitForKeyElements('#store .e-1dclc8o', sponsoredCarousel); // Sponsored carousel when an item is selected
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
@@ -147,3 +170,4 @@ waitForKeyElements('#store-wrapper #home-content-tab-panel div[aria-label="carou
 waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement) // offer banner at bottom
 waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip)
+waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel)
