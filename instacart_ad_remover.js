@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  33
+// @version  34
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -157,7 +157,7 @@ function continueToNext(jNode) {
 }
 
 waitForKeyElements('#store-wrapper div[aria-label="Product"]', blockAdsInSearch);
-waitForKeyElements('#store ul li div[aria-label="Product"]', individualItems);
+waitForKeyElements('#store ul li div[aria-label="Product"] a', individualItems);
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
