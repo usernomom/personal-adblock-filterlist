@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  27
+// @version  28
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -136,6 +136,7 @@ waitForKeyElements('#store-wrapper div[aria-label="item carousel"]', sponsoredCa
 waitForKeyElements('#store-wrapper .e-7nkw5n', sponsoredCarousel);
 waitForKeyElements('#store-wrapper .e-ijs5rh', sponsoredCarousel); // Sponsored carousel in search results
 waitForKeyElements('#store-wrapper .e-1yrpusx > div', sponsoredCarousel);
+waitForKeyElements('#store-wrapper .e-1jbawm2', sponsoredCarousel);
 waitForKeyElements('#store-wrapper div[data-testid="carousel"]', sponsoredCarousel); // Sponsored carousel when an item is selected
 waitForKeyElements('#store .e-1dclc8o', sponsoredCarousel); // Sponsored carousel when an item is selected
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
