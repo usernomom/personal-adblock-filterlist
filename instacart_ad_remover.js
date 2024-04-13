@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  31
+// @version  32
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -99,22 +99,26 @@ function getbyXpath(xpath, contextNode) {
 function defaultTip(jNode) {
   const spans = jNode[0].querySelectorAll('span');
 
-  const otherBtn = [...spans].filter(span => span.innerHTML == 'Other')[0].closest('button')
-  otherBtn.click()
+  const otherSpan = [...spans].filter(span => span.innerHTML == 'Other')[0]
 
-  const tipDiv = document.querySelector('div[aria-label="Say thanks with a tip"]')
-  tipDiv.querySelector('#radio-base-option-4').click()
+  if (otherSpan) {
+    let otherBtn = otherSpan.closest('button')
+    otherBtn.click()
 
-  const otherInput = tipDiv.querySelector('input[placeholder="Other amount"]')
-  otherInput.focus();
+    const tipDiv = document.querySelector('div[aria-label="Say thanks with a tip"]')
+    tipDiv.querySelector('#radio-base-option-4').click()
 
-  waitForKeyElements('div[aria-label="Say thanks with a tip"] button:has(span)', function (jNode) {
-    const btn = jNode[0]
+    const otherInput = tipDiv.querySelector('input[placeholder="Other amount"]')
+    otherInput.focus();
 
-    if (btn.innerText.includes('Continue')) {
-      btn.click()
-    }
-  })
+    waitForKeyElements('div[aria-label="Say thanks with a tip"] button:has(span)', function (jNode) {
+      const btn = jNode[0]
+
+      if (btn.innerText.includes('Continue')) {
+        btn.click()
+      }
+    })
+  }
 }
 
 function sponsoredCarousel(jNode) {
@@ -142,6 +146,16 @@ function sponsoredCarousel(jNode) {
   traverseAncestors(elem.parentNode)
 }
 
+function continueToNext(jNode) {
+  let span = jNode[0]
+
+  if (span.innerText === 'Continue to checkout') {
+    setTimeout(function () {
+      span.closest('button').click();
+    }, 500);
+  }
+}
+
 waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
 waitForKeyElements('#store ul li div[aria-label="Product"]', individualItems);
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
@@ -153,3 +167,4 @@ waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', u
 waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip)
 waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel)
+waitForKeyElements('footer span', continueToNext)
