@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  26
+// @version  27
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -51,9 +51,10 @@ function sponsoredCarousel(jNode) {
   let div = jNode[0];
 
   let spans = div.querySelectorAll('span')
-  let individualSponsored = div.querySelector('*[data-cfp-eligible]')
+  let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
+  let individualSponsored = isSponsored(div)
 
-  if (([...spans].filter(span => span.innerHTML == ' nsored').length > 0) && (!individualSponsored)) {
+  if ((sponsoredSpans.length > 0) && (!individualSponsored)) {
     div.style.display = 'none';
   }
 }
@@ -132,8 +133,9 @@ waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAd
 waitForKeyElements('#store ul li div[aria-label="Product"]', individualItems);
 waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel);
 waitForKeyElements('#store-wrapper div[aria-label="item carousel"]', sponsoredCarousel);
-waitForKeyElements('#store-wrapper div.e-7nkw5n', sponsoredCarousel);
+waitForKeyElements('#store-wrapper .e-7nkw5n', sponsoredCarousel);
 waitForKeyElements('#store-wrapper .e-ijs5rh', sponsoredCarousel); // Sponsored carousel in search results
+waitForKeyElements('#store-wrapper .e-1yrpusx > div', sponsoredCarousel);
 waitForKeyElements('#store-wrapper div[data-testid="carousel"]', sponsoredCarousel); // Sponsored carousel when an item is selected
 waitForKeyElements('#store .e-1dclc8o', sponsoredCarousel); // Sponsored carousel when an item is selected
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
