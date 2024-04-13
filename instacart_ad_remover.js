@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  29
+// @version  30
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -133,20 +133,22 @@ function sponsoredCarousel(jNode) {
   let elem = jNode[0]
 
   function traverseAncestors(node) {
-    if (node.tagName == 'DIV') {
-      let spans = node.querySelectorAll('span')
-      let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
-      let individualSponsored = isSponsored(node)
-      let scrollbars = node.querySelectorAll('.u-noscrollbar')
+    if (node) {
+      if (node.tagName == 'DIV') {
+        let spans = node.querySelectorAll('span')
+        let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
+        let individualSponsored = isSponsored(node)
+        let scrollbars = node.querySelectorAll('.u-noscrollbar')
 
-      if ((sponsoredSpans.length > 0) && (!individualSponsored) && (scrollbars.length == 1)) {
-        node.style.display = 'none';
-      } else if (scrollbars.length > 1) {
-        return;
-      } else {
-        traverseAncestors(node.parentNode);
-      }
-    } else traverseAncestors(node.parentNode)
+        if ((sponsoredSpans.length > 0) && (!individualSponsored) && (scrollbars.length == 1)) {
+          node.style.display = 'none';
+        } else if (scrollbars.length > 1) {
+          return;
+        } else {
+          traverseAncestors(node.parentNode);
+        }
+      } else traverseAncestors(node.parentNode)
+    }
   }
 
   traverseAncestors(elem.parentNode)
