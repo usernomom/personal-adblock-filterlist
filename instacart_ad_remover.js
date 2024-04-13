@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  32
+// @version  33
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -52,11 +52,11 @@ function undesiredElement(jNode) {
 }
 
 function blockAdsInSearch() {
-  let [head, ...tail] = document.querySelectorAll('#store-wrapper .e-wqerce:not([style*="display:none"]):not([style*="display: none"])')
+  let [head, ...tail] = document.querySelectorAll('#store-wrapper .e-1yrpusx:not([style*="display:none"]):not([style*="display: none"]) > ul')
 
   if (head) {
-    let mainList = head.querySelector('ul')
-    let otherLists = tail.map(node => node.querySelectorAll('ul li'))
+    let mainList = head
+    let otherLists = tail.map(node => node.querySelectorAll('li'))
 
     otherLists.forEach(itemList => itemList.forEach(item => mainList.append(item)))
 
@@ -156,7 +156,7 @@ function continueToNext(jNode) {
   }
 }
 
-waitForKeyElements('#store-wrapper .e-wqerce div[aria-label="Product"]', blockAdsInSearch);
+waitForKeyElements('#store-wrapper div[aria-label="Product"]', blockAdsInSearch);
 waitForKeyElements('#store ul li div[aria-label="Product"]', individualItems);
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
