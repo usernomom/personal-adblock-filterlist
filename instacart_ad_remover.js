@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  34
+// @version  35
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -127,12 +127,14 @@ function sponsoredCarousel(jNode) {
   function traverseAncestors(node) {
     if (node) {
       if (node.tagName == 'DIV') {
-        let spans = node.querySelectorAll('span')
-        let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
+        // let spans = node.querySelectorAll('span')
+        // let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
+        let imgs = node.querySelectorAll('img')
+        let sponsoredImgs = [...imgs].filter(img => img.alt == 'Sponsored')
         let individualSponsored = isSponsored(node)
         let scrollbars = node.querySelectorAll('.u-noscrollbar')
 
-        if ((sponsoredSpans.length > 0) && (!individualSponsored) && (scrollbars.length == 1)) {
+        if ((sponsoredImgs.length > 0) && (!individualSponsored) && (scrollbars.length == 1)) {
           node.style.display = 'none';
         } else if (scrollbars.length > 1) {
           return;
@@ -162,7 +164,7 @@ waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesire
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
 waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner)
-waitForKeyElements('#store-wrapper #home-content-tab-panel div[aria-label="carousel"]', undesiredElement)
+waitForKeyElements('#store-wrapper #home-content-tab-panel div[role="region"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement) // offer banner at bottom
 waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip)
