@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      46
+// @version      47
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -62,7 +62,9 @@ const websitesToBlock = [
     "scmp.com",
     "haaretz.com",
     "aa.com.tr",
-    "www.thejc.com"
+    "www.thejc.com",
+    "foxbusiness.com",
+    "wsj.com"
 ]
 
 const annoyances = [
