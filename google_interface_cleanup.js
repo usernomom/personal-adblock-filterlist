@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      49
+// @version      50
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -127,7 +127,7 @@ function otherCrap(jNode) {
 
     let MjjYud = document.querySelectorAll('#rso div.MjjYud')
 
-    if (MjjYud.length > 1) {
+    if (MjjYud.length > 2) {
         if (matchingAnnoyances.length > 0) {
             div.style.display = 'none'
         }
