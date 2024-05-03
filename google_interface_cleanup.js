@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      50
+// @version      51
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -180,12 +180,24 @@ function destroyElement(jNode) {
 }
 
 function clickbaitNews(jNode) {
-    let a = jNode[0]
+    let elem = jNode[0]
 
-    let matchingLink = websitesToBlock.find(websiteToBlock => a.href.indexOf(websiteToBlock) > -1)
+    if (elem.tagName == 'A') {
+        let matchingLink = websitesToBlock.find(websiteToBlock => elem.href.indexOf(websiteToBlock) > -1)
 
-    if (matchingLink) {
-        a.closest('div[jscontroller]').style.display = 'none';
+        if (matchingLink) {
+            elem.closest('div[jscontroller]').style.display = 'none';
+        }
+    } else if (elem.tagName == 'DIV') {
+        let a = elem.querySelector('a')
+
+        if (a) {
+            let matchingLink = websitesToBlock.find(websiteToBlock => a.href.indexOf(websiteToBlock) > -1)
+
+            if (matchingLink) {
+                elem.style.display = 'none';
+            }
+        }
     }
 }
 
@@ -220,6 +232,7 @@ function otherCrap2(jNode) {
 
 
 // waitForKeyElements('g-scrolling-carousel div[jscontroller] a', clickbaitNews)
+waitForKeyElements('div[data-init-vis]', clickbaitNews)
 waitForKeyElements('div[role="listitem"] a', clickbaitNews)
 waitForKeyElements('#kp-wp-tab-overview > div', otherCrap2);
 waitForKeyElements('#bres > div', otherCrap2);
