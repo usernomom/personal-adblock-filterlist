@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      52
+// @version      53
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -90,7 +90,8 @@ const annoyances = [
     'Popular on X',
     'People also watch',
     'Events',
-    'Profiles'
+    'Profiles',
+    'Perspectives'
 ]
 
 // Where el is the DOM element you'd like to test for visibility
