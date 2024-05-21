@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      55
+// @version      56
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -69,7 +69,10 @@ const websitesToBlock = [
     "middleeastmonitor.com",
     "reliefweb.int",
     "israelnationalnews.com",
-    "telegraph.co.uk"
+    "telegraph.co.uk",
+    "i24news.tv",
+    "kyivpost.com",
+    "cnbc.com"
 ]
 
 const annoyances = [
