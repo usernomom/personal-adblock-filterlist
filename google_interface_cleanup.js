@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      56
+// @version      57
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -72,7 +72,10 @@ const websitesToBlock = [
     "telegraph.co.uk",
     "i24news.tv",
     "kyivpost.com",
-    "cnbc.com"
+    "cnbc.com",
+    "youtube.com",
+    "twitter.com",
+    "jns.org"
 ]
 
 const annoyances = [
