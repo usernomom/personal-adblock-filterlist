@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  37
+// @version  38
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -130,7 +130,7 @@ function sponsoredCarousel(jNode) {
         // let spans = node.querySelectorAll('span')
         // let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
         let imgs = node.querySelectorAll('img')
-        let sponsoredImgs = [...imgs].filter(img => img.alt.toLowerCase().trim().startsWith('spon'))
+        let sponsoredImgs = [...imgs].filter(img => img.alt.toLowerCase().trim().startsWith('spaahnserd'))
         let individualSponsored = isSponsored(node)
         let scrollbars = node.querySelectorAll('.u-noscrollbar')
 
