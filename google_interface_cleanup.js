@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      59
+// @version      60
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -241,6 +241,14 @@ function otherCrap2(jNode) {
     }
 }
 
+function undesiredElementParent(jNode) {
+  let parent = jNode[0].parentElement;
+
+  if(parent !== null) {
+    parent.style.display = 'none';
+  }
+}
+
 
 // waitForKeyElements('g-scrolling-carousel div[jscontroller] a', clickbaitNews)
 waitForKeyElements('div[data-init-vis]', clickbaitNews)
@@ -255,3 +263,4 @@ waitForKeyElements('g-popup', undesiredElement)
 waitForKeyElements('div[data-peekaboo]', undesiredElement)
 waitForKeyElements('.U3THc', undesiredElement)
 waitForKeyElements('body #lb', destroyElement)
+waitForKeyElements('.PNZEbe', undesiredElementParent);
