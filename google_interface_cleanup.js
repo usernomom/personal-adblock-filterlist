@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      61
+// @version      62
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -136,25 +136,28 @@ function otherCrap(jNode) {
         })
     // .filter(node => !isHidden(node));
 
+    console.log(matchingAnnoyances)
+
     let MjjYud = document.querySelectorAll('#rso div.MjjYud')
 
     if (MjjYud.length > 2) {
         if (matchingAnnoyances.length > 0) {
             div.style.display = 'none'
         }
-    } else if (MjjYud.length == 1) {
-        // if (matchingAnnoyances.length > 0) {
-        //     div.style.display = 'none'
-        // }
     } else {
         matchingAnnoyances.forEach(matchingAnnoyance => {
             if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
                 console.log(div, matchingAnnoyance)
 
-                let jsdata = matchingAnnoyance.closest('div[jsdata]')
+                let parent = matchingAnnoyance.parentElement;
 
-                if (jsdata && !(jsdata.closest('#appbar'))) {
-                    jsdata.style.display = 'none';
+                if (parent && !parent.hasAttribute('data-vt')) {
+                    let jsdata = matchingAnnoyance.closest('div[jsdata]')
+                    console.log(jsdata)
+
+                    if (jsdata && !(jsdata.closest('#appbar'))) {
+                        jsdata.style.display = 'none';
+                    }
                 }
             }
         });
