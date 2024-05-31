@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      60
+// @version      61
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -142,6 +142,10 @@ function otherCrap(jNode) {
         if (matchingAnnoyances.length > 0) {
             div.style.display = 'none'
         }
+    } else if (MjjYud.length == 1) {
+        // if (matchingAnnoyances.length > 0) {
+        //     div.style.display = 'none'
+        // }
     } else {
         matchingAnnoyances.forEach(matchingAnnoyance => {
             if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
@@ -242,11 +246,11 @@ function otherCrap2(jNode) {
 }
 
 function undesiredElementParent(jNode) {
-  let parent = jNode[0].parentElement;
+    let parent = jNode[0].parentElement;
 
-  if(parent !== null) {
-    parent.style.display = 'none';
-  }
+    if (parent !== null) {
+        parent.style.display = 'none';
+    }
 }
 
 
