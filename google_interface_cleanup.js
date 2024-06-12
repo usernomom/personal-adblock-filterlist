@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      64
+// @version      65
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -81,7 +81,8 @@ const websitesToBlock = [
     "bloomberg.com",
     "themoscowtimes.com",
     "usatoday.com",
-    "axios.com"
+    "axios.com",
+    "pravda.com.ua"
 ]
 
 const annoyances = [
