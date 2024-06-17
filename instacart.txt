@@ -1,0 +1,6 @@
+! Title: Block Instacart sponsored placements
+! Expires: 1 day (update frequency)
+! Last modified: 
+! Version: 1
+
+instacart.ca*#?#div:has(> article img[alt="spawhnserd"])
