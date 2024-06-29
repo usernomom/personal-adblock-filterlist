@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  42
+// @version  43
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -54,7 +54,7 @@ function undesiredElement(jNode) {
 }
 
 function blockAdsInSearch() {
-  let [head, ...tail] = document.querySelectorAll('#store-wrapper .e-1yrpusx:not([style*="display:none"]):not([style*="display: none"]) > ul')
+  let [head, ...tail] = document.querySelectorAll('#store-wrapper .e-1yrpusx:not([style*="display:none"]):not([style*="display: none"]) > ul.e-1a1cwrg')
 
   if (head) {
     let mainList = head
@@ -150,6 +150,17 @@ function sponsoredCarousel(jNode) {
   traverseAncestors(elem.parentNode)
 }
 
+function sponsoredPlacement(jNode) {
+  let node = jNode[0]
+
+  let imgs = node.querySelectorAll('img')
+  let sponsoredImgs = [...imgs].filter(img => sponsoredTexts.includes(img.alt.toLowerCase().trim()))
+
+  if ((sponsoredImgs.length > 0)) {
+    node.style.display = 'none';
+  }
+}
+
 function continueToNext(jNode) {
   let span = jNode[0]
 
@@ -172,3 +183,5 @@ waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip)
 waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel)
 waitForKeyElements('footer span', continueToNext)
+waitForKeyElements('#storefront-placements-content article', sponsoredPlacement)
+waitForKeyElements('#store-wrapper article', sponsoredPlacement)
