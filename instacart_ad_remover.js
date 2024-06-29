@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  43
+// @version  44
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -185,3 +185,4 @@ waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel)
 waitForKeyElements('footer span', continueToNext)
 waitForKeyElements('#storefront-placements-content article', sponsoredPlacement)
 waitForKeyElements('#store-wrapper article', sponsoredPlacement)
+waitForKeyElements('#store-wrapper div > section', undesiredElement)
