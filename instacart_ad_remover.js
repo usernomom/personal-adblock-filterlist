@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  45
+// @version  46
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -54,8 +54,13 @@ function undesiredElement(jNode) {
 }
 
 function blockAdsInSearch() {
-  let [head, ...tail] = document.querySelectorAll('#store-wrapper .e-1yrpusx:not([style*="display:none"]):not([style*="display: none"]) > ul.e-1a1cwrg')
+  // var lists = document.querySelectorAll('#store-wrapper .e-1yrpusx:not([style*="display:none"]):not([style*="display: none"]) > ul')
 
+  let [head, ...tail] = [].filter.call(document.querySelectorAll('#store-wrapper .e-1yrpusx:not([style*="display:none"]):not([style*="display: none"]) > ul'), function (elem) {
+    return elem.querySelector('div[aria-label="Product"]')
+  });
+
+  // lists.filter(list => list.querySelector('div[aria-label="Product"]') !== null)
   if (head) {
     let mainList = head
     let otherLists = tail.map(node => node.querySelectorAll('li'))
@@ -177,7 +182,7 @@ waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesire
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
 waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner)
-waitForKeyElements('#store-wrapper #home-content-tab-panel div[role="region"]', undesiredElement)
+// waitForKeyElements('#store-wrapper #home-content-tab-panel div[role="region"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement) // offer banner at bottom
 waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip)
@@ -185,5 +190,7 @@ waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel)
 waitForKeyElements('footer span', continueToNext)
 waitForKeyElements('#storefront-placements-content article', sponsoredPlacement)
 waitForKeyElements('#store-wrapper article', sponsoredPlacement)
-waitForKeyElements('#store-wrapper div > section', undesiredElement)
 waitForKeyElements('article', sponsoredPlacement)
+
+// Unused
+// waitForKeyElements('#store-wrapper div > section', undesiredElement)
