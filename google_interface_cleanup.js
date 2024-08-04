@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      73
+// @version      74
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -91,7 +91,8 @@ const websitesToBlock = [
     "cbsnews.com",
     "oilprice.com",
     "entrepreneur.com",
-    "firstpost.com"
+    "firstpost.com",
+    "indiatoday.in"
 ]
 
 const annoyances = [
