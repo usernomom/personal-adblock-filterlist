@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      82
+// @version      83
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -239,34 +239,34 @@ function clickbaitNews(jNode) {
     }
 }
 
-function otherCrap2(jNode) {
-    let div = jNode[0]
-    // console.log(div)
+// function otherCrap2(jNode) {
+//     let div = jNode[0]
+//     // console.log(div)
 
-    let matchingAnnoyance =
-        annoyances
-        .filter(annoyance => div.innerHTML.indexOf(annoyance) != -1)
-        .flatMap(a => {
-            let k = getbyXpath(`.//div[text()='${a}']|//span[text()='${a}']`, div)
-            // console.log(a, k)
-            return k
-        })
-        .find(node => !isHidden(node))
+//     let matchingAnnoyance =
+//         annoyances
+//         .filter(annoyance => div.innerHTML.indexOf(annoyance) != -1)
+//         .flatMap(a => {
+//             let k = getbyXpath(`.//div[text()='${a}']|//span[text()='${a}']`, div)
+//             // console.log(a, k)
+//             return k
+//         })
+//         .find(node => !isHidden(node))
 
-    if (matchingAnnoyance) {
-        // console.log(div, matchingAnnoyance)
+//     if (matchingAnnoyance) {
+//         // console.log(div, matchingAnnoyance)
 
-        let hiddenClue = div.querySelector('.U3THc');
+//         let hiddenClue = div.querySelector('.U3THc');
 
-        if ((hiddenClue === null)) {
-            div.style.display = 'none'
-        }
-    }
+//         if ((hiddenClue === null)) {
+//             div.style.display = 'none'
+//         }
+//     }
 
-    if (div.querySelector("#iur") !== null) {
-        div.style.display = 'none';
-    }
-}
+//     if (div.querySelector("#iur") !== null) {
+//         div.style.display = 'none';
+//     }
+// }
 
 function undesiredElementParent(jNode) {
     let parent = jNode[0].parentElement;
@@ -300,8 +300,8 @@ function disableSearchSuggestions(jNode) {
 // waitForKeyElements('g-scrolling-carousel div[jscontroller] a', clickbaitNews)
 waitForKeyElements('div[data-init-vis]', clickbaitNews)
 waitForKeyElements('div[role="listitem"] a', clickbaitNews)
-waitForKeyElements('#kp-wp-tab-overview > div', otherCrap2);
-waitForKeyElements('#bres > div', otherCrap2);
+// waitForKeyElements('#kp-wp-tab-overview > div', otherCrap2);
+// waitForKeyElements('#bres > div', otherCrap2);
 waitForKeyElements('#rso div.MjjYud', otherCrap);
 waitForKeyElements('#botstuff div.MjjYud', otherCrap);
 waitForKeyElements('#iur div[jscontroller]', undesiredElement)
