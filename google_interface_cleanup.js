@@ -171,7 +171,7 @@ function otherCrap(jNode) {
             div.style.display = 'none'
         }
 
-        let unwantedSelectors = ['#iur', 'product-viewer-group', 'inline-video']
+        let unwantedSelectors = ['#iur', 'inline-video']
         unwantedSelectors.flatMap(s => {
             if (div.querySelector(s) !== null) {
                 div.style.display = 'none';
@@ -317,3 +317,4 @@ waitForKeyElements('g-sticky-content', undesiredElement)
 waitForKeyElements('span[data-ae]', undesiredElement) // dynamic top suggestion bar
 waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
 waitForKeyElements('div[data-ie]', undesiredElement)
+waitForKeyElements('product-viewer-group', undesiredElement)
