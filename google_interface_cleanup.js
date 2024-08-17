@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      77
+// @version      78
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -118,7 +118,14 @@ const annoyances = [
     'Profiles',
     'Perspectives',
     'What to watch',
-    'Posts on X'
+    'Posts on X',
+    'Nearby stores',
+    'People also buy from',
+    'Trending movies',
+    'Ticket prices',
+    'Mentioned in the news',
+    'Visual stories',
+    'Latest posts from'
 ]
 
 // Where el is the DOM element you'd like to test for visibility
@@ -148,13 +155,13 @@ function otherCrap(jNode) {
         annoyances2
         .filter(annoyance => div.innerHTML.indexOf(annoyance) != -1)
         .flatMap(a => {
-            let k = getbyXpath(`.//div[text()='${a}']|//span[text()='${a}']`, div)
+            let k = getbyXpath(`.//div[starts-with(text(), '${a}')]|//span[starts-with(text(), '${a}')]`, div)
             // console.log(a, k)
             return k
         })
     // .filter(node => !isHidden(node));
 
-    console.log(matchingAnnoyances)
+    // console.log(matchingAnnoyances)
 
     let MjjYud = document.querySelectorAll('#rso div.MjjYud')
 
@@ -162,21 +169,19 @@ function otherCrap(jNode) {
         if (matchingAnnoyances.length > 0) {
             div.style.display = 'none'
         }
+
+        let unwantedSelectors = ['#iur', 'product-viewer-group', 'inline-video']
+        unwantedSelectors.flatMap(s => {
+            if (div.querySelector(s) !== null) {
+                div.style.display = 'none';
+            }
+        })
+
     } else {
         matchingAnnoyances.forEach(matchingAnnoyance => {
             if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
                 console.log(div, matchingAnnoyance)
-
-                let parent = matchingAnnoyance.parentElement;
-
-                if (parent && !parent.hasAttribute('data-vt')) {
-                    let jsdata = matchingAnnoyance.closest('div[jsdata]')
-                    console.log(jsdata)
-
-                    if (jsdata && !(jsdata.closest('#appbar'))) {
-                        jsdata.style.display = 'none';
-                    }
-                }
+                traverseAncestors(matchingAnnoyance)
             }
         });
     }
@@ -200,10 +205,6 @@ function otherCrap(jNode) {
                 }
             }
         });
-    }
-
-    if (div.querySelector("#iur") !== null) {
-        div.style.display = 'none';
     }
 }
 
@@ -274,6 +275,22 @@ function undesiredElementParent(jNode) {
     }
 }
 
+function traverseAncestors(node) {
+    if (node) {
+        if (node.tagName == 'DIV') {
+            let parentElement = node.parentElement
+            let childDivs = [...parentElement.children].filter(c => c.tagName == "DIV")
+            // console.log(childDivs)
+
+            if ((childDivs.length > 1) && (node.hasAttribute('jsdata'))) {
+                console.log(node)
+                node.style.display = 'none';
+            } else {
+                traverseAncestors(node.parentNode);
+            }
+        } else traverseAncestors(node.parentNode)
+    }
+}
 
 // waitForKeyElements('g-scrolling-carousel div[jscontroller] a', clickbaitNews)
 waitForKeyElements('div[data-init-vis]', clickbaitNews)
@@ -289,3 +306,6 @@ waitForKeyElements('div[data-peekaboo]', undesiredElement)
 waitForKeyElements('.U3THc', undesiredElement)
 waitForKeyElements('body #lb', destroyElement)
 waitForKeyElements('.PNZEbe', undesiredElementParent);
+waitForKeyElements('div[data-initq]', undesiredElement)
+waitForKeyElements('div[data-has-close]', undesiredElement)
+waitForKeyElements('g-sticky-content', undesiredElement)
