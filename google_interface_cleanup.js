@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      85
+// @version      86
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -149,16 +149,21 @@ function getbyXpath(xpath, contextNode) {
 }
 
 function removeJunkPeriodic() {
-    let MjjYud = document.querySelectorAll('#rso div.MjjYud')
+    console.log("running...")
+    var MjjYud = document.querySelectorAll('#rso div.MjjYud')
 
-    MjjYud.forEach(m => removeJunk(m));
+    MjjYud.forEach(m => removeJunk(m, MjjYud));
+
+    var MjjYud = document.querySelectorAll('#botstuff div.MjjYud')
+
+    MjjYud.forEach(m => removeJunk(m, MjjYud));
 }
 
 function removeJunkTrigger(jNode) {
     removeJunk(jNode[0])
 }
 
-function removeJunk(div) {
+function removeJunk(div, MjjYud) {
     // let annoyances2 = annoyances.filter(a => a != 'Videos')
 
     let matchingAnnoyances =
@@ -169,18 +174,17 @@ function removeJunk(div) {
             // console.log(a, k)
             return k
         })
-    // .filter(node => !isHidden(node));
+    .filter(node => !isHidden(node));
 
     // console.log(matchingAnnoyances)
 
-    let MjjYud = document.querySelectorAll('#rso div.MjjYud')
-
     if (MjjYud.length > 2) {
+        // console.log(matchingAnnoyances)
         if (matchingAnnoyances.length > 0) {
             div.style.display = 'none'
         }
 
-        let unwantedSelectors = ['#iur', 'inline-video']
+        let unwantedSelectors = ['#iur']
         unwantedSelectors.flatMap(s => {
             if (div.querySelector(s) !== null) {
                 div.style.display = 'none';
@@ -190,7 +194,7 @@ function removeJunk(div) {
     } else {
         matchingAnnoyances.forEach(matchingAnnoyance => {
             if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
-                console.log(div, matchingAnnoyance)
+                // console.log(div, matchingAnnoyance)
                 traverseAncestors(matchingAnnoyance)
             }
         });
@@ -283,7 +287,7 @@ function traverseAncestors(node) {
             // console.log(childDivs)
 
             if ((childDivs.length > 1) && (node.hasAttribute('jsdata'))) {
-                console.log(node)
+                // console.log(node)
                 node.style.display = 'none';
             } else {
                 traverseAncestors(node.parentNode);
@@ -301,8 +305,8 @@ waitForKeyElements('div[data-init-vis]', clickbaitNews)
 waitForKeyElements('div[role="listitem"] a', clickbaitNews)
 // waitForKeyElements('#kp-wp-tab-overview > div', otherCrap2);
 // waitForKeyElements('#bres > div', otherCrap2);
-waitForKeyElements('#rso div.MjjYud', removeJunkTrigger);
-waitForKeyElements('#botstuff div.MjjYud', removeJunkTrigger);
+// waitForKeyElements('#rso div.MjjYud', removeJunkTrigger);
+// waitForKeyElements('#botstuff div.MjjYud', removeJunkTrigger);
 waitForKeyElements('#iur div[jscontroller]', undesiredElement)
 waitForKeyElements('div[data-abe]', undesiredElement);
 waitForKeyElements('g-popup', undesiredElement)
@@ -317,5 +321,6 @@ waitForKeyElements('span[data-ae]', undesiredElement) // dynamic top suggestion 
 waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
 waitForKeyElements('div[data-ie]', undesiredElement)
 waitForKeyElements('product-viewer-group', undesiredElement)
+waitForKeyElements('inline-video', undesiredElement)
 
-setInterval(removeJunkPeriodic, 500);
+setInterval(removeJunkPeriodic, 1000);
