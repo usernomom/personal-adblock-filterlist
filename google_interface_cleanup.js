@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      83
+// @version      84
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -148,12 +148,21 @@ function getbyXpath(xpath, contextNode) {
     return results;
 }
 
-function otherCrap(jNode) {
-    let div = jNode[0]
-    let annoyances2 = annoyances.filter(a => a != 'Videos')
+function removeJunkPeriodic() {
+    let MjjYud = document.querySelectorAll('#rso div.MjjYud')
+
+    MjjYud.forEach(m => removeJunk(m));
+}
+
+function removeJunkTrigger(jNode) {
+    removeJunk(jNode[0])
+}
+
+function removeJunk(div) {
+    // let annoyances2 = annoyances.filter(a => a != 'Videos')
 
     let matchingAnnoyances =
-        annoyances2
+        annoyances
         .filter(annoyance => div.innerHTML.indexOf(annoyance) != -1)
         .flatMap(a => {
             let k = getbyXpath(`.//div[starts-with(text(), '${a}')]|//span[starts-with(text(), '${a}')]`, div)
@@ -187,26 +196,16 @@ function otherCrap(jNode) {
         });
     }
 
-    if (div.innerHTML.indexOf('Videos') != -1) {
-        // Videos requires special treatment
-        let videosAnnoyances = getbyXpath(`.//div[text()='Videos']|//span[text()='Videos']`, div)
+    // if (div.innerHTML.indexOf('Videos') != -1) {
+    //     // Videos requires special treatment
+    //     let videosAnnoyances = getbyXpath(`.//div[text()='Videos']|//span[text()='Videos']`, div)
 
-        videosAnnoyances.forEach(videosAnnoyance => {
-            if (videosAnnoyance && !isHidden(videosAnnoyance)) {
-                let datavt = videosAnnoyance.closest('div[data-vt]')
-
-                if (datavt && !(datavt.closest('#appbar'))) {
-                    datavt.style.display = 'none';
-                } else {
-                    let dataart = videosAnnoyance.closest('div[data-art]')
-
-                    if (dataart && !(dataart.closest('#appbar'))) {
-                        dataart.style.display = 'none';
-                    }
-                }
-            }
-        });
-    }
+    //     videosAnnoyances.forEach(videosAnnoyance => {
+    //         if (videosAnnoyance && !isHidden(videosAnnoyance)) {
+    //             traverseAncestors(videosAnnoyance)
+    //         }
+    //     });
+    // }
 }
 
 function undesiredElement(jNode) {
@@ -302,8 +301,8 @@ waitForKeyElements('div[data-init-vis]', clickbaitNews)
 waitForKeyElements('div[role="listitem"] a', clickbaitNews)
 // waitForKeyElements('#kp-wp-tab-overview > div', otherCrap2);
 // waitForKeyElements('#bres > div', otherCrap2);
-waitForKeyElements('#rso div.MjjYud', otherCrap);
-waitForKeyElements('#botstuff div.MjjYud', otherCrap);
+waitForKeyElements('#rso div.MjjYud', removeJunkTrigger);
+waitForKeyElements('#botstuff div.MjjYud', removeJunkTrigger);
 waitForKeyElements('#iur div[jscontroller]', undesiredElement)
 waitForKeyElements('div[data-abe]', undesiredElement);
 waitForKeyElements('g-popup', undesiredElement)
@@ -318,3 +317,5 @@ waitForKeyElements('span[data-ae]', undesiredElement) // dynamic top suggestion 
 waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
 waitForKeyElements('div[data-ie]', undesiredElement)
 waitForKeyElements('product-viewer-group', undesiredElement)
+
+// setInterval(removeJunkPeriodic, 500);
