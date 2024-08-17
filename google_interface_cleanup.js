@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      84
+// @version      85
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -318,4 +318,4 @@ waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
 waitForKeyElements('div[data-ie]', undesiredElement)
 waitForKeyElements('product-viewer-group', undesiredElement)
 
-// setInterval(removeJunkPeriodic, 500);
+setInterval(removeJunkPeriodic, 500);
