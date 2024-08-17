@@ -157,6 +157,13 @@ function removeJunkPeriodic() {
     var MjjYud = document.querySelectorAll('#botstuff div.MjjYud')
 
     MjjYud.forEach(m => removeJunk(m, MjjYud));
+
+    let unwantedSelectors = ['#iur', 'inline-video', 'product-viewer-group']
+    unwantedSelectors.map(s => {
+        [...document.querySelectorAll(s)].map(n => {
+            n.style.display = 'none';
+        })
+    })
 }
 
 function removeJunkTrigger(jNode) {
@@ -174,7 +181,7 @@ function removeJunk(div, MjjYud) {
             // console.log(a, k)
             return k
         })
-    .filter(node => !isHidden(node));
+        .filter(node => !isHidden(node));
 
     // console.log(matchingAnnoyances)
 
@@ -183,14 +190,6 @@ function removeJunk(div, MjjYud) {
         if (matchingAnnoyances.length > 0) {
             div.style.display = 'none'
         }
-
-        let unwantedSelectors = ['#iur']
-        unwantedSelectors.flatMap(s => {
-            if (div.querySelector(s) !== null) {
-                div.style.display = 'none';
-            }
-        })
-
     } else {
         matchingAnnoyances.forEach(matchingAnnoyance => {
             if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
@@ -320,7 +319,5 @@ waitForKeyElements('g-sticky-content', undesiredElement)
 waitForKeyElements('span[data-ae]', undesiredElement) // dynamic top suggestion bar
 waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
 waitForKeyElements('div[data-ie]', undesiredElement)
-waitForKeyElements('product-viewer-group', undesiredElement)
-waitForKeyElements('inline-video', undesiredElement)
 
 setInterval(removeJunkPeriodic, 1000);
