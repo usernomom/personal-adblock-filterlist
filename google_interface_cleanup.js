@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      102
+// @version      103
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      https://cdn.jsdelivr.net/gh/CoeJoder/GM_wrench@v1.5/dist/GM_wrench.min.js
 // @match        https://*.google.com/search*
@@ -232,8 +232,8 @@ function disableSearchSuggestions(jNode) {
 
 GM_wrench.waitForKeyElements('div[data-init-vis]', clickbaitNews, false, 300, 3)
 GM_wrench.waitForKeyElements('div[role="listitem"] a', clickbaitNews, false, 300, 3)
-GM_wrench.waitForKeyElements('#rso div.MjjYud', removeJunk);
-GM_wrench.waitForKeyElements('#botstuff div.MjjYud', removeJunk);
+GM_wrench.waitForKeyElements('#rso div.MjjYud', removeJunk, false, 300, 3);
+GM_wrench.waitForKeyElements('#botstuff div.MjjYud', removeJunk, false, 300, 3);
 GM_wrench.waitForKeyElements('#iur div[jscontroller]', undesiredElement)
 GM_wrench.waitForKeyElements('div[data-abe]', undesiredElement);
 GM_wrench.waitForKeyElements('g-popup', undesiredElement)
