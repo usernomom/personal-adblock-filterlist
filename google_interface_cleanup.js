@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      89
+// @version      90
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -158,12 +158,12 @@ function removeJunkPeriodic() {
 
     // MjjYud.forEach(m => removeJunk(m));
 
-    let unwantedSelectors = ['#iur', 'inline-video', 'product-viewer-group']
-    unwantedSelectors.map(s => {
-        [...document.querySelectorAll(s)].map(n => {
-            n.style.display = 'none';
-        })
-    })
+    // let unwantedSelectors = ['#iur', 'product-viewer-group']
+    // unwantedSelectors.map(s => {
+    //     [...document.querySelectorAll(s)].map(n => {
+    //         n.style.display = 'none';
+    //     })
+    // })
 }
 
 function removeJunkTrigger(jNode) {
@@ -321,5 +321,8 @@ waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
 waitForKeyElements('div[data-ie]', undesiredElement)
 waitForKeyElements('#media_result_group', undesiredElement)
 waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
+waitForKeyElements('inline-video', undesiredElement)
+waitForKeyElements('product-viewer-group', undesiredElement)
+waitForKeyElements('#iur', undesiredElement)
 
-setInterval(removeJunkPeriodic, 1000);
+// setInterval(removeJunkPeriodic, 1000);
