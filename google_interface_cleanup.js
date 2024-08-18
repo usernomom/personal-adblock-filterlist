@@ -2,13 +2,13 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      110
+// @version      111
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
 // @match        https://*.google.fr/search*
 // @match        https://*.google.co.uk/search
-// @run-at       document-idle
+// @run-at       document-end
 // ==/UserScript==
 
 const annoyances = [
@@ -149,7 +149,7 @@ function traverseAncestors(node) {
             let childDivs = [...parentElement.children].filter(c => c.tagName == "DIV")
             // console.log(childDivs)
 
-            if (((childDivs.length > 1) && (node.hasAttribute('jsdata'))) || node.className == 'MjjYud') {
+            if (((childDivs.length > 1) && (node.hasAttribute('jsdata') || node.className == 'MjjYud')))  {
                 // console.log(node)
                 node.style.display = 'none';
             } else {
