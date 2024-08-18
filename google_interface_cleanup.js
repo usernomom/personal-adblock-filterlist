@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      105
+// @version      106
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      https://cdn.jsdelivr.net/gh/CoeJoder/GM_wrench@v1.5/dist/GM_wrench.min.js
 // @match        https://*.google.com/search*
@@ -243,7 +243,7 @@ GM_wrench.waitForKeyElements('body #lb', destroyElement)
 GM_wrench.waitForKeyElements('.PNZEbe', undesiredElementParent);
 GM_wrench.waitForKeyElements('div[data-initq]', undesiredElement)
 GM_wrench.waitForKeyElements('div[data-has-close]', undesiredElement)
-GM_wrench.waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
+GM_wrench.waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions, false, 300, 5)
 GM_wrench.waitForKeyElements('#media_result_group', undesiredElement)
 GM_wrench.waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
 GM_wrench.waitForKeyElements('inline-video', undesiredElement)
