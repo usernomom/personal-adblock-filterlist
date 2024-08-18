@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      104
+// @version      105
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      https://cdn.jsdelivr.net/gh/CoeJoder/GM_wrench@v1.5/dist/GM_wrench.min.js
 // @match        https://*.google.com/search*
@@ -227,7 +227,7 @@ function traverseAncestors(node) {
 }
 
 function disableSearchSuggestions(jNode) {
-    jNode.parentElement.removeAttribute('jscontroller')
+    jNode.closest('div[jscontroller]').removeAttribute('jscontroller')
 }
 
 GM_wrench.waitForKeyElements('div[data-init-vis]', clickbaitNews, false, 300, 3)
