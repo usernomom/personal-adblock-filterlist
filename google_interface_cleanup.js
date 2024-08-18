@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      92
+// @version      94
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -315,7 +315,7 @@ waitForKeyElements('body #lb', destroyElement)
 waitForKeyElements('.PNZEbe', undesiredElementParent);
 waitForKeyElements('div[data-initq]', undesiredElement)
 waitForKeyElements('div[data-has-close]', undesiredElement)
-waitForKeyElements('g-sticky-content', undesiredElement)
+// waitForKeyElements('g-sticky-content', undesiredElement)
 waitForKeyElements('span[data-ae]', undesiredElement) // dynamic top suggestion bar
 waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
 // waitForKeyElements('div[data-ie]', undesiredElement)
