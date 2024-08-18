@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      95
+// @version      96
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
-// @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
-// @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
+// @require      https://cdn.jsdelivr.net/gh/CoeJoder/GM_wrench@v1.5/dist/GM_wrench.min.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
 // @match        https://*.google.fr/search*
@@ -150,7 +149,7 @@ function getbyXpath(xpath, contextNode) {
 }
 
 function removeJunk(jNode) {
-    let div = jNode[0]
+    let div = jNode
     
     let matchingAnnoyances =
         annoyances
@@ -173,15 +172,15 @@ function removeJunk(jNode) {
 }
 
 function undesiredElement(jNode) {
-    jNode[0].style.display = 'none'
+    jNode.style.display = 'none'
 }
 
 function destroyElement(jNode) {
-    jNode[0].remove()
+    jNode.remove()
 }
 
 function clickbaitNews(jNode) {
-    let elem = jNode[0]
+    let elem = jNode
 
     if (elem.tagName == 'A') {
         let matchingLink = websitesToBlock.find(websiteToBlock => elem.href.indexOf(websiteToBlock) > -1)
@@ -203,7 +202,7 @@ function clickbaitNews(jNode) {
 }
 
 function undesiredElementParent(jNode) {
-    let parent = jNode[0].parentElement;
+    let parent = jNode.parentElement;
 
     if (parent !== null) {
         parent.style.display = 'none';
@@ -228,25 +227,25 @@ function traverseAncestors(node) {
 }
 
 function disableSearchSuggestions(jNode) {
-    jNode[0].parentElement.removeAttribute('jscontroller')
+    jNode.parentElement.removeAttribute('jscontroller')
 }
 
-waitForKeyElements('div[data-init-vis]', clickbaitNews)
-waitForKeyElements('div[role="listitem"] a', clickbaitNews)
-waitForKeyElements('#rso div.MjjYud', removeJunk);
-waitForKeyElements('#botstuff div.MjjYud', removeJunk);
-waitForKeyElements('#iur div[jscontroller]', undesiredElement)
-waitForKeyElements('div[data-abe]', undesiredElement);
-waitForKeyElements('g-popup', undesiredElement)
-waitForKeyElements('div[data-peekaboo]', undesiredElement)
-waitForKeyElements('.U3THc', undesiredElement)
-waitForKeyElements('body #lb', destroyElement)
-waitForKeyElements('.PNZEbe', undesiredElementParent);
-waitForKeyElements('div[data-initq]', undesiredElement)
-waitForKeyElements('div[data-has-close]', undesiredElement)
-waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
-waitForKeyElements('#media_result_group', undesiredElement)
-waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
-waitForKeyElements('inline-video', undesiredElement)
-waitForKeyElements('product-viewer-group', undesiredElement)
-waitForKeyElements('#iur', undesiredElement)
+GM_wrench.waitForKeyElements('div[data-init-vis]', clickbaitNews)
+GM_wrench.waitForKeyElements('div[role="listitem"] a', clickbaitNews)
+GM_wrench.waitForKeyElements('#rso div.MjjYud', removeJunk);
+GM_wrench.waitForKeyElements('#botstuff div.MjjYud', removeJunk);
+GM_wrench.waitForKeyElements('#iur div[jscontroller]', undesiredElement)
+GM_wrench.waitForKeyElements('div[data-abe]', undesiredElement);
+GM_wrench.waitForKeyElements('g-popup', undesiredElement)
+GM_wrench.waitForKeyElements('div[data-peekaboo]', undesiredElement)
+GM_wrench.waitForKeyElements('.U3THc', undesiredElement)
+GM_wrench.waitForKeyElements('body #lb', destroyElement)
+GM_wrench.waitForKeyElements('.PNZEbe', undesiredElementParent);
+GM_wrench.waitForKeyElements('div[data-initq]', undesiredElement)
+GM_wrench.waitForKeyElements('div[data-has-close]', undesiredElement)
+GM_wrench.waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
+GM_wrench.waitForKeyElements('#media_result_group', undesiredElement)
+GM_wrench.waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
+GM_wrench.waitForKeyElements('inline-video', undesiredElement)
+GM_wrench.waitForKeyElements('product-viewer-group', undesiredElement)
+GM_wrench.waitForKeyElements('#iur', undesiredElement)
