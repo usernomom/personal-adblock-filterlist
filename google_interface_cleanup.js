@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      111
+// @version      112
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -82,7 +82,7 @@ function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, ma
             waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals);
         }, interval);
     }
-};
+}
 
 // Where el is the DOM element you'd like to test for visibility
 function isHidden(el) {
