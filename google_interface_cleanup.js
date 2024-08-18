@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      88
+// @version      89
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -150,13 +150,13 @@ function getbyXpath(xpath, contextNode) {
 
 function removeJunkPeriodic() {
     console.log("running...")
-    var MjjYud = document.querySelectorAll('#rso div.MjjYud')
+    // var MjjYud = document.querySelectorAll('#rso div.MjjYud')
 
-    MjjYud.forEach(m => removeJunk(m, MjjYud));
+    // MjjYud.forEach(m => removeJunk(m));
 
-    var MjjYud = document.querySelectorAll('#botstuff div.MjjYud')
+    // var MjjYud = document.querySelectorAll('#botstuff div.MjjYud')
 
-    MjjYud.forEach(m => removeJunk(m, MjjYud));
+    // MjjYud.forEach(m => removeJunk(m));
 
     let unwantedSelectors = ['#iur', 'inline-video', 'product-viewer-group']
     unwantedSelectors.map(s => {
@@ -170,7 +170,7 @@ function removeJunkTrigger(jNode) {
     removeJunk(jNode[0])
 }
 
-function removeJunk(div, MjjYud) {
+function removeJunk(div) {
     // let annoyances2 = annoyances.filter(a => a != 'Videos')
 
     let matchingAnnoyances =
@@ -304,8 +304,8 @@ waitForKeyElements('div[data-init-vis]', clickbaitNews)
 waitForKeyElements('div[role="listitem"] a', clickbaitNews)
 // waitForKeyElements('#kp-wp-tab-overview > div', otherCrap2);
 // waitForKeyElements('#bres > div', otherCrap2);
-// waitForKeyElements('#rso div.MjjYud', removeJunkTrigger);
-// waitForKeyElements('#botstuff div.MjjYud', removeJunkTrigger);
+waitForKeyElements('#rso div.MjjYud', removeJunkTrigger);
+waitForKeyElements('#botstuff div.MjjYud', removeJunkTrigger);
 waitForKeyElements('#iur div[jscontroller]', undesiredElement)
 waitForKeyElements('div[data-abe]', undesiredElement);
 waitForKeyElements('g-popup', undesiredElement)
@@ -322,4 +322,4 @@ waitForKeyElements('div[data-ie]', undesiredElement)
 waitForKeyElements('#media_result_group', undesiredElement)
 waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
 
-setInterval(removeJunkPeriodic, 300);
+setInterval(removeJunkPeriodic, 1000);
