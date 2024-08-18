@@ -2,9 +2,8 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      109
+// @version      110
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
-// @require      https://cdn.jsdelivr.net/gh/CoeJoder/GM_wrench@v1.5/dist/GM_wrench.min.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
 // @match        https://*.google.fr/search*
@@ -45,6 +44,45 @@ const annoyances = [
     'Twitter Results',
     'Images'
 ]
+
+function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals) {
+    if (typeof waitOnce === "undefined") {
+        waitOnce = true;
+    }
+    if (typeof interval === "undefined") {
+        interval = 300;
+    }
+    if (typeof maxIntervals === "undefined") {
+        maxIntervals = -1;
+    }
+    var targetNodes =
+        typeof selectorOrFunction === "function"
+            ? selectorOrFunction()
+            : document.querySelectorAll(selectorOrFunction);
+
+    var targetsFound = targetNodes && targetNodes.length > 0;
+    if (targetsFound) {
+        targetNodes.forEach(function (targetNode) {
+            var attrAlreadyFound = "data-userscript-alreadyFound";
+            var alreadyFound = targetNode.getAttribute(attrAlreadyFound) || false;
+            if (!alreadyFound) {
+                var cancelFound = callback(targetNode);
+                if (cancelFound) {
+                    targetsFound = false;
+                } else {
+                    targetNode.setAttribute(attrAlreadyFound, true);
+                }
+            }
+        });
+    }
+
+    if (maxIntervals !== 0 && !(targetsFound && waitOnce)) {
+        maxIntervals -= 1;
+        setTimeout(function () {
+            waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals);
+        }, interval);
+    }
+};
 
 // Where el is the DOM element you'd like to test for visibility
 function isHidden(el) {
@@ -121,19 +159,19 @@ function traverseAncestors(node) {
     }
 }
 
-GM_wrench.waitForKeyElements('#rso div.MjjYud', removeJunk);
-GM_wrench.waitForKeyElements('#botstuff div.MjjYud', removeJunk);
-GM_wrench.waitForKeyElements('#iur div[jscontroller]', undesiredElement)
-GM_wrench.waitForKeyElements('div[data-abe]', undesiredElement);
-GM_wrench.waitForKeyElements('g-popup', undesiredElement)
-GM_wrench.waitForKeyElements('div[data-peekaboo]', undesiredElement)
-GM_wrench.waitForKeyElements('.U3THc', undesiredElement)
-GM_wrench.waitForKeyElements('body #lb', destroyElement)
-GM_wrench.waitForKeyElements('.PNZEbe', undesiredElementParent);
-GM_wrench.waitForKeyElements('div[data-initq]', undesiredElement)
-GM_wrench.waitForKeyElements('div[data-has-close]', undesiredElement)
-GM_wrench.waitForKeyElements('#media_result_group', undesiredElement)
-GM_wrench.waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
-GM_wrench.waitForKeyElements('inline-video', undesiredElement)
-GM_wrench.waitForKeyElements('product-viewer-group', undesiredElement, false)
-GM_wrench.waitForKeyElements('#iur', undesiredElement)
+waitForKeyElements('#rso div.MjjYud', removeJunk);
+waitForKeyElements('#botstuff div.MjjYud', removeJunk);
+waitForKeyElements('#iur div[jscontroller]', undesiredElement)
+waitForKeyElements('div[data-abe]', undesiredElement);
+waitForKeyElements('g-popup', undesiredElement)
+waitForKeyElements('div[data-peekaboo]', undesiredElement)
+waitForKeyElements('.U3THc', undesiredElement)
+waitForKeyElements('body #lb', destroyElement)
+waitForKeyElements('.PNZEbe', undesiredElementParent);
+waitForKeyElements('div[data-initq]', undesiredElement)
+waitForKeyElements('div[data-has-close]', undesiredElement)
+waitForKeyElements('#media_result_group', undesiredElement)
+waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
+waitForKeyElements('inline-video', undesiredElement)
+waitForKeyElements('product-viewer-group', undesiredElement, false)
+waitForKeyElements('#iur', undesiredElement)
