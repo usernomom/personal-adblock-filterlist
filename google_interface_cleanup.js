@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      87
+// @version      88
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require      https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -185,19 +185,19 @@ function removeJunk(div, MjjYud) {
 
     // console.log(matchingAnnoyances)
 
-    if (MjjYud.length > 2) {
-        // console.log(matchingAnnoyances)
-        if (matchingAnnoyances.length > 0) {
-            div.style.display = 'none'
-        }
-    } else {
+    // if (MjjYud.length > 2) {
+    //     // console.log(matchingAnnoyances)
+    //     if (matchingAnnoyances.length > 0) {
+    //         div.style.display = 'none'
+    //     }
+    // } else {
         matchingAnnoyances.forEach(matchingAnnoyance => {
             if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
                 // console.log(div, matchingAnnoyance)
                 traverseAncestors(matchingAnnoyance)
             }
         });
-    }
+    // }
 
     // if (div.innerHTML.indexOf('Videos') != -1) {
     //     // Videos requires special treatment
@@ -285,7 +285,7 @@ function traverseAncestors(node) {
             let childDivs = [...parentElement.children].filter(c => c.tagName == "DIV")
             // console.log(childDivs)
 
-            if ((childDivs.length > 1) && (node.hasAttribute('jsdata'))) {
+            if (((childDivs.length > 1) && (node.hasAttribute('jsdata'))) || node.className == 'MjjYud') {
                 // console.log(node)
                 node.style.display = 'none';
             } else {
@@ -319,5 +319,7 @@ waitForKeyElements('g-sticky-content', undesiredElement)
 waitForKeyElements('span[data-ae]', undesiredElement) // dynamic top suggestion bar
 waitForKeyElements('textarea[title="Search"]', disableSearchSuggestions)
 waitForKeyElements('div[data-ie]', undesiredElement)
+waitForKeyElements('#media_result_group', undesiredElement)
+waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
 
-setInterval(removeJunkPeriodic, 1000);
+setInterval(removeJunkPeriodic, 300);
