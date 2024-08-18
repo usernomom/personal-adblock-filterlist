@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @version      103
+// @version      104
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @require      https://cdn.jsdelivr.net/gh/CoeJoder/GM_wrench@v1.5/dist/GM_wrench.min.js
 // @match        https://*.google.com/search*
@@ -125,7 +125,7 @@ const annoyances = [
     'Mentioned in the news',
     'Visual stories',
     'Latest posts from',
-    'View on X',
+    'Twitter Results',
     'Images'
 ]
 
@@ -150,12 +150,12 @@ function getbyXpath(xpath, contextNode) {
 
 function removeJunk(jNode) {
     let div = jNode
-    
+
     let matchingAnnoyances =
         annoyances
-        .filter(annoyance => div.innerHTML.indexOf(annoyance) != -1)
+        .filter(a => div.innerHTML.indexOf(a) != -1)
         .flatMap(a => {
-            let k = getbyXpath(`.//div[starts-with(text(), '${a}')]|//span[starts-with(text(), '${a}')]`, div)
+            let k = getbyXpath(`.//div[starts-with(text(), '${a}')]|//span[starts-with(text(), '${a}')]|//h2[starts-with(text(), '${a}')]`, div)
             // console.log(a, k)
             return k
         })
@@ -165,7 +165,7 @@ function removeJunk(jNode) {
 
     matchingAnnoyances.forEach(matchingAnnoyance => {
         if (matchingAnnoyance && !isHidden(matchingAnnoyance)) {
-            // console.log(div, matchingAnnoyance)
+            console.log(div, matchingAnnoyance)
             traverseAncestors(matchingAnnoyance)
         }
     });
@@ -232,8 +232,8 @@ function disableSearchSuggestions(jNode) {
 
 GM_wrench.waitForKeyElements('div[data-init-vis]', clickbaitNews, false, 300, 3)
 GM_wrench.waitForKeyElements('div[role="listitem"] a', clickbaitNews, false, 300, 3)
-GM_wrench.waitForKeyElements('#rso div.MjjYud', removeJunk, false, 300, 3);
-GM_wrench.waitForKeyElements('#botstuff div.MjjYud', removeJunk, false, 300, 3);
+GM_wrench.waitForKeyElements('#rso div.MjjYud', removeJunk);
+GM_wrench.waitForKeyElements('#botstuff div.MjjYud', removeJunk);
 GM_wrench.waitForKeyElements('#iur div[jscontroller]', undesiredElement)
 GM_wrench.waitForKeyElements('div[data-abe]', undesiredElement);
 GM_wrench.waitForKeyElements('g-popup', undesiredElement)
