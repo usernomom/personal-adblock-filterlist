@@ -2,12 +2,12 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      113
+// @version      114
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
 // @match        https://*.google.fr/search*
-// @match        https://*.google.co.uk/search
+// @match        https://*.google.co.uk/search*
 // @run-at       document-end
 // ==/UserScript==
 
