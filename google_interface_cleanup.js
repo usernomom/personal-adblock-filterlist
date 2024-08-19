@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      112
+// @version      113
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -149,7 +149,7 @@ function traverseAncestors(node) {
             let childDivs = [...parentElement.children].filter(c => c.tagName == "DIV")
             // console.log(childDivs)
 
-            if (((childDivs.length > 1) && (node.hasAttribute('jsdata') || node.className == 'MjjYud')))  {
+            if (((childDivs.length > 1) && (node.hasAttribute('jsdata') || node.className == 'MjjYud')) || ((childDivs.length == 1) && (parentElement.id == 'bres')))  {
                 // console.log(node)
                 node.style.display = 'none';
             } else {
