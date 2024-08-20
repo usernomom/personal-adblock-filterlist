@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google search - block unwanted websites
 // @description  Block unwanted websites in Google search results
-// @version      2
+// @version      3
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_block_unwanted_websites.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -106,9 +106,9 @@ function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, ma
         maxIntervals = -1;
     }
     var targetNodes =
-        typeof selectorOrFunction === "function"
-            ? selectorOrFunction()
-            : document.querySelectorAll(selectorOrFunction);
+        typeof selectorOrFunction === "function" ?
+        selectorOrFunction() :
+        document.querySelectorAll(selectorOrFunction);
 
     var targetsFound = targetNodes && targetNodes.length > 0;
     if (targetsFound) {
@@ -137,21 +137,15 @@ function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, ma
 function blockWebsites(jNode) {
     let elem = jNode
 
-    if (elem.tagName == 'A') {
-        let matchingLink = websitesToBlock.find(websiteToBlock => elem.href.indexOf(websiteToBlock) > -1)
+    let matchingLink = websitesToBlock.find(websiteToBlock => elem.href.indexOf(websiteToBlock) > -1)
 
-        if (matchingLink) {
+    if (matchingLink) {
+        let parentElement = elem.closest('.Ww4FFb.vt6azd')
+
+        if (parentElement && parentElement.className == 'Ww4FFb vt6azd') {
+            parentElement.style.display = 'none'
+        } else {
             elem.closest('div[jscontroller]').style.display = 'none';
-        }
-    } else if (elem.tagName == 'DIV') {
-        let a = elem.querySelector('a')
-
-        if (a) {
-            let matchingLink = websitesToBlock.find(websiteToBlock => a.href.indexOf(websiteToBlock) > -1)
-
-            if (matchingLink) {
-                elem.style.display = 'none';
-            }
         }
     }
 }
