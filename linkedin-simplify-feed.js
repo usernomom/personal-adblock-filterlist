@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         LinkedIn Hide Non-Connection Posts
-// @version      1.0
+// @version      2
 // @description  Hides all posts on LinkedIn that are not from direct connections
 // @author       Me
 // @match        https://www.linkedin.com/feed/*
 // @grant        none
-// @run-at       document-start
+// @run-at       document-end
 // ==/UserScript==
 
 let annoyances = [
@@ -73,59 +73,46 @@ function getbyXpath(xpath, contextNode) {
     return results;
 }
 
-function block(node) {
-    let p = node.querySelector('article[data-id="main-feed-card"] > p')
+// function block(node) {
+//     let p = node.querySelector('article[data-id="main-feed-card"] > p')
 
-    if (p) {
-        let isAnnoyance = annoyances.find(a => p.innerHTML.indexOf(a) != -1)
+//     if (p) {
+//         let annoyanceMaybe = annoyances.find(a => p.innerHTML.indexOf(a) != -1)
 
-        if (isAnnoyance) {
-            console.log(p)
-            // node.style.display = "none"
-            node.remove()
-        }
-    }
-}
-
-// function block() {
-//     // let isLikedPost = getbyXpath(`.//p[contains(text(), 'likes this')]`, node)
-
-//     // console.log(isLikedPost)
-
-//     let [...posts] = document.querySelectorAll('.feed-container > li')
-
-//     posts.filter(n => !isHidden(n)).forEach(post => {
-//         let p = post.querySelector('article[data-id="main-feed-card"] > p')
-
-//         if (p) {
-//             let annoyanceMaybe = annoyances.find(a => p.innerHTML.indexOf(a) != -1)
-
-//             if (annoyanceMaybe) {
-//                 console.log(annoyanceMaybe, p)
-//                 post.remove()
-//             }
+//         if (annoyanceMaybe) {
+//             console.log(p)
+//             node.remove();
 //         }
-//     })
-
-//     // let [...posts2] = document.querySelectorAll('.feed-container > li')
-
-//     // if(posts2.filter(n => !isHidden(n)).length < 2) {
-//     //     location.reload()
-//     // }
-
+//     }
 // }
 
-// // Run the function on page load
-// window.addEventListener('load', () => {
-//     block();
-// });
+function block() {
+    let [...posts] = document.querySelectorAll('.feed-container > li')
 
-// // Observe DOM changes for dynamically loaded content
-// const observer = new MutationObserver(block);
-// observer.observe(document.body, {
-//     childList: true,
-//     subtree: true
-// });
+    posts.filter(n => !isHidden(n)).forEach(post => {
+        let p = post.querySelector('article[data-id="main-feed-card"] > p')
 
-// waitForKeyElements('.scaffold-finite-scroll__content > div', block, false)
-waitForKeyElements('.feed-container > li', block, false)
+        if (p) {
+            let annoyanceMaybe = annoyances.find(a => p.innerHTML.indexOf(a) != -1)
+
+            if (annoyanceMaybe) {
+                console.log(annoyanceMaybe, p)
+                post.remove()
+            }
+        }
+    })
+}
+
+// Run the function on page load
+window.addEventListener('load', () => {
+    block();
+});
+
+// Observe DOM changes for dynamically loaded content
+const observer = new MutationObserver(block);
+observer.observe(document.body, {
+    childList: true,
+    subtree: true
+});
+
+// waitForKeyElements('.feed-container > li', block, false)
