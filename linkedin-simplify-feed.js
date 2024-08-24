@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         LinkedIn Cleanup
-// @version      2
+// @version      3
 // @description  Hides useless annoyances on LinkedIn
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/linkedin-simplify-feed.js
 // @author       Me
@@ -74,46 +74,17 @@ function getbyXpath(xpath, contextNode) {
     return results;
 }
 
-// function block(node) {
-//     let p = node.querySelector('article[data-id="main-feed-card"] > p')
+function block(node) {
+    let p = node.querySelector('article[data-id="main-feed-card"] > p')
 
-//     if (p) {
-//         let annoyanceMaybe = annoyances.find(a => p.innerHTML.indexOf(a) != -1)
+    if (p) {
+        let annoyanceMaybe = annoyances.find(a => p.innerHTML.indexOf(a) != -1)
 
-//         if (annoyanceMaybe) {
-//             console.log(p)
-//             node.remove();
-//         }
-//     }
-// }
-
-function block() {
-    let [...posts] = document.querySelectorAll('.feed-container > li')
-
-    posts.filter(n => !isHidden(n)).forEach(post => {
-        let p = post.querySelector('article[data-id="main-feed-card"] > p')
-
-        if (p) {
-            let annoyanceMaybe = annoyances.find(a => p.innerHTML.indexOf(a) != -1)
-
-            if (annoyanceMaybe) {
-                console.log(annoyanceMaybe, p)
-                post.remove()
-            }
+        if (annoyanceMaybe) {
+            console.log(p)
+            node.remove();
         }
-    })
+    }
 }
 
-// Run the function on page load
-window.addEventListener('load', () => {
-    block();
-});
-
-// Observe DOM changes for dynamically loaded content
-const observer = new MutationObserver(block);
-observer.observe(document.body, {
-    childList: true,
-    subtree: true
-});
-
-// waitForKeyElements('.feed-container > li', block, false)
+waitForKeyElements('.feed-container > li', block, false)
