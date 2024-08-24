@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         LinkedIn Cleanup
-// @version      3
+// @version      4
 // @description  Hides useless annoyances on LinkedIn
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/linkedin-simplify-feed.js
 // @author       Me
@@ -13,7 +13,8 @@ let annoyances = [
     'likes this',
     'celebrates this',
     'finds this funny',
-    'Suggested'
+    'Suggested',
+    'commented on this'
 ]
 
 // Where el is the DOM element you'd like to test for visibility
