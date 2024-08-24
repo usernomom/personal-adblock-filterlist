@@ -1,7 +1,8 @@
 // ==UserScript==
-// @name         LinkedIn Hide Non-Connection Posts
+// @name         LinkedIn Cleanup
 // @version      2
-// @description  Hides all posts on LinkedIn that are not from direct connections
+// @description  Hides useless annoyances on LinkedIn
+// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/linkedin-simplify-feed.js
 // @author       Me
 // @match        https://www.linkedin.com/feed/*
 // @grant        none
