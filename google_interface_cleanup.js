@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      114
+// @version      115
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -161,17 +161,7 @@ function traverseAncestors(node) {
 
 waitForKeyElements('#rso div.MjjYud', removeJunk);
 waitForKeyElements('#botstuff div.MjjYud', removeJunk);
-waitForKeyElements('#iur div[jscontroller]', undesiredElement)
-waitForKeyElements('div[data-abe]', undesiredElement);
-waitForKeyElements('g-popup', undesiredElement)
-waitForKeyElements('div[data-peekaboo]', undesiredElement)
-waitForKeyElements('.U3THc', undesiredElement)
-waitForKeyElements('body #lb', destroyElement)
-waitForKeyElements('.PNZEbe', undesiredElementParent);
-waitForKeyElements('div[data-initq]', undesiredElement)
-waitForKeyElements('div[data-has-close]', undesiredElement)
 waitForKeyElements('#media_result_group', undesiredElement)
 waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
 waitForKeyElements('inline-video', undesiredElement)
 waitForKeyElements('product-viewer-group', undesiredElement, false)
-waitForKeyElements('#iur', undesiredElement)
