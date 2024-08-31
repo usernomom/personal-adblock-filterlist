@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  51
+// @version  52
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -182,7 +182,7 @@ waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesire
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
 waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner)
-// waitForKeyElements('#store-wrapper #home-content-tab-panel div[role="region"]', undesiredElement)
+waitForKeyElements('#store-wrapper #home-content-tab-panel section', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement) // offer banner at bottom
 waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip)
@@ -191,6 +191,3 @@ waitForKeyElements('footer span', continueToNext)
 waitForKeyElements('#storefront-placements-content article', sponsoredPlacement)
 waitForKeyElements('#store-wrapper article', sponsoredPlacement)
 waitForKeyElements('article', sponsoredPlacement)
-
-// Unused
-// waitForKeyElements('#store-wrapper div > section', undesiredElement)
