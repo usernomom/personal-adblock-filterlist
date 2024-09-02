@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      115
+// @version      116
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -56,9 +56,9 @@ function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, ma
         maxIntervals = -1;
     }
     var targetNodes =
-        typeof selectorOrFunction === "function"
-            ? selectorOrFunction()
-            : document.querySelectorAll(selectorOrFunction);
+        typeof selectorOrFunction === "function" ?
+        selectorOrFunction() :
+        document.querySelectorAll(selectorOrFunction);
 
     var targetsFound = targetNodes && targetNodes.length > 0;
     if (targetsFound) {
@@ -147,16 +147,23 @@ function traverseAncestors(node) {
         if (node.tagName == 'DIV') {
             let parentElement = node.parentElement
             let childDivs = [...parentElement.children].filter(c => c.tagName == "DIV")
+            let hasInfoSection = node.querySelector('.kp-wholepage')
             // console.log(childDivs)
 
-            if (((childDivs.length > 1) && (node.hasAttribute('jsdata') || node.className == 'MjjYud')) || ((childDivs.length == 1) && (parentElement.id == 'bres')))  {
+            if (((childDivs.length > 1) && (node.hasAttribute('jsdata') || node.className == 'MjjYud')) || ((childDivs.length == 1) && (parentElement.id == 'bres'))) {
                 // console.log(node)
-                node.style.display = 'none';
+                if (hasInfoSection === null) {
+                    node.style.display = 'none';
+                }
             } else {
                 traverseAncestors(node.parentNode);
             }
         } else traverseAncestors(node.parentNode)
     }
+}
+
+function removeSearchSuggestions(jNode) {
+    jNode.removeAttribute("jscontroller")
 }
 
 waitForKeyElements('#rso div.MjjYud', removeJunk);
@@ -165,3 +172,4 @@ waitForKeyElements('#media_result_group', undesiredElement)
 waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
 waitForKeyElements('inline-video', undesiredElement)
 waitForKeyElements('product-viewer-group', undesiredElement, false)
+waitForKeyElements('form[action="/search"] > div > div[jscontroller]', removeSearchSuggestions)
