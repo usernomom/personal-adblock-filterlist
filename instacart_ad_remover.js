@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  54
+// @version  55
 // @match    https://*.instacart.ca/*
 // @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
@@ -30,6 +30,16 @@ function isSponsored(elem) {
     const sponsored = elem.querySelector('*[data-cfp-eligible]')
 
     if (sponsored) {
+      return true
+    } else return false;
+
+  } else return false
+}
+
+function isSponsoredImg(img) {
+  if (img) {
+    let ariaLabel = img.getAttribute('aria-label')
+    if (sponsoredTexts.includes(img.alt.toLowerCase().trim()) || (ariaLabel && sponsoredTexts.includes(img.getAttribute('aria-label').toLowerCase().trim()))) {
       return true
     } else return false;
 
@@ -137,7 +147,7 @@ function sponsoredCarousel(jNode) {
         // let spans = node.querySelectorAll('span')
         // let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
         let imgs = node.querySelectorAll('img')
-        let sponsoredImgs = [...imgs].filter(img => sponsoredTexts.includes(img.alt.toLowerCase().trim()))
+        let sponsoredImgs = [...imgs].filter(img => isSponsoredImg(img))
         let individualSponsored = isSponsored(node)
         let scrollbars = node.querySelectorAll('.u-noscrollbar')
 
@@ -160,7 +170,7 @@ function sponsoredPlacement(jNode) {
   let node = jNode[0]
 
   let imgs = node.querySelectorAll('img')
-  let sponsoredImgs = [...imgs].filter(img => sponsoredTexts.includes(img.alt.toLowerCase().trim()))
+  let sponsoredImgs = [...imgs].filter(img => isSponsoredImg(img))
 
   if ((sponsoredImgs.length > 0)) {
     node.style.display = 'none';
