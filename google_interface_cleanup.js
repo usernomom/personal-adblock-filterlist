@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      116
+// @version      120
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -42,7 +42,11 @@ const annoyances = [
     'Visual stories',
     'Latest posts from',
     'Twitter Results',
-    'Images'
+    'Images',
+    'Related topics',
+    'Context',
+    'For reference',
+    'Helpful context'
 ]
 
 function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals) {
