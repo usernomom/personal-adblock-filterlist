@@ -1,19 +1,49 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  56
+// @version  57
 // @match    https://*.instacart.ca/*
-// @require  http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
-// @require     https://gist.github.com/raw/2625891/waitForKeyElements.js
 // @downloadURL https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.js
 // @grant    GM_addStyle
 // ==/UserScript==
 
-unsafeWindow.Element.prototype._attachShadow = unsafeWindow.Element.prototype.attachShadow;
-unsafeWindow.Element.prototype.attachShadow = function () {
-  return this._attachShadow({
-    mode: "open"
-  });
-};
+function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals) {
+  if (typeof waitOnce === "undefined") {
+      waitOnce = true;
+  }
+  if (typeof interval === "undefined") {
+      interval = 300;
+  }
+  if (typeof maxIntervals === "undefined") {
+      maxIntervals = -1;
+  }
+  var targetNodes =
+      typeof selectorOrFunction === "function" ?
+      selectorOrFunction() :
+      document.querySelectorAll(selectorOrFunction);
+
+  var targetsFound = targetNodes && targetNodes.length > 0;
+  if (targetsFound) {
+      targetNodes.forEach(function (targetNode) {
+          var attrAlreadyFound = "data-userscript-alreadyFound";
+          var alreadyFound = targetNode.getAttribute(attrAlreadyFound) || false;
+          if (!alreadyFound) {
+              var cancelFound = callback(targetNode);
+              if (cancelFound) {
+                  targetsFound = false;
+              } else {
+                  targetNode.setAttribute(attrAlreadyFound, true);
+              }
+          }
+      });
+  }
+
+  if (maxIntervals !== 0 && !(targetsFound && waitOnce)) {
+      maxIntervals -= 1;
+      setTimeout(function () {
+          waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals);
+      }, interval);
+  }
+}
 
 let sponsoredTexts = ["sponsored", "spaahnserd", "spawhnserd", "spawnserd", "spaunsered", "spaunserd", "spauncered", "spauncerd", "spohnserd", "spohncerd", "spohncered", "spawncerd", "spawncered"]
 
@@ -52,7 +82,7 @@ function isSponsoredImg(img) {
 }
 
 function individualItems(jNode) {
-  let li = jNode[0].closest('li')
+  let li = jNode.closest('li')
 
   if (isSponsored(li)) {
     let parent = li.parentNode;
@@ -65,7 +95,7 @@ function individualItems(jNode) {
 }
 
 function undesiredElement(jNode) {
-  jNode[0].style.display = 'none'
+  jNode.style.display = 'none'
 }
 
 function blockAdsInSearch() {
@@ -93,7 +123,7 @@ function blockAdsInSearch() {
 }
 
 function blockAdsInCart(jNode) {
-  let div = jNode[0]
+  let div = jNode
 
   if (div.innerHTML.indexOf('Suggested items') != -1) {
     div.style.display = 'none'
@@ -101,7 +131,7 @@ function blockAdsInCart(jNode) {
 }
 
 function homeBanner(jNode) {
-  let carousel = jNode[0].closest('div[aria-label="carousel"]')
+  let carousel = jNode.closest('div[aria-label="carousel"]')
 
   if (carousel) {
     carousel.style.display = "none"
@@ -119,7 +149,7 @@ function getbyXpath(xpath, contextNode) {
 }
 
 function defaultTip(jNode) {
-  const spans = jNode[0].querySelectorAll('span');
+  const spans = jNode.querySelectorAll('span');
 
   const otherSpan = [...spans].filter(span => span.innerHTML == 'Other')[0]
 
@@ -134,7 +164,7 @@ function defaultTip(jNode) {
     otherInput.focus();
 
     waitForKeyElements('div[aria-label="Say thanks with a tip"] button:has(span)', function (jNode) {
-      const btn = jNode[0]
+      const btn = jNode
 
       if (btn.innerText.includes('Continue')) {
         btn.click()
@@ -144,7 +174,7 @@ function defaultTip(jNode) {
 }
 
 function sponsoredCarousel(jNode) {
-  let elem = jNode[0]
+  let elem = jNode
 
   function traverseAncestors(node) {
     if (node) {
@@ -172,7 +202,7 @@ function sponsoredCarousel(jNode) {
 }
 
 function sponsoredPlacement(jNode) {
-  let node = jNode[0]
+  let node = jNode
 
   let imgs = node.querySelectorAll('img')
   let sponsoredImgs = [...imgs].filter(img => isSponsoredImg(img))
@@ -183,7 +213,7 @@ function sponsoredPlacement(jNode) {
 }
 
 function continueToNext(jNode) {
-  let span = jNode[0]
+  let span = jNode
 
   if (span.innerText === 'Continue to checkout') {
     setTimeout(function () {
@@ -192,18 +222,18 @@ function continueToNext(jNode) {
   }
 }
 
-waitForKeyElements('#store-wrapper div[aria-label="Product"]', blockAdsInSearch);
-waitForKeyElements('#store ul li div[aria-label="Product"] a', individualItems);
+waitForKeyElements('#store-wrapper div[aria-label="Product"]', blockAdsInSearch, false);
+waitForKeyElements('#store ul li div[aria-label="Product"] a', individualItems, false);
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart);
 waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner)
-waitForKeyElements('#store-wrapper #home-content-tab-panel section', undesiredElement)
+waitForKeyElements('#store-wrapper #home-content-tab-panel section', undesiredElement, false)
 waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement) // offer banner at bottom
 waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip)
-waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel)
+waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel, false)
 waitForKeyElements('footer span', continueToNext)
-waitForKeyElements('#storefront-placements-content article', sponsoredPlacement)
-waitForKeyElements('#store-wrapper article', sponsoredPlacement)
+waitForKeyElements('#storefront-placements-content article', sponsoredPlacement, false)
+waitForKeyElements('#store-wrapper article', sponsoredPlacement, false)
 waitForKeyElements('article', sponsoredPlacement)
