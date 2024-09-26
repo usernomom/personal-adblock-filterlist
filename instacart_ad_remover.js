@@ -1,7 +1,10 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
-// @version  57
+// @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
+// @version  58
+// @license      MIT
 // @match    https://*.instacart.ca/*
+// @match    https://*.instacart.com/*
 // @downloadURL https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.js
 // @grant    GM_addStyle
 // ==/UserScript==
