@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
 // @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
-// @version  59
+// @version  60
 // @license      MIT
 // @match    https://*.instacart.ca/*
 // @match    https://*.instacart.com/*
@@ -172,7 +172,7 @@ function defaultTip(jNode) {
       if (btn.innerText.includes('Continue')) {
         btn.click()
       }
-    })
+    }, false)
   }
 }
 
