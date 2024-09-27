@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
 // @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
-// @version  60
+// @version  61
 // @license      MIT
 // @match    https://*.instacart.ca/*
 // @match    https://*.instacart.com/*
@@ -227,16 +227,16 @@ function continueToNext(jNode) {
 
 waitForKeyElements('#store-wrapper div[aria-label="Product"]', blockAdsInSearch, false);
 waitForKeyElements('#store ul li div[aria-label="Product"] a', individualItems, false);
-waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement);
-waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement); // Related recipes
-waitForKeyElements('#cart-body > div', blockAdsInCart);
-waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner)
+waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement, false);
+waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement, false); // Related recipes
+waitForKeyElements('#cart-body > div', blockAdsInCart, false);
+waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner, false)
 waitForKeyElements('#store-wrapper #home-content-tab-panel section', undesiredElement, false)
-waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement) // offer banner at bottom
-waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement)
+waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement, false) // offer banner at bottom
+waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement, false)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip, false)
 waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel, false)
 waitForKeyElements('footer span', continueToNext, false)
 waitForKeyElements('#storefront-placements-content article', sponsoredPlacement, false)
 waitForKeyElements('#store-wrapper article', sponsoredPlacement, false)
-waitForKeyElements('article', sponsoredPlacement)
+waitForKeyElements('article', sponsoredPlacement, false)
