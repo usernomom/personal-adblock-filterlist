@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
 // @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
-// @version  62
+// @version  63
 // @license      MIT
 // @match    https://*.instacart.ca/*
 // @match    https://*.instacart.com/*
@@ -11,40 +11,40 @@
 
 function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals) {
   if (typeof waitOnce === "undefined") {
-      waitOnce = true;
+    waitOnce = true;
   }
   if (typeof interval === "undefined") {
-      interval = 300;
+    interval = 300;
   }
   if (typeof maxIntervals === "undefined") {
-      maxIntervals = -1;
+    maxIntervals = -1;
   }
   var targetNodes =
-      typeof selectorOrFunction === "function" ?
-      selectorOrFunction() :
-      document.querySelectorAll(selectorOrFunction);
+    typeof selectorOrFunction === "function" ?
+    selectorOrFunction() :
+    document.querySelectorAll(selectorOrFunction);
 
   var targetsFound = targetNodes && targetNodes.length > 0;
   if (targetsFound) {
-      targetNodes.forEach(function (targetNode) {
-          var attrAlreadyFound = "data-userscript-alreadyFound";
-          var alreadyFound = targetNode.getAttribute(attrAlreadyFound) || false;
-          if (!alreadyFound) {
-              var cancelFound = callback(targetNode);
-              if (cancelFound) {
-                  targetsFound = false;
-              } else {
-                  targetNode.setAttribute(attrAlreadyFound, true);
-              }
-          }
-      });
+    targetNodes.forEach(function (targetNode) {
+      var attrAlreadyFound = "data-userscript-alreadyFound";
+      var alreadyFound = targetNode.getAttribute(attrAlreadyFound) || false;
+      if (!alreadyFound) {
+        var cancelFound = callback(targetNode);
+        if (cancelFound) {
+          targetsFound = false;
+        } else {
+          targetNode.setAttribute(attrAlreadyFound, true);
+        }
+      }
+    });
   }
 
   if (maxIntervals !== 0 && !(targetsFound && waitOnce)) {
-      maxIntervals -= 1;
-      setTimeout(function () {
-          waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals);
-      }, interval);
+    maxIntervals -= 1;
+    setTimeout(function () {
+      waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals);
+    }, interval);
   }
 }
 
@@ -73,11 +73,14 @@ function isSponsoredImg(img) {
   if (img) {
     let attrs = Array.from(img.attributes)
 
-    let isSponsored = attrs.find(({name, value}) => sponsoredTexts.find(txt => value.toLowerCase().includes(txt)))
+    let isSponsored = attrs.find(({
+      name,
+      value
+    }) => sponsoredTexts.find(txt => value.toLowerCase().includes(txt)))
 
     // let ariaLabel = img.getAttribute('aria-label')
     // if (sponsoredTexts.includes(img.alt.toLowerCase().trim()) || (ariaLabel && sponsoredTexts.includes(img.getAttribute('aria-label').toLowerCase().trim()))) {
-    if(isSponsored) {
+    if (isSponsored) {
       return true;
     } else return false;
 
@@ -201,7 +204,11 @@ function sponsoredCarousel(jNode) {
     }
   }
 
-  traverseAncestors(elem.parentNode)
+  let imgs = elem.querySelectorAll('img')
+  let sponsoredImgs = [...imgs].filter(img => isSponsoredImg(img))
+  if (sponsoredImgs.length > 0) {
+    traverseAncestors(elem.parentNode)
+  }
 }
 
 function sponsoredPlacement(jNode) {
@@ -230,8 +237,6 @@ waitForKeyElements('#store ul li div[aria-label="Product"] a', individualItems, 
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement, false);
 waitForKeyElements('#store-wrapper .e-efhdpf', undesiredElement, false); // Related recipes
 waitForKeyElements('#cart-body > div', blockAdsInCart, false);
-// waitForKeyElements('#store-wrapper button[data-testid="home-announcement-banner-1"]', homeBanner, false)
-waitForKeyElements('#store-wrapper ul[role="presentation"]', undesiredElement, false)
 waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement, false) // offer banner at bottom
 waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement, false)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip, false)
@@ -239,4 +244,4 @@ waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel, false)
 waitForKeyElements('footer span', continueToNext, false)
 waitForKeyElements('#storefront-placements-content article', sponsoredPlacement, false)
 waitForKeyElements('#store-wrapper article', sponsoredPlacement, false)
-// waitForKeyElements('article', sponsoredPlacement, false)
+waitForKeyElements('#store-wrapper div[role="region"] > section', sponsoredPlacement, false)
