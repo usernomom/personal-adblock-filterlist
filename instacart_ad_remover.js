@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
 // @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
-// @version  63
+// @version  64
 // @license      MIT
 // @match    https://*.instacart.ca/*
 // @match    https://*.instacart.com/*
@@ -240,7 +240,8 @@ waitForKeyElements('#cart-body > div', blockAdsInCart, false);
 waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement, false) // offer banner at bottom
 waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement, false)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip, false)
-waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel, false)
+waitForKeyElements('#store-wrapper div[data-testid="async-item-list"]', sponsoredCarousel, false)
+waitForKeyElements('#store-wrapper div[aria-label="item carousel"]', sponsoredCarousel, false)
 waitForKeyElements('footer span', continueToNext, false)
 waitForKeyElements('#storefront-placements-content article', sponsoredPlacement, false)
 waitForKeyElements('#store-wrapper article', sponsoredPlacement, false)
