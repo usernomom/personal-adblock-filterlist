@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      123
+// @version      124
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -171,12 +171,17 @@ function removeSearchSuggestions(jNode) {
     jNode.removeAttribute("jscontroller")
 }
 
+function visualDigest(jNode) {
+    jNode.closest('div.ycw3p').style.display = 'none'
+}
+
 waitForKeyElements('#rso div.MjjYud', removeJunk);
 waitForKeyElements('#botstuff div.MjjYud', removeJunk);
 waitForKeyElements('#media_result_group', undesiredElement)
 waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
 waitForKeyElements('inline-video', undesiredElement)
 waitForKeyElements('product-viewer-group', undesiredElement, false)
+waitForKeyElements('block-component', undesiredElement, false) // featured snippets at top
 waitForKeyElements('form[action="/search"] > div > div[jscontroller]', removeSearchSuggestions)
-waitForKeyElements('div[data-attrid="VisualDigestNewsArticleResult"]', undesiredElement)
-waitForKeyElements('span[data-ad="50ms"]', undesiredElement) // dynamic search filters at top
+waitForKeyElements('div[data-attrid="VisualDigestNewsArticleResult"]', visualDigest)
+waitForKeyElements('div[data-attrid="VisualDigestSocialMediaResult"]', visualDigest)
