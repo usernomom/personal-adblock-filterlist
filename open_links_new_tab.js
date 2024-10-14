@@ -9,6 +9,7 @@
 // @grant        window.close
 // @require      http://code.jquery.com/jquery-3.4.1.min.js
 // @grant        none
+// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/refs/heads/main/open_links_new_tab.js
 // ==/UserScript==
 
 (function () {
