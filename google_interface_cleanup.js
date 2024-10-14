@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      127
+// @version      128
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -22,6 +22,7 @@ const annoyances = [
     'Related searches',
     'Hum to search',
     'Trending videos',
+    'Related videos',
     'For context',
     'Also searched for',
     'Often searched together',
