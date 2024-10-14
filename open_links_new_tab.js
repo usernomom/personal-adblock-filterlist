@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Google search - Open cross-site links in new tab
-// @version      2
+// @version      3
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
 // @match        https://*.google.fr/search*
@@ -21,7 +21,7 @@ var $ = window.jQuery;
 $(document).on('click', 'a', function (e) {
     e.preventDefault();
     var url = $(this).attr('href');
-    if (!url.startsWith('/')) {
+    if ((!url.startsWith('/')) && (!url.includes("google."))) {
         window.open(url, '_blank');
     }
 });
