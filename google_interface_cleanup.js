@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      128
+// @version      129
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -176,12 +176,6 @@ function visualDigest(jNode) {
     jNode.closest('div.ycw3p').style.display = 'none'
 }
 
-function dynamicFilters(jNode) {
-    jNode.style.display = 'none';
-
-    jNode.closest('#hdtb-sc').classList.remove('boECb')
-}
-
 waitForKeyElements('#rso div.MjjYud', removeJunk);
 waitForKeyElements('#botstuff div.MjjYud', removeJunk, false);
 waitForKeyElements('#botstuff #bres div[id*=dub_]', undesiredElement);
@@ -195,4 +189,3 @@ waitForKeyElements('form[action="/search"] > div > div[jscontroller]', removeSea
 waitForKeyElements('div[data-attrid="VisualDigestNewsArticleResult"]', visualDigest)
 waitForKeyElements('div[data-attrid="VisualDigestSocialMediaResult"]', visualDigest)
 waitForKeyElements('div[data-attrid="VisualDigestWebResult"]', visualDigest)
-waitForKeyElements('span[data-ad="50ms"]', dynamicFilters)
