@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google search - block unwanted websites
 // @description  Block unwanted websites in Google search results
-// @version      4
+// @version      5
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_block_unwanted_websites.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -93,7 +93,8 @@ const websitesToBlock = [
     "firstpost.com",
     "indiatoday.in",
     "msnbc.com",
-    "cbc.ca"
+    "cbc.ca",
+    "tiktok.com"
 ]
 
 function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals) {
