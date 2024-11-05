@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      130
+// @version      131
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -185,7 +185,7 @@ waitForKeyElements('g-card:has(> div[class="mnr-c"])', undesiredElement, false)
 waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
 waitForKeyElements('inline-video', undesiredElement)
 waitForKeyElements('product-viewer-group', undesiredElement, false)
-waitForKeyElements('block-component', undesiredElement, false) // featured snippets at top
+// waitForKeyElements('block-component', undesiredElement, false) // featured snippets at top
 waitForKeyElements('form[action="/search"] > div > div[jscontroller]', removeSearchSuggestions)
 waitForKeyElements('div[data-attrid="VisualDigestNewsArticleResult"]', visualDigest)
 waitForKeyElements('div[data-attrid="VisualDigestSocialMediaResult"]', visualDigest)
