@@ -94,7 +94,8 @@ const websitesToBlock = [
     "indiatoday.in",
     "msnbc.com",
     "cbc.ca",
-    "tiktok.com"
+    "tiktok.com",
+    "amp.theguardian.com"
 ]
 
 function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals) {
