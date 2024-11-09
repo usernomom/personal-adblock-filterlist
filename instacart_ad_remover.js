@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
 // @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
-// @version  66
+// @version  67
 // @license      MIT
 // @match    https://*.instacart.ca/*
 // @match    https://*.instacart.com/*
@@ -48,7 +48,7 @@ function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, ma
   }
 }
 
-let sponsoredTexts = ["sponsored", "spaahnserd", "spawhnserd", "spawnserd", "spaunsered", "spaunserd", "spauncered", "spauncerd", "spohnserd", "spohncerd", "spohncered", "spawncerd", "spawncered"]
+let sponsoredTexts = ["sponsoreed", "sponsored", "spaahnserd", "spawhnserd", "spawnserd", "spaunsered", "spaunserd", "spauncered", "spauncerd", "spohnserd", "spohncerd", "spohncered", "spawncerd", "spawncered"]
 
 function isSponsored(elem) {
   if (elem) {
