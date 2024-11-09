@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google search - block unwanted websites
 // @description  Block unwanted websites in Google search results
-// @version      5
+// @version      6
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_block_unwanted_websites.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
