@@ -1,13 +1,20 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
 // @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
-// @version  67
+// @version  68
 // @license      MIT
 // @match    https://*.instacart.ca/*
 // @match    https://*.instacart.com/*
 // @downloadURL https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.js
 // @grant    GM_addStyle
 // ==/UserScript==
+
+unsafeWindow.Element.prototype._attachShadow = unsafeWindow.Element.prototype.attachShadow;
+unsafeWindow.Element.prototype.attachShadow = function () {
+  return this._attachShadow({
+    mode: "open"
+  });
+};
 
 function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals) {
   if (typeof waitOnce === "undefined") {
@@ -52,19 +59,19 @@ let sponsoredTexts = ["sponsoreed", "sponsored", "spaahnserd", "spawhnserd", "sp
 
 function isSponsored(elem) {
   if (elem) {
-    // var descendentDivs = elem.querySelectorAll('section, div')
+    var descendentDivs = elem.querySelectorAll('section, div')
 
-    // var sponsored = Array.from(descendentDivs).find(div => div !== null && div.shadowRoot !== null)
-
-    // if (sponsored) {
-    //   return true;
-    // } else return false;
-
-    const sponsored = elem.querySelector('*[data-cfp-eligible]')
+    var sponsored = Array.from(descendentDivs).find(div => div !== null && div.shadowRoot !== null)
 
     if (sponsored) {
-      return true
+      return true;
     } else return false;
+
+    // const sponsored = elem.querySelector('*[data-cfp-eligible]')
+
+    // if (sponsored) {
+    //   return true
+    // } else return false;
 
   } else return false
 }
@@ -231,7 +238,7 @@ function continueToNext(jNode) {
 }
 
 waitForKeyElements('#store-wrapper div[aria-label="Product"]', blockAdsInSearch, false);
-waitForKeyElements('#store ul li div[aria-label="Product"] a', individualItems, false);
+waitForKeyElements('#store ul li div[aria-label="Product"] div', individualItems, false);
 waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement, false);
 waitForKeyElements('#cart-body > div', blockAdsInCart, false);
 waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement, false) // offer banner at bottom
