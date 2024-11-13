@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
 // @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
-// @version  69
+// @version  70
 // @license      MIT
 // @match    https://*.instacart.ca/*
 // @match    https://*.instacart.com/*
@@ -55,23 +55,23 @@ function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, ma
   }
 }
 
-let sponsoredTexts = ["sponsoreed", "sponsored", "spaahnserd", "spawhnserd", "spawnserd", "spaunsered", "spaunserd", "spauncered", "spauncerd", "spohnserd", "spohncerd", "spohncered", "spawncerd", "spawncered"]
+let sponsoredTexts = ["promoted", "sponsoreed", "sponsored", "spaahnserd", "spawhnserd", "spawnserd", "spaunsered", "spaunserd", "spauncered", "spauncerd", "spohnserd", "spohncerd", "spohncered", "spawncerd", "spawncered"]
 
 function isSponsored(elem) {
   if (elem) {
-    var descendentDivs = elem.querySelectorAll('section, div')
+    // var descendentDivs = elem.querySelectorAll('section, div')
 
-    var sponsored = Array.from(descendentDivs).find(div => div !== null && div.shadowRoot !== null)
+    // var sponsored = Array.from(descendentDivs).find(div => div !== null && div.shadowRoot !== null)
+
+    // if (sponsored) {
+      // return true;
+    // } else return false;
+
+    const sponsored = elem.querySelector('*[data-cfp-eligible]')
 
     if (sponsored) {
       return true;
     } else return false;
-
-    // const sponsored = elem.querySelector('*[data-cfp-eligible]')
-
-    // if (sponsored) {
-    //   return true
-    // } else return false;
 
   } else return false
 }
