@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name     Instacart Ad Remover
 // @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
-// @version  74
+// @version  75
 // @license      MIT
 // @match    https://*.instacart.ca/*
 // @match    https://*.instacart.com/*
@@ -55,7 +55,7 @@ function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, ma
   }
 }
 
-let sponsoredTexts = ["paid ad", "an ad", "advertise", "promoted", "sponsoreed", "sponsored", "spaahnserd", "spawhnserd", "spawnserd", "spaunsered", "spaunserd", "spauncered", "spauncerd", "spohnserd", "spohncerd", "spohncered", "spawncerd", "spawncered"]
+let sponsoredTexts = ["advertising content here", "paid ad", "an ad", "advertise", "promoted", "sponsoreed", "sponsored", "spaahnserd", "spawhnserd", "spawnserd", "spaunsered", "spaunserd", "spauncered", "spauncerd", "spohnserd", "spohncerd", "spohncered", "spawncerd", "spawncered"]
 
 function isSponsored(elem) {
   if (elem) {
@@ -239,14 +239,14 @@ function continueToNext(jNode) {
 
 waitForKeyElements('#store-wrapper div[aria-label="Product"]', blockAdsInSearch, false);
 waitForKeyElements('#store ul li div[aria-label="Product"] > div', individualItems, false);
-waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement, false);
+// waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement, false);
 waitForKeyElements('#cart-body > div', blockAdsInCart, false);
-waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement, false) // offer banner at bottom
-waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement, false)
+// waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement, false) // offer banner at bottom
+// waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement, false)
 waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip, false)
 waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel, false)
 waitForKeyElements('footer span', continueToNext, false)
 waitForKeyElements('#storefront-placements-content article', sponsoredPlacement, false)
 waitForKeyElements('#store-wrapper article', sponsoredPlacement, false)
 waitForKeyElements('#store-wrapper div[role="region"] > section', sponsoredPlacement, false)
-waitForKeyElements('div[data-testid="recommendations-placements-feed"]', undesiredElement, false)
+// waitForKeyElements('div[data-testid="recommendations-placements-feed"]', undesiredElement, false)
