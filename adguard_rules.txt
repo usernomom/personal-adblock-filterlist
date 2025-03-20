@@ -1,0 +1,13 @@
+# Title: Personal blocklist
+# Expires: 1 day
+# Description: Personal block rules
+
+instacart.*#?#div#home-content-tab-panel div[class] > section
+instacart.*#?#div:has(> div[aria-label="Your rating"])
+instacart.*#?#div[data-testid="recommendations-placements-feed"]
+instacart.*#?##store div[aria-label="announcement"]
+instacart.*#?##store-wrapper div[aria-label="Treatment Tracker modal"]
+instacart.*#?##store-wrapper div[data-testid="regimen-section"]
+instacart.*#?#div[data-testid="shoppable-list-container"]
+instacart.*#?#div[aria-label="recipes-carousel"]
+instacart.*#?#div[data-testid="async-item-list"]:has(img[src*=".cloudfront.net/assets"])
