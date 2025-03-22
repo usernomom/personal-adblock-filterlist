@@ -1,9 +1,9 @@
 ! Title: Personal blocklist
 ! Expires: 1 day
 ! Description: Personal block rules
-! Version: 2
+! Version: 3
 
-instacart.*#?#div#home-content-tab-panel div[class] > section
+instacart.*#?#div#home-content-tab-panel div[class]:has(> section)
 instacart.*#?#div:has(> div[aria-label="Your rating"])
 instacart.*#?#div[data-testid="recommendations-placements-feed"]
 instacart.*#?##store div[aria-label="announcement"]
