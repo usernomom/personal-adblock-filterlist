@@ -1,6 +1,7 @@
 ! Title: Personal blocklist
 ! Expires: 1 day
 ! Description: Personal block rules
+! Version: 2
 
 instacart.*#?#div#home-content-tab-panel div[class] > section
 instacart.*#?#div:has(> div[aria-label="Your rating"])
@@ -11,3 +12,6 @@ instacart.*#?##store-wrapper div[data-testid="regimen-section"]
 instacart.*#?#div[data-testid="shoppable-list-container"]
 instacart.*#?#div[aria-label="recipes-carousel"]
 instacart.*#?#div[data-testid="async-item-list"]:has(img[src*=".cloudfront.net/assets"])
+instacart.*#?#div:contains(Picked For You):upward(div.e-7nkw5n)
+instacart.*#?##store-wrapper .e-1yrpusx:not(:has(> ul))
+instacart.*#?##store-wrapper div[aria-label="savings announcement"]
