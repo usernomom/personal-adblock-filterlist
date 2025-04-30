@@ -10,8 +10,7 @@
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/clean-up-feed.js
 // ==/UserScript==
 
-const SUGGESTED = 'Vorgeschlagen';
-const ADVERTISED = 'Anzeige';
+const HIDE = /^(?:Vorgeschlagen|Suggested|Anzeige)/;
 
 (function() {
     'use strict';
@@ -25,7 +24,7 @@ const ADVERTISED = 'Anzeige';
             // Check if any grandchild contains a span with the text "Suggested"
             feedItem.querySelectorAll('span').forEach(spanElement => {
                 let text = spanElement.textContent.trim();
-                if (text === SUGGESTED || text == ADVERTISED) {
+                if (text.match(HIDE)) {
                     // Instead of removing, hide the item by setting the display to none
                     feedItem.style.display = 'none';
                 }
