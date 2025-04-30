@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Clean Up Linkedin Posts
 // @namespace    https://thevgergroup.com/
-// @version      1.1
+// @version      1.2
 // @description  Remove posts containing "Suggested" from the feed
 // @author       Patrick O'Leary
 // @match        https://www.linkedin.com/*
@@ -10,21 +10,26 @@
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/clean-up-feed.js
 // ==/UserScript==
 
+const SUGGESTED = 'Vorgeschlagen';
+const ADVERTISED = 'Anzeige';
+
 (function() {
     'use strict';
 
     // Function to hide suggested posts
     function hideSuggestedPosts() {
         // Select all divs that have a data-id attribute starting with "urn:li:activity:"
-        const feedItems = document.querySelectorAll('article[data-activity-urn^="urn:li:activity:"]');
+        const feedItems = document.querySelectorAll('div[data-id^="urn:li:activity:"]');
 
-        feedItems.forEach(function(feedItem) {
+        feedItems.forEach(feedItem => {
             // Check if any grandchild contains a span with the text "Suggested"
-            const spanElement = feedItem.querySelector('p');
-            if (spanElement && spanElement.textContent.trim() === 'Suggested') {
-                // Instead of removing, hide the item by setting the display to none
-                feedItem.style.display = 'none';
-            }
+            feedItem.querySelectorAll('span').forEach(spanElement => {
+                let text = spanElement.textContent.trim();
+                if (text === SUGGESTED || text == ADVERTISED) {
+                    // Instead of removing, hide the item by setting the display to none
+                    feedItem.style.display = 'none';
+                }
+            })
         });
     }
 
