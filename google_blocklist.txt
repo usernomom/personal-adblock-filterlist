@@ -1,7 +1,7 @@
 ! Title: Personal Google blocklist
 ! Expires: 1 day
 ! Description: Personal Google blocklist
-! Version: 3
+! Version: 4
 
 google.*#?#div[role="navigation"] div[role="listitem"]:has(> a:has(span:contains(Short videos)))
 google.*#?#div[aria-label="Refinement"]
@@ -17,3 +17,4 @@ google.*#?#div[data-initq]
 
 google.*#?#.MjjYud:has(div:contains(Find related products & services))
 google.*#?#.MjjYud:has(a:is([href*="youtube.com"]):is([role="presentation"]))
+google.*#?##appbar
