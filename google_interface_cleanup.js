@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      138
+// @version      139
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -53,7 +53,8 @@ const annoyances = [
     'Market news',
     'People search next',
     'Search for next',
-    'Also search for'
+    'Also search for',
+    'Popular products'
 ]
 
 function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals) {
@@ -181,8 +182,8 @@ function visualDigest(jNode) {
     jNode.closest('div.ycw3p').style.display = 'none'
 }
 
-waitForKeyElements('#rso div.MjjYud', removeJunk);
-waitForKeyElements('#botstuff div.MjjYud', removeJunk);
+waitForKeyElements('#rso div.MjjYud', removeJunk, false);
+waitForKeyElements('#botstuff div.MjjYud', removeJunk, false);
 // waitForKeyElements('#botstuff #bres div[id*=dub_]', undesiredElement);
 // waitForKeyElements('#media_result_group', undesiredElement)
 // waitForKeyElements('g-card:has(> div[class="mnr-c"])', undesiredElement, false)
