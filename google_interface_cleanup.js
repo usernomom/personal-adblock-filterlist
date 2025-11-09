@@ -183,7 +183,7 @@ function visualDigest(jNode) {
 }
 
 waitForKeyElements('#rso div.MjjYud', removeJunk);
-waitForKeyElements('#botstuff div.MjjYud', removeJunk, false);
+waitForKeyElements('#botstuff div.MjjYud', removeJunk);
 // waitForKeyElements('#botstuff #bres div[id*=dub_]', undesiredElement);
 // waitForKeyElements('#media_result_group', undesiredElement)
 // waitForKeyElements('g-card:has(> div[class="mnr-c"])', undesiredElement, false)

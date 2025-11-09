@@ -12,3 +12,5 @@ google.*#?#g-card:has(> div[class="mnr-c"])
 google.*#?#div[data-attrid="VisualDigestFullBleedVideoResult"]
 google.*#?#inline-video
 google.*#?#product-viewer-group
+google.*#?#div[data-has-close]
+google.*#?#div[data-initq]
