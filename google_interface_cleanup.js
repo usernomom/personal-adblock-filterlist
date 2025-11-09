@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove junk from Google search results like "People also ask", etc.
 // @license      MIT
-// @version      136
+// @version      137
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -184,12 +184,12 @@ function visualDigest(jNode) {
 
 waitForKeyElements('#rso div.MjjYud', removeJunk);
 waitForKeyElements('#botstuff div.MjjYud', removeJunk, false);
-waitForKeyElements('#botstuff #bres div[id*=dub_]', undesiredElement);
-waitForKeyElements('#media_result_group', undesiredElement)
-waitForKeyElements('g-card:has(> div[class="mnr-c"])', undesiredElement, false)
-waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
-waitForKeyElements('inline-video', undesiredElement)
-waitForKeyElements('product-viewer-group', undesiredElement, false)
+// waitForKeyElements('#botstuff #bres div[id*=dub_]', undesiredElement);
+// waitForKeyElements('#media_result_group', undesiredElement)
+// waitForKeyElements('g-card:has(> div[class="mnr-c"])', undesiredElement, false)
+// waitForKeyElements('div[data-attrid="VisualDigestFullBleedVideoResult"]', undesiredElement)
+// waitForKeyElements('inline-video', undesiredElement)
+// waitForKeyElements('product-viewer-group', undesiredElement, false)
 // waitForKeyElements('block-component', undesiredElement, false) // featured snippets at top
 waitForKeyElements('form[action="/search"] > div > div[jscontroller]', removeSearchSuggestions)
 waitForKeyElements('div[data-attrid="VisualDigestNewsArticleResult"]', visualDigest)

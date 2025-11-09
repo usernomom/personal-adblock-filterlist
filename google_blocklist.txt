@@ -1,0 +1,14 @@
+! Title: Personal Google blocklist
+! Expires: 1 day
+! Description: Personal Google blocklist
+! Version: 1
+
+google.*#?#div[role="navigation"] div[role="listitem"]:has(> a:has(span:contains(Short videos)))
+google.*#?#div[aria-label="Refinement"]
+google.*#?##fbar
+google.*#?##botstuff #bres div[id*=dub_]
+google.*#?##media_result_group
+google.*#?#g-card:has(> div[class="mnr-c"])
+google.*#?#div[data-attrid="VisualDigestFullBleedVideoResult"]
+google.*#?#inline-video
+google.*#?#product-viewer-group
