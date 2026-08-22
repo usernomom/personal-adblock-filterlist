@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      77
+// @version      78
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
@@ -16,6 +16,7 @@
   const HIDDEN_CLASS = 'instacart-cleanup-hidden';
   const SPONSORED_TEXTS = new Set([
     'advertisingcontenthere',
+    'advertisement',
     'paidad',
     'anad',
     'advertise',
@@ -105,6 +106,12 @@
       return elementHasSponsoredSignal(element);
     }
 
+    const accessibleLabels = ['alt', 'aria-label', 'title']
+      .map((name) => element.getAttribute?.(name))
+      .filter(Boolean);
+
+    if (accessibleLabels.some(isSponsoredText)) return true;
+
     const text = normalizeText(element.innerText || element.textContent);
     if (!text || text.length > 40 || !isSponsoredText(text)) return false;
 
@@ -119,8 +126,20 @@
   function sponsoredMarkers(root = document) {
     return [...root.querySelectorAll(
       'ic-nt-tag, [data-cfp-eligible], [aria-label*="sponsor" i], ' +
-      '[title*="sponsor" i], span, p, small, div'
+      '[title*="sponsor" i], img[alt*="sponsor" i], span, p, small, div'
     )].filter(isSponsoredLabel);
+  }
+
+  function directChildWithin(element, containerSelector) {
+    const container = element.closest(containerSelector);
+    if (!container) return null;
+
+    let child = element;
+    while (child.parentElement && child.parentElement !== container) {
+      child = child.parentElement;
+    }
+
+    return child.parentElement === container ? child : null;
   }
 
   function hide(element) {
@@ -161,6 +180,16 @@
 
     for (const marker of markers) {
       if (marker.closest('[data-item-card="true"], [aria-label="Product"]')) continue;
+
+      // Current storefront ads are mounted as direct children of this stable
+      // placement root. The label and creative can be siblings, so selecting
+      // from the label's nearest section leaves most of the ad behind.
+      const unifiedPlacement = directChildWithin(marker, '[data-placements="unified"]');
+
+      if (unifiedPlacement) {
+        hide(unifiedPlacement);
+        continue;
+      }
 
       const explicitTarget = marker.closest(
         'article, [data-testid*="placement" i], [data-testid*="sponsor" i]'
