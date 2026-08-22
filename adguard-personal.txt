@@ -1,0 +1,74 @@
+[Adblock Plus 2.0]
+! Title: Personal AdGuard Filter List
+! Description: Personal cosmetic, scriptlet, and network filters organized by website.
+! Homepage: https://github.com/usernomom/personal-adblock-filterlist
+! Version: 2026.08.21.1
+! Expires: 1 day
+
+! Walmart.ca
+||ads-flyer.walmart.com/ads/sponsored-products$domain=walmart.ca
+walmart.ca##[data-testid^="adaptive-carousel-"]
+walmart.ca##[data-testid="horizontal-scroller-hp-heropov-container"]
+walmart.ca##[data-testid="skyline-ad"]
+walmart.ca##[id^="search-"][id*="DisplayAd"][id$="-ad-wrapper"]
+walmart.ca##[data-dca-event="brandAmplifierAd"]
+walmart.ca##[id^="SEARCH-SponsoredProductCarousel-"]
+walmart.ca##div:has(> [id^="SEARCH-SponsoredProductCarousel-"])
+
+! Google
+google.*#?#div[role="navigation"] div[role="listitem"]:has(> a:has(span:contains(Short videos)))
+google.*#?#div[aria-label="Refinement"]
+google.*#?##fbar
+google.*#?##botstuff #bres div[id*=dub_]
+google.*#?##media_result_group
+google.*#?#g-card:has(> div[class="mnr-c"])
+google.*#?#div[data-attrid="VisualDigestFullBleedVideoResult"]
+google.*#?#inline-video
+google.*#?#product-viewer-group
+google.*#?#div[data-has-close]
+google.*#?#div[data-initq]
+google.*#?#.MjjYud:has(div:contains(Find related products & services))
+google.*#?#.MjjYud:has(a:is([href*="youtube.com"]):is([role="presentation"]))
+google.*#?##appbar
+
+! X / Twitter
+x.com##[data-interaction="app-store-obstruction"]
+x.com#%#//scriptlet('trusted-click-element', '[data-interaction="app-store-obstruction"] > button')
+x.com##aside:has(a[href*="launch_app_store=true"])
+
+! Amazon Canada
+amazon.ca###gwm-Deck-cf
+amazon.ca###nav-flyout-ewc
+amazon.ca#?#div.sl-outfit-builder-card-wrapper-fit
+
+! Reddit
+||www.redditstatic.com/shreddit/en-US/nsfw-blocking-*.js
+||www.redditstatic.com/shreddit/en-US/xpromo-nsfw-blocking-modal-*.js
+||www.redditstatic.com/shreddit/en-US/icon-nsfw-outline-*.js
+||www.redditstatic.com/shreddit/en-US/xpromo-nsfw-blocking-modal-desktop-*.js
+reddit.com###pdp-right-rail-topics
+reddit.*#?#inline-auth-landing-experience-xpromo-shell
+reddit.*#?##xpromo-small-header
+reddit.com##shreddit-app.overflow-visible.v2.pt-\[var\(--page-y-padding\)\]:nth-child(3) > shreddit-async-loader:nth-child(26)
+reddit.com##shreddit-app.overflow-visible.v2.pt-\[var\(--page-y-padding\)\]:nth-child(3) > shreddit-async-loader:nth-child(21)
+reddit.com##div:has(> faceplate-loader[name^="MosaicRelatedPosts_"])
+
+! Reuters
+reuters.com#?#div[data-testid="primary-video"]
+reuters.com###fusion-app > header:nth-child(4)
+reuters.com###fusion-app > div.breaking-news__container__Qi2iG:nth-child(6)
+
+! Financial Times
+ft.com###n-exponea-bottom-slot > div.o-banner.n-messaging-client-messaging-banner.n-exponea.o-banner--exponea-marketing-popup-prompt.o-banner--small > div.o-banner__outer
+
+! Wikipedia
+en.m.wikipedia.org###minerva-dark-mode-launch-banner
+
+! Nautica
+nautica.com###pre-header-banner > div.content-asset > div.blue-header-banner.vernone
+
+! Costco Canada
+costco.ca###onetrust-consent-sdk
+
+! Outerwords
+||outerwords.com^
