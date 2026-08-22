@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      76
+// @version      77
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
@@ -98,6 +98,31 @@
       .some(imageHasSponsoredSignal);
   }
 
+  function isSponsoredLabel(element) {
+    if (!element) return false;
+
+    if (element.matches?.('[data-cfp-eligible]')) {
+      return elementHasSponsoredSignal(element);
+    }
+
+    const text = normalizeText(element.innerText || element.textContent);
+    if (!text || text.length > 40 || !isSponsoredText(text)) return false;
+
+    // Keep the smallest node that carries the label. This avoids treating an
+    // entire placement as the marker just because it contains "Sponsored".
+    return ![...element.children].some((child) => {
+      const childText = normalizeText(child.innerText || child.textContent);
+      return childText && childText.length <= 40 && isSponsoredText(childText);
+    });
+  }
+
+  function sponsoredMarkers(root = document) {
+    return [...root.querySelectorAll(
+      'ic-nt-tag, [data-cfp-eligible], [aria-label*="sponsor" i], ' +
+      '[title*="sponsor" i], span, p, small, div'
+    )].filter(isSponsoredLabel);
+  }
+
   function hide(element) {
     if (element && !element.classList.contains(HIDDEN_CLASS)) {
       element.classList.add(HIDDEN_CLASS);
@@ -132,17 +157,39 @@
   }
 
   function hideStandalonePlacements(root = document) {
-    const markers = root.querySelectorAll('ic-nt-tag, [data-cfp-eligible]');
+    const markers = sponsoredMarkers(root);
 
     for (const marker of markers) {
-      if (!elementHasSponsoredSignal(marker)) continue;
       if (marker.closest('[data-item-card="true"], [aria-label="Product"]')) continue;
 
-      const target = marker.closest(
-        'article, [data-testid*="placement"], [data-testid*="sponsor"], section'
+      const explicitTarget = marker.closest(
+        'article, [data-testid*="placement" i], [data-testid*="sponsor" i]'
       );
 
-      if (target && !target.querySelector('[data-item-card="true"]')) hide(target);
+      if (explicitTarget) {
+        hide(explicitTarget);
+        continue;
+      }
+
+      // Branded storefront showcases contain a hero image plus real product
+      // cards. Because their Sponsored label lives outside those cards, the
+      // containing section is the ad and should be removed as one unit.
+      let target = marker.parentElement;
+
+      while (
+        target &&
+        !target.matches('main, [role="main"], body, html')
+      ) {
+        const isSection = target.matches('section, [role="region"]');
+        const hasPlacementContent = Boolean(target.querySelector(
+          'img, picture, video, [data-item-card="true"], a[href], button'
+        ));
+
+        if (isSection && hasPlacementContent) break;
+        target = target.parentElement;
+      }
+
+      if (target && !target.matches('main, [role="main"], body, html')) hide(target);
     }
 
     const legacyPlacements = root.querySelectorAll(
