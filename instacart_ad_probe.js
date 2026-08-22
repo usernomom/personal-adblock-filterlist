@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Sponsored Placement Probe
 // @description  Copies a sanitized structural report for visible Instacart sponsored placements.
-// @version      1
+// @version      2
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
 // @run-at       document-idle
@@ -175,7 +175,10 @@
 
     panel.append(status, textarea, close);
     document.documentElement.append(panel);
+    textarea.focus();
     textarea.select();
+
+    return { status, textarea };
   }
 
   function installButton() {
@@ -190,10 +193,34 @@
       'background:#111', 'color:#fff', 'font:600 14px sans-serif'
     ].join(';');
 
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const report = makeReport();
-      if (typeof GM_setClipboard === 'function') GM_setClipboard(report, 'text');
-      showReport(report);
+      const { status, textarea } = showReport(report);
+      let copied = false;
+
+      try {
+        copied = document.execCommand('copy');
+      } catch {}
+
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(report);
+          copied = true;
+        } catch {}
+      }
+
+      // Macaque exposes this API on some versions but may fail silently, so
+      // also try it without treating a non-throwing call as proof of success.
+      if (typeof GM_setClipboard === 'function') {
+        try {
+          GM_setClipboard(report, 'text');
+        } catch {}
+      }
+
+      if (!copied) textarea.select();
+      status.textContent = copied
+        ? `${JSON.parse(report).markers.length} marker(s) found. Report copied; paste it into ChatGPT.`
+        : 'Automatic copy was blocked. The report is selected; use Copy.';
     });
 
     document.documentElement.append(button);
