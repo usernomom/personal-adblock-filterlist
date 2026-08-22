@@ -1,252 +1,323 @@
 // ==UserScript==
-// @name     Instacart Ad Remover
-// @description Blocks those nasty Instacart ads on various pages, including in search, store home page, user home page, cart, etc.
-// @version  75
+// @name         Instacart Ad Remover
+// @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
+// @version      76
 // @license      MIT
-// @match    https://*.instacart.ca/*
-// @match    https://*.instacart.com/*
-// @downloadURL https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.js
-// @grant    GM_addStyle
+// @match        https://*.instacart.ca/*
+// @match        https://*.instacart.com/*
+// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.js
+// @run-at       document-start
+// @grant        GM_addStyle
 // ==/UserScript==
 
-unsafeWindow.Element.prototype._attachShadow = unsafeWindow.Element.prototype.attachShadow;
-unsafeWindow.Element.prototype.attachShadow = function () {
-  return this._attachShadow({
-    mode: "open"
-  });
-};
+(function () {
+  'use strict';
 
-function waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals) {
-  if (typeof waitOnce === "undefined") {
-    waitOnce = true;
-  }
-  if (typeof interval === "undefined") {
-    interval = 300;
-  }
-  if (typeof maxIntervals === "undefined") {
-    maxIntervals = -1;
-  }
-  var targetNodes =
-    typeof selectorOrFunction === "function" ?
-    selectorOrFunction() :
-    document.querySelectorAll(selectorOrFunction);
+  const HIDDEN_CLASS = 'instacart-cleanup-hidden';
+  const SPONSORED_TEXTS = new Set([
+    'advertisingcontenthere',
+    'paidad',
+    'anad',
+    'advertise',
+    'promoted',
+    'sponsored',
+    'sponsoreed',
+    'spaahnserd',
+    'spawhnserd',
+    'spawnserd',
+    'spaunsered',
+    'spaunserd',
+    'spauncered',
+    'spauncerd',
+    'spohnserd',
+    'spohncerd',
+    'spohncered',
+    'spawncerd',
+    'spawncered'
+  ]);
 
-  var targetsFound = targetNodes && targetNodes.length > 0;
-  if (targetsFound) {
-    targetNodes.forEach(function (targetNode) {
-      var attrAlreadyFound = "data-userscript-alreadyFound";
-      var alreadyFound = targetNode.getAttribute(attrAlreadyFound) || false;
-      if (!alreadyFound) {
-        var cancelFound = callback(targetNode);
-        if (cancelFound) {
-          targetsFound = false;
-        } else {
-          targetNode.setAttribute(attrAlreadyFound, true);
-        }
-      }
-    });
-  }
-
-  if (maxIntervals !== 0 && !(targetsFound && waitOnce)) {
-    maxIntervals -= 1;
-    setTimeout(function () {
-      waitForKeyElements(selectorOrFunction, callback, waitOnce, interval, maxIntervals);
-    }, interval);
-  }
-}
-
-let sponsoredTexts = ["advertising content here", "paid ad", "an ad", "advertise", "promoted", "sponsoreed", "sponsored", "spaahnserd", "spawhnserd", "spawnserd", "spaunsered", "spaunserd", "spauncered", "spauncerd", "spohnserd", "spohncerd", "spohncered", "spawncerd", "spawncered"]
-
-function isSponsored(elem) {
-  if (elem) {
-    // var descendentDivs = elem.querySelectorAll('section, div')
-
-    // var sponsored = Array.from(descendentDivs).find(div => div !== null && div.shadowRoot !== null)
-
-    // if (sponsored) {
-      // return true;
-    // } else return false;
-
-    const sponsored = elem.querySelector('*[data-cfp-eligible]')
-
-    if (sponsored) {
-      return true;
-    } else return false;
-
-  } else return false
-}
-
-function isSponsoredImg(img) {
-  if (img) {
-    let attrs = Array.from(img.attributes)
-
-    let isSponsored = attrs.find(({
-      name,
-      value
-    }) => sponsoredTexts.find(txt => value.toLowerCase().includes(txt)))
-
-    // let ariaLabel = img.getAttribute('aria-label')
-    // if (sponsoredTexts.includes(img.alt.toLowerCase().trim()) || (ariaLabel && sponsoredTexts.includes(img.getAttribute('aria-label').toLowerCase().trim()))) {
-    if (isSponsored) {
-      return true;
-    } else return false;
-
-  } else return false
-}
-
-function individualItems(jNode) {
-  let li = jNode.closest('li')
-
-  if (isSponsored(li)) {
-    let parent = li.parentNode;
-    if (parent.tagName == 'DIV') {
-      parent.style.display = 'none'
-    } else {
-      li.style.display = 'none';
+  const cleanupCss = `
+    .${HIDDEN_CLASS} {
+      display: none !important;
     }
+  `;
+
+  function installStyles() {
+    if (typeof GM_addStyle === 'function') {
+      GM_addStyle(cleanupCss);
+      return;
+    }
+
+    const target = document.head || document.documentElement;
+    if (!target) {
+      document.addEventListener('DOMContentLoaded', installStyles, { once: true });
+      return;
+    }
+
+    const style = document.createElement('style');
+    style.textContent = cleanupCss;
+    target.append(style);
   }
-}
 
-function undesiredElement(jNode) {
-  jNode.style.display = 'none'
-}
+  installStyles();
 
-function blockAdsInSearch() {
-  // var lists = document.querySelectorAll('#store-wrapper .e-1yrpusx:not([style*="display:none"]):not([style*="display: none"]) > ul')
-
-  let [head, ...tail] = [].filter.call(document.querySelectorAll('#store-wrapper .e-1yrpusx:not([style*="display:none"]):not([style*="display: none"]) > ul'), function (elem) {
-    return elem.querySelector('div[aria-label="Product"]')
-  });
-
-  // lists.filter(list => list.querySelector('div[aria-label="Product"]') !== null)
-  if (head) {
-    let mainList = head
-    let otherLists = tail.map(node => node.querySelectorAll('li'))
-
-    otherLists.forEach(itemList => itemList.forEach(item => mainList.append(item)))
-
-    tail.forEach(node => node.style.display = "none")
-
-    mainList.childNodes.forEach(item => {
-      if (isSponsored(item)) {
-        item.style.display = 'none';
-      }
-    })
+  function normalizeText(value) {
+    return (value || '').toLowerCase().replace(/[^a-z]/g, '');
   }
-}
 
-function blockAdsInCart(jNode) {
-  let div = jNode
-
-  if (div.innerHTML.indexOf('Suggested items') != -1) {
-    div.style.display = 'none'
+  function isSponsoredText(value) {
+    const normalized = normalizeText(value);
+    return SPONSORED_TEXTS.has(normalized) || normalized.includes('sponsored');
   }
-}
 
-function homeBanner(jNode) {
-  let carousel = jNode.closest('div[aria-label="carousel"]')
-
-  if (carousel) {
-    carousel.style.display = "none"
+  function imageHasSponsoredSignal(image) {
+    return ['alt', 'aria-label', 'title']
+      .map((name) => image.getAttribute(name))
+      .some(isSponsoredText);
   }
-}
 
-function getbyXpath(xpath, contextNode) {
-  let results = [];
-  let query = document.evaluate(xpath, contextNode || document,
-    null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-  for (let i = 0, length = query.snapshotLength; i < length; ++i) {
-    results.push(query.snapshotItem(i));
+  function elementHasSponsoredSignal(element) {
+    if (!element) return false;
+
+    if (
+      element.matches?.('[data-cfp-eligible]') ||
+      element.querySelector?.('[data-cfp-eligible]')
+    ) {
+      return true;
+    }
+
+    const tags = [
+      ...(element.matches?.('ic-nt-tag') ? [element] : []),
+      ...(element.querySelectorAll?.('ic-nt-tag') || [])
+    ];
+
+    if (tags.some((tag) => isSponsoredText(tag.innerText || tag.textContent))) return true;
+    if (isSponsoredText(element.innerText || element.textContent)) return true;
+
+    return [...(element.querySelectorAll?.('img') || [])]
+      .some(imageHasSponsoredSignal);
   }
-  return results;
-}
 
-function defaultTip(jNode) {
-  const spans = jNode.querySelectorAll('span');
-
-  const otherSpan = [...spans].filter(span => span.innerHTML == 'Other')[0]
-
-  if (otherSpan) {
-    let otherBtn = otherSpan.closest('button')
-    otherBtn.click()
-
-    const tipDiv = document.querySelector('div[aria-label="Say thanks with a tip"]')
-    tipDiv.querySelector('#radio-base-option-4').click()
-
-    const otherInput = tipDiv.querySelector('input[placeholder="Other amount"]')
-    otherInput.focus();
-
-    waitForKeyElements('div[aria-label="Say thanks with a tip"] button:has(span)', function (jNode) {
-      const btn = jNode
-
-      if (btn.innerText.includes('Continue')) {
-        btn.click()
-      }
-    }, false)
-  }
-}
-
-function sponsoredCarousel(jNode) {
-  let elem = jNode
-
-  function traverseAncestors(node) {
-    if (node) {
-      if (node.tagName == 'DIV') {
-        // let spans = node.querySelectorAll('span')
-        // let sponsoredSpans = [...spans].filter(span => span.innerHTML == ' nsored')
-        let imgs = node.querySelectorAll('img')
-        let sponsoredImgs = [...imgs].filter(img => isSponsoredImg(img))
-        let individualSponsored = isSponsored(node)
-        let scrollbars = node.querySelectorAll('.u-noscrollbar')
-
-        if ((sponsoredImgs.length > 0) && (!individualSponsored) && (scrollbars.length == 1)) {
-          console.log(node)
-          node.style.display = 'none';
-        } else if (scrollbars.length > 1) {
-          return;
-        } else {
-          traverseAncestors(node.parentNode);
-        }
-      } else traverseAncestors(node.parentNode)
+  function hide(element) {
+    if (element && !element.classList.contains(HIDDEN_CLASS)) {
+      element.classList.add(HIDDEN_CLASS);
     }
   }
 
-  if (!window.location.href.endsWith('homeTabForYou')) {
-    traverseAncestors(elem.parentNode)
+  function productCards(root = document) {
+    return [...root.querySelectorAll(
+      '[data-item-card="true"], div[aria-label="Product"][role="group"]'
+    )];
   }
-}
 
-function sponsoredPlacement(jNode) {
-  let node = jNode
+  function productListItem(card) {
+    const cardRoot = card.closest('[data-item-card="true"]') || card;
+    const listItem = cardRoot.closest('li');
 
-  let imgs = node.querySelectorAll('img')
-  let sponsoredImgs = [...imgs].filter(img => isSponsoredImg(img))
-
-  if ((sponsoredImgs.length > 0)) {
-    node.style.display = 'none';
+    return listItem || cardRoot;
   }
-}
 
-function continueToNext(jNode) {
-  let span = jNode
+  function hideSponsoredProducts(root = document) {
+    const seen = new Set();
 
-  if (span.innerText === 'Continue to checkout') {
-    setTimeout(function () {
-      span.closest('button').click();
-    }, 500);
+    for (const card of productCards(root)) {
+      const cardRoot = card.closest('[data-item-card="true"]') || card;
+      if (seen.has(cardRoot)) continue;
+      seen.add(cardRoot);
+
+      if (elementHasSponsoredSignal(cardRoot)) {
+        hide(productListItem(cardRoot));
+      }
+    }
   }
-}
 
-waitForKeyElements('#store-wrapper div[aria-label="Product"]', blockAdsInSearch, false);
-waitForKeyElements('#store ul li div[aria-label="Product"] > div', individualItems, false);
-// waitForKeyElements('#store-wrapper div[data-testid="regimen-section"]', undesiredElement, false);
-waitForKeyElements('#cart-body > div', blockAdsInCart, false);
-// waitForKeyElements('#store-wrapper div[aria-label="Treatment Tracker modal"]', undesiredElement, false) // offer banner at bottom
-// waitForKeyElements('#store div[aria-label="announcement"]', undesiredElement, false)
-waitForKeyElements('#store-wrapper div[aria-label="Tip Options"]', defaultTip, false)
-waitForKeyElements('#store-wrapper .u-noscrollbar', sponsoredCarousel, false)
-waitForKeyElements('footer span', continueToNext, false)
-waitForKeyElements('#storefront-placements-content article', sponsoredPlacement, false)
-waitForKeyElements('#store-wrapper article', sponsoredPlacement, false)
-waitForKeyElements('#store-wrapper div[role="region"] > section', sponsoredPlacement, false)
-// waitForKeyElements('div[data-testid="recommendations-placements-feed"]', undesiredElement, false)
+  function hideStandalonePlacements(root = document) {
+    const markers = root.querySelectorAll('ic-nt-tag, [data-cfp-eligible]');
+
+    for (const marker of markers) {
+      if (!elementHasSponsoredSignal(marker)) continue;
+      if (marker.closest('[data-item-card="true"], [aria-label="Product"]')) continue;
+
+      const target = marker.closest(
+        'article, [data-testid*="placement"], [data-testid*="sponsor"], section'
+      );
+
+      if (target && !target.querySelector('[data-item-card="true"]')) hide(target);
+    }
+
+    const legacyPlacements = root.querySelectorAll(
+      '#storefront-placements-content article, #store-wrapper article'
+    );
+
+    for (const placement of legacyPlacements) {
+      if (
+        !placement.querySelector('[data-item-card="true"]') &&
+        elementHasSponsoredSignal(placement)
+      ) {
+        hide(placement);
+      }
+    }
+  }
+
+  function isProductList(list) {
+    return [...list.children].some((item) =>
+      item.tagName === 'LI' && item.querySelector(':scope > [data-item-card="true"]')
+    );
+  }
+
+  function compactSearchResults(root = document) {
+    const resultRegions = [...root.querySelectorAll('[role="region"][aria-label]')]
+      .filter((region) => normalizeText(region.getAttribute('aria-label')).startsWith('resultsfor'));
+
+    for (const region of resultRegions) {
+      const lists = [...region.querySelectorAll('ul')].filter(isProductList);
+      if (!lists.length) continue;
+
+      const primaryList = lists[0];
+
+      for (const list of lists) {
+        const items = [...list.children].filter((item) =>
+          item.tagName === 'LI' && item.querySelector(':scope > [data-item-card="true"]')
+        );
+
+        for (const item of items) {
+          if (elementHasSponsoredSignal(item)) {
+            hide(item);
+          } else if (list !== primaryList) {
+            primaryList.append(item);
+          }
+        }
+
+        if (list !== primaryList) {
+          const row = list.parentElement;
+          hide(row && row !== region && row.children.length === 1 ? row : list);
+        }
+      }
+    }
+  }
+
+  function inCartOrCheckout() {
+    return /\/(?:cart|checkout)(?:\/|$)/i.test(location.pathname) ||
+      Boolean(document.querySelector('#cart-body'));
+  }
+
+  function hideCartCrossSells(root = document) {
+    if (!inCartOrCheckout()) return;
+
+    const unwantedHeadings = new Set([
+      'suggesteditems',
+      'youmayalsolike',
+      'recommendedforyou',
+      'beforeyougo'
+    ]);
+
+    const headings = root.querySelectorAll('h1, h2, h3, h4, [role="heading"]');
+
+    for (const heading of headings) {
+      if (!unwantedHeadings.has(normalizeText(heading.textContent))) continue;
+
+      const cartBody = heading.closest('#cart-body');
+      let target = heading.closest('section, article, [role="region"]');
+
+      if (!target && cartBody) {
+        target = heading;
+        while (target.parentElement && target.parentElement !== cartBody) {
+          target = target.parentElement;
+        }
+      }
+
+      hide(target);
+    }
+
+    for (const section of root.querySelectorAll('#cart-body > div')) {
+      if (normalizeText(section.textContent).includes('suggesteditems')) hide(section);
+    }
+  }
+
+  // Retain the original script's checkout conveniences. These are deliberately
+  // scoped to the same labels used by the old implementation.
+  function handleTipOptions(root = document) {
+    for (const tipDiv of root.querySelectorAll('div[aria-label="Tip Options"]')) {
+      const otherSpan = [...tipDiv.querySelectorAll('span')]
+        .find((span) => span.textContent.trim() === 'Other');
+
+      if (otherSpan && !tipDiv.dataset.cleanupOtherClicked) {
+        tipDiv.dataset.cleanupOtherClicked = 'true';
+        otherSpan.closest('button')?.click();
+      }
+
+      const radio = tipDiv.querySelector('#radio-base-option-4');
+      const otherInput = tipDiv.querySelector('input[placeholder="Other amount"]');
+
+      if (radio && otherInput && !tipDiv.dataset.cleanupTipSelected) {
+        tipDiv.dataset.cleanupTipSelected = 'true';
+        radio.click();
+        otherInput.focus();
+      }
+
+      const continueButton = [...tipDiv.querySelectorAll('button')]
+        .find((button) => normalizeText(button.textContent).includes('continue'));
+
+      if (
+        continueButton &&
+        tipDiv.dataset.cleanupTipSelected &&
+        !tipDiv.dataset.cleanupTipContinued
+      ) {
+        tipDiv.dataset.cleanupTipContinued = 'true';
+        continueButton.click();
+      }
+    }
+  }
+
+  function continuePastCheckoutCrossSell(root = document) {
+    if (!inCartOrCheckout()) return;
+
+    const buttons = root.querySelectorAll('footer button');
+
+    for (const button of buttons) {
+      if (
+        normalizeText(button.textContent) === 'continuetocheckout' &&
+        !button.dataset.cleanupClicked
+      ) {
+        button.dataset.cleanupClicked = 'true';
+        setTimeout(() => {
+          if (button.isConnected && !button.disabled) button.click();
+        }, 500);
+      }
+    }
+  }
+
+  let cleanupScheduled = false;
+
+  function runCleanup() {
+    cleanupScheduled = false;
+    hideSponsoredProducts();
+    hideStandalonePlacements();
+    compactSearchResults();
+    hideCartCrossSells();
+    handleTipOptions();
+    continuePastCheckoutCrossSell();
+  }
+
+  function scheduleCleanup() {
+    if (cleanupScheduled) return;
+    cleanupScheduled = true;
+    setTimeout(runCleanup, 50);
+  }
+
+  function start() {
+    const observer = new MutationObserver(scheduleCleanup);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    scheduleCleanup();
+
+    window.addEventListener('pageshow', scheduleCleanup);
+    window.addEventListener('popstate', scheduleCleanup);
+    window.setInterval(scheduleCleanup, 1500);
+  }
+
+  if (document.documentElement) {
+    start();
+  } else {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  }
+})();
