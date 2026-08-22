@@ -2,13 +2,14 @@
 ! Title: Personal AdGuard Filter List
 ! Description: Personal cosmetic, scriptlet, and network filters organized by website.
 ! Homepage: https://github.com/usernomom/personal-adblock-filterlist
-! Version: 2026.08.21.1
+! Version: 2026.08.21.2
 ! Expires: 1 day
 
 ! Walmart.ca
 ||ads-flyer.walmart.com/ads/sponsored-products$domain=walmart.ca
 walmart.ca##[data-testid^="adaptive-carousel-"]
 walmart.ca##[data-testid="horizontal-scroller-hp-heropov-container"]
+walmart.ca##[data-testid="tile-take-over"]
 walmart.ca##[data-testid="skyline-ad"]
 walmart.ca##[id^="search-"][id*="DisplayAd"][id$="-ad-wrapper"]
 walmart.ca##[data-dca-event="brandAmplifierAd"]
