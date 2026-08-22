@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      78
+// @version      79
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
@@ -130,8 +130,11 @@
     )].filter(isSponsoredLabel);
   }
 
-  function directChildWithin(element, containerSelector) {
-    const container = element.closest(containerSelector);
+  function directChildWithin(element, containerOrSelector) {
+    const container = typeof containerOrSelector === 'string'
+      ? element.closest(containerOrSelector)
+      : containerOrSelector;
+
     if (!container) return null;
 
     let child = element;
@@ -140,6 +143,55 @@
     }
 
     return child.parentElement === container ? child : null;
+  }
+
+  function searchResultRegionFor(element) {
+    let candidate = element;
+
+    while (candidate) {
+      if (
+        candidate.matches?.('[role="region"][aria-label]') &&
+        normalizeText(candidate.getAttribute('aria-label')).startsWith('resultsfor')
+      ) {
+        return candidate;
+      }
+
+      candidate = candidate.parentElement;
+    }
+
+    return null;
+  }
+
+  function inferredPlacementFor(marker) {
+    let candidate = marker.parentElement;
+    let smallestContentContainer = null;
+
+    while (
+      candidate &&
+      !candidate.matches('main, [role="main"], body, html')
+    ) {
+      const hasPlacementContent = Boolean(candidate.querySelector(
+        'img, picture, video, a[href], button'
+      ));
+
+      if (!smallestContentContainer && hasPlacementContent) {
+        smallestContentContainer = candidate;
+      }
+
+      // Branded showcases combine a sponsored heading with their own product
+      // cards. Their smallest isolated card-owning ancestor is the placement;
+      // the next ancestor contains unrelated storefront sections as well.
+      const cardCount = candidate.querySelectorAll('[data-item-card="true"]').length;
+      const parentCardCount = candidate.parentElement?.querySelectorAll(
+        '[data-item-card="true"]'
+      ).length || 0;
+
+      if (cardCount > 0 && parentCardCount > cardCount) return candidate;
+
+      candidate = candidate.parentElement;
+    }
+
+    return smallestContentContainer;
   }
 
   function hide(element) {
@@ -181,6 +233,17 @@
     for (const marker of markers) {
       if (marker.closest('[data-item-card="true"], [aria-label="Product"]')) continue;
 
+      // Search ads can render their creative and Sponsored label as siblings.
+      // Stop at the direct placement row instead of climbing to and hiding the
+      // entire Results region, which also contains every normal product row.
+      const resultRegion = searchResultRegionFor(marker);
+      const searchPlacement = directChildWithin(marker, resultRegion);
+
+      if (searchPlacement) {
+        hide(searchPlacement);
+        continue;
+      }
+
       // Current storefront ads are mounted as direct children of this stable
       // placement root. The label and creative can be siblings, so selecting
       // from the label's nearest section leaves most of the ad behind.
@@ -200,25 +263,8 @@
         continue;
       }
 
-      // Branded storefront showcases contain a hero image plus real product
-      // cards. Because their Sponsored label lives outside those cards, the
-      // containing section is the ad and should be removed as one unit.
-      let target = marker.parentElement;
-
-      while (
-        target &&
-        !target.matches('main, [role="main"], body, html')
-      ) {
-        const isSection = target.matches('section, [role="region"]');
-        const hasPlacementContent = Boolean(target.querySelector(
-          'img, picture, video, [data-item-card="true"], a[href], button'
-        ));
-
-        if (isSection && hasPlacementContent) break;
-        target = target.parentElement;
-      }
-
-      if (target && !target.matches('main, [role="main"], body, html')) hide(target);
+      const inferredTarget = inferredPlacementFor(marker);
+      if (inferredTarget) hide(inferredTarget);
     }
 
     const legacyPlacements = root.querySelectorAll(
