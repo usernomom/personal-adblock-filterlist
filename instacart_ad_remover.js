@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      79
+// @version      80
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
@@ -173,8 +173,14 @@
       const hasPlacementContent = Boolean(candidate.querySelector(
         'img, picture, video, a[href], button'
       ));
+      const isSemanticBoundary = candidate.matches(
+        'section, article, [role="region"]'
+      );
 
-      if (!smallestContentContainer && hasPlacementContent) {
+      // Mobile/Safari collection pages can mount a Sponsored heading before
+      // its creative. Treat the nearest semantic section as a safe placement
+      // boundary instead of climbing into unrelated collection content.
+      if (!smallestContentContainer && (hasPlacementContent || isSemanticBoundary)) {
         smallestContentContainer = candidate;
       }
 
