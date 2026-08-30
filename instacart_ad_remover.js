@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      81
+// @version      82
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
@@ -363,37 +363,107 @@
     }
   }
 
-  // Retain the original script's checkout conveniences. These are deliberately
-  // scoped to the same labels used by the old implementation.
+  function isVisible(element) {
+    return Boolean(element && (
+      element.offsetWidth ||
+      element.offsetHeight ||
+      element.getClientRects().length
+    ));
+  }
+
+  function setNativeInputValue(input, value) {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value'
+    )?.set;
+
+    if (setter) {
+      setter.call(input, value);
+    } else {
+      input.value = value;
+    }
+
+    input.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      inputType: 'insertText',
+      data: value
+    }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // Keep the checkout tip at zero. Instacart renders the preset buttons in the
+  // summary, the custom amount controls in a modal, and a second confirmation
+  // modal for a $0 tip, so each state is handled independently and idempotently.
   function handleTipOptions(root = document) {
-    for (const tipDiv of root.querySelectorAll('div[aria-label="Tip Options"]')) {
-      const otherSpan = [...tipDiv.querySelectorAll('span')]
-        .find((span) => span.textContent.trim() === 'Other');
+    const visibleDialogs = [...root.querySelectorAll('[role="dialog"]')]
+      .filter(isVisible);
 
-      if (otherSpan && !tipDiv.dataset.cleanupOtherClicked) {
-        tipDiv.dataset.cleanupOtherClicked = 'true';
-        otherSpan.closest('button')?.click();
+    const zeroTipConfirmation = visibleDialogs.find((dialog) =>
+      [...dialog.querySelectorAll('button')].some(
+        (button) => normalizeText(button.textContent) === 'continuewithtip'
+      )
+    );
+
+    if (zeroTipConfirmation) {
+      const continueButton = [...zeroTipConfirmation.querySelectorAll('button')]
+        .find((button) => normalizeText(button.textContent) === 'continuewithtip');
+
+      if (continueButton && !continueButton.disabled) continueButton.click();
+      return;
+    }
+
+    const tipDialog = visibleDialogs.find(
+      (dialog) =>
+        normalizeText(dialog.getAttribute('aria-label')) === 'saythankswithatip'
+    );
+
+    if (tipDialog) {
+      const otherRadio = tipDialog.querySelector('#radio-base-option-4');
+
+      if (otherRadio && !otherRadio.checked) {
+        otherRadio.click();
+        return;
       }
 
-      const radio = tipDiv.querySelector('#radio-base-option-4');
-      const otherInput = tipDiv.querySelector('input[placeholder="Other amount"]');
+      const otherInput = tipDialog.querySelector(
+        'input[placeholder="Other amount"], input[type="text"]'
+      );
 
-      if (radio && otherInput && !tipDiv.dataset.cleanupTipSelected) {
-        tipDiv.dataset.cleanupTipSelected = 'true';
-        radio.click();
+      if (!otherInput) return;
+
+      if (Number.parseFloat(otherInput.value) !== 0) {
         otherInput.focus();
+        setNativeInputValue(otherInput, '0');
+        otherInput.blur();
+        setTimeout(scheduleCleanup, 150);
+        return;
       }
 
-      const continueButton = [...tipDiv.querySelectorAll('button')]
-        .find((button) => normalizeText(button.textContent).includes('continue'));
+      const saveButton = [...tipDialog.querySelectorAll('button')]
+        .find((button) => normalizeText(button.textContent) === 'savetip');
 
-      if (
-        continueButton &&
-        tipDiv.dataset.cleanupTipSelected &&
-        !tipDiv.dataset.cleanupTipContinued
-      ) {
-        tipDiv.dataset.cleanupTipContinued = 'true';
-        continueButton.click();
+      if (saveButton && !saveButton.disabled) saveButton.click();
+      return;
+    }
+
+    for (const tipDiv of root.querySelectorAll('div[aria-label="Tip Options"]')) {
+      const tipContainer = tipDiv.parentElement;
+      const tipHeading = tipContainer
+        ? [...tipContainer.querySelectorAll('h3')]
+          .find((heading) => normalizeText(heading.textContent) === 'deliverytip')
+        : null;
+      const tipAmount = tipHeading?.parentElement
+        ?.querySelector(':scope > span')
+        ?.textContent.trim();
+
+      if (tipAmount === '$0.00') continue;
+
+      const openButton = [...tipDiv.querySelectorAll('button')]
+        .find((button) => ['other', 'edit'].includes(normalizeText(button.textContent)));
+
+      if (openButton && !openButton.disabled) {
+        openButton.click();
+        return;
       }
     }
   }
