@@ -2,7 +2,7 @@
 // @name         Walmart.ca — Sold by Walmart only
 // @description  Limits listings to Walmart-sold items and streamlines Walmart.ca checkout.
 // @license      MIT
-// @version      3
+// @version      4
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/walmart_sold_by_walmart.js
 // @match        https://www.walmart.ca/*
 // @run-at       document-start
@@ -14,6 +14,9 @@
 
   const WALMART_FACET = 'retailer_type:Walmart';
   const LISTING_PATH = /^\/(?:en|fr)\/(?:search|browse|shop)(?:\/|$)/i;
+  const CART_PATH = /^\/(?:en\/|fr\/)?cart\/?$/i;
+  const CLEAN_CART_CLASS = 'walmart-clean-cart';
+  const CLEAN_CART_STYLE_ID = 'walmart-clean-cart-style';
   let lastCheckedUrl = '';
   let lastContinueClick = 0;
   let lastCustomClick = 0;
@@ -28,6 +31,26 @@
       element.offsetHeight ||
       element.getClientRects().length
     ));
+  }
+
+  function cleanCartRecommendations() {
+    const root = document.documentElement;
+    if (!root) return;
+
+    const isCart = CART_PATH.test(window.location.pathname);
+    root.classList.toggle(CLEAN_CART_CLASS, isCart);
+
+    if (!isCart || document.getElementById(CLEAN_CART_STYLE_ID)) return;
+
+    const style = document.createElement('style');
+    style.id = CLEAN_CART_STYLE_ID;
+    style.textContent = `
+      html.${CLEAN_CART_CLASS} [data-testid="recommendation-containers-group"],
+      html.${CLEAN_CART_CLASS} [id^="root-recommendation-carousel-"] {
+        display: none !important;
+      }
+    `;
+    (document.head || root).appendChild(style);
   }
 
   function enforceWalmartSeller() {
@@ -277,6 +300,7 @@
   }
 
   function runCheckoutAutomation() {
+    cleanCartRecommendations();
     continuePastMissingAnything();
     keepDriverTipAtZero();
   }
