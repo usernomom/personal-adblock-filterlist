@@ -2,20 +2,62 @@
 ! Title: Personal AdGuard Filter List
 ! Description: Personal cosmetic, scriptlet, and network filters organized by website.
 ! Homepage: https://github.com/usernomom/personal-adblock-filterlist
-! Version: 2026.08.30.3
+! Version: 2026.08.30.4
 ! Expires: 1 day
 
 ! Walmart.ca
+! Minimal shopping: keep deliberate navigation and factual product data; remove feeds, ads, suggestions, and engagement/upsell UI.
 ||ads-flyer.walmart.com/ads/sponsored-products$domain=walmart.ca
 walmart.ca##[data-testid="recommendation-containers-group"]
 walmart.ca##[data-testid^="adaptive-carousel-"]
 walmart.ca##[data-testid="horizontal-scroller-hp-heropov-container"]
 walmart.ca##[data-testid="tile-take-over"]
 walmart.ca##[data-testid="skyline-ad"]
+walmart.ca##[data-testid="sp"]
+walmart.ca##[data-testid="skinny-banner"]
+walmart.ca##section[data-testid="povCards"]
+walmart.ca##[data-testid="save-with-walmart-plus-badge"]
+walmart.ca##[id^="galleryMiddle-HOME-GalleryDisplayAd-"]
 walmart.ca##[id^="search-"][id*="DisplayAd"][id$="-ad-wrapper"]
 walmart.ca##[data-dca-event="brandAmplifierAd"]
 walmart.ca##[id^="SEARCH-SponsoredProductCarousel-"]
 walmart.ca##div:has(> [id^="SEARCH-SponsoredProductCarousel-"])
+walmart.ca#?#div.h2.relative.mv2:has(> span.dark-primary.f7:contains(Bought))
+walmart.ca#?#span[data-testid="tag-leading-badge"]:contains(Flyer feature)
+
+! The general Walmart homepage is a discovery/engagement feed. Preserve the site header, search, cart, and fulfillment/location controls only.
+walmart.ca#?#main > span:contains(Online Shopping Canada) + div[data-testid="flex-container"]
+
+! Grocery-home merchandising modules. Keep the useful aisle/category navigation.
+walmart.ca#?#div[data-testid="HubSpokesNxM"]:has(h2:contains(Top picks, low prices!))
+walmart.ca#?#section:has(h2:contains(Easy Reorder))
+walmart.ca#?#section:has(h2:contains(New arrivals))
+walmart.ca#?#div[data-testid="HubSpokesNxM"]:has(h2:contains(Must-haves for less))
+walmart.ca#?#section:has(h2:contains(Weekly flyer))
+walmart.ca#?#div[data-testid="HubSpokesNxM"]:has(h2:contains(More ways to save))
+walmart.ca#?#section:has(h2:contains(Related pages))
+walmart.ca#?#section:has(h2:contains(Grocery Buying Guide))
+walmart.ca#?#section:has(h2:contains(Related Links))
+walmart.ca#?#section:has(h1:contains(Terms & Conditions)):has(:contains(Fees and restrictions apply))
+
+! Personalized/mobile variants observed on Walmart.ca.
+walmart.ca#?#section:has(h2:contains(Recommended for you))
+walmart.ca#?#section:has(h2:contains(Featured in videos))
+walmart.ca#?#section:has(h2:contains(Trending on social))
+walmart.ca#?#section:has(h2:contains(Brands for you))
+walmart.ca#?#section:has(h2:contains(Back-to-School basics))
+walmart.ca#?#section:has(h2:contains(Back to School flyer))
+walmart.ca#?#section:has(h2:contains(Savings, services & more))
+walmart.ca#?#section:has(h2:contains(More items to explore))
+walmart.ca#?#section:has(:contains(Support for your GLP-1 journey))
+walmart.ca#?#section:has(:contains(Official Brand Partner))
+
+! Product-page/search upsell shelves.
+walmart.ca#?#section:has(h2:contains(You may also like))
+walmart.ca#?#section:has(h2:contains(Customers also bought))
+walmart.ca#?#section:has(h2:contains(Frequently bought together))
+walmart.ca#?#section:has(h2:contains(Similar items))
+walmart.ca#?#section:has(h2:contains(More like this))
 
 ! Google
 google.*#?#div[role="navigation"] div[role="listitem"]:has(> a:has(span:contains(Short videos)))
