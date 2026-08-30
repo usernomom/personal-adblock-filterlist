@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      83
+// @version      84
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
@@ -472,22 +472,37 @@
     }
   }
 
+  function inCheckoutAisle() {
+    return /\/checkout_aisle(?:\/|$)/i.test(location.pathname);
+  }
+
   function continuePastCheckoutCrossSell(root = document) {
-    if (!inCartOrCheckout()) return;
+    if (!inCheckoutAisle()) return;
 
-    const buttons = root.querySelectorAll('footer button');
-
-    for (const button of buttons) {
-      if (
+    const continueButton = [...root.querySelectorAll('button')]
+      .find((button) =>
         normalizeText(button.textContent) === 'continuetocheckout' &&
-        !button.dataset.cleanupClicked
-      ) {
-        button.dataset.cleanupClicked = 'true';
-        setTimeout(() => {
-          if (button.isConnected && !button.disabled) button.click();
-        }, 500);
-      }
+        isVisible(button)
+      );
+
+    if (
+      !continueButton ||
+      continueButton.disabled ||
+      continueButton.dataset.cleanupClicked
+    ) {
+      return;
     }
+
+    continueButton.dataset.cleanupClicked = 'true';
+    setTimeout(() => {
+      if (
+        continueButton.isConnected &&
+        !continueButton.disabled &&
+        isVisible(continueButton)
+      ) {
+        continueButton.click();
+      }
+    }, 250);
   }
 
   let cleanupScheduled = false;
