@@ -2,7 +2,7 @@
 // @name         Walmart.ca — Sold by Walmart only
 // @description  Limits listings to Walmart-sold items and streamlines Walmart.ca checkout.
 // @license      MIT
-// @version      2
+// @version      3
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/walmart_sold_by_walmart.js
 // @match        https://www.walmart.ca/*
 // @run-at       document-start
@@ -170,15 +170,28 @@
     });
   }
 
+  function isCustomTipButton(button) {
+    if (!button) return false;
+
+    const text = normalizeText(button.textContent);
+    const ariaLabel = normalizeText(button.getAttribute('aria-label'));
+
+    return text.startsWith('custom') || ariaLabel.startsWith('customtip');
+  }
+
   function driverTipContainer(label) {
     let candidate = label;
 
     while (candidate && candidate !== document.body) {
-      const hasCustom = [...candidate.querySelectorAll('button')].some(
-        (button) => isVisible(button) && normalizeText(button.textContent) === 'custom'
+      const hasCustomInput = Boolean(findTipInput(candidate));
+      const hasCustomButton = [...candidate.querySelectorAll('button')].some(
+        (button) => isVisible(button) && isCustomTipButton(button)
       );
+      const presetCount = [...candidate.querySelectorAll('button')].filter(
+        (button) => isVisible(button) && /^\d+%/.test((button.textContent || '').trim())
+      ).length;
 
-      if (hasCustom) return candidate;
+      if (hasCustomInput || hasCustomButton || presetCount >= 2) return candidate;
       candidate = candidate.parentElement;
     }
 
@@ -203,7 +216,8 @@
       /tip|custom/i.test([
         input.getAttribute('aria-label'),
         input.getAttribute('placeholder'),
-        input.getAttribute('name')
+        input.getAttribute('name'),
+        input.id
       ].filter(Boolean).join(' '))
     ) || (inputs.length === 1 ? inputs[0] : null);
   }
@@ -226,9 +240,14 @@
     const label = driverTipLabel(root);
     if (!label) return;
 
-    if (/\$\s*0(?:\.0{1,2})?\b/.test(label.textContent || '')) return;
-
     const container = driverTipContainer(label);
+    if (!container) return;
+
+    // Walmart renders the current amount next to the heading rather than inside
+    // the heading itself. Read the complete tip section so an already-zero
+    // custom tip is recognized and does not get reopened every observer pass.
+    if (/\$\s*0(?:\.0{1,2})?\b/.test(container.textContent || '')) return;
+
     const dialog = visibleTipDialog(root);
     const scope = dialog || container;
     const input = findTipInput(scope);
@@ -246,10 +265,7 @@
     }
 
     const customButton = [...container.querySelectorAll('button')].find(
-      (button) =>
-        isVisible(button) &&
-        !button.disabled &&
-        normalizeText(button.textContent) === 'custom'
+      (button) => isVisible(button) && !button.disabled && isCustomTipButton(button)
     );
 
     if (!customButton) return;
