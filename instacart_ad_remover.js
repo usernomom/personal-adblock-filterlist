@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      82
+// @version      83
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
 // @match        https://sameday.costco.ca/*
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.js
 // @run-at       document-start
-// @grant        GM_addStyle
+// @grant        none
 // ==/UserScript==
 
 (function () {
@@ -45,11 +45,6 @@
   `;
 
   function installStyles() {
-    if (typeof GM_addStyle === 'function') {
-      GM_addStyle(cleanupCss);
-      return;
-    }
-
     const target = document.head || document.documentElement;
     if (!target) {
       document.addEventListener('DOMContentLoaded', installStyles, { once: true });
@@ -116,8 +111,6 @@
     const text = normalizeText(element.innerText || element.textContent);
     if (!text || text.length > 40 || !isSponsoredText(text)) return false;
 
-    // Keep the smallest node that carries the label. This avoids treating an
-    // entire placement as the marker just because it contains "Sponsored".
     return ![...element.children].some((child) => {
       const childText = normalizeText(child.innerText || child.textContent);
       return childText && childText.length <= 40 && isSponsoredText(childText);
@@ -178,16 +171,10 @@
         'section, article, [role="region"]'
       );
 
-      // Mobile/Safari collection pages can mount a Sponsored heading before
-      // its creative. Treat the nearest semantic section as a safe placement
-      // boundary instead of climbing into unrelated collection content.
       if (!smallestContentContainer && (hasPlacementContent || isSemanticBoundary)) {
         smallestContentContainer = candidate;
       }
 
-      // Branded showcases combine a sponsored heading with their own product
-      // cards. Their smallest isolated card-owning ancestor is the placement;
-      // the next ancestor contains unrelated storefront sections as well.
       const cardCount = candidate.querySelectorAll('[data-item-card="true"]').length;
       const parentCardCount = candidate.parentElement?.querySelectorAll(
         '[data-item-card="true"]'
@@ -240,9 +227,6 @@
     for (const marker of markers) {
       if (marker.closest('[data-item-card="true"], [aria-label="Product"]')) continue;
 
-      // Search ads can render their creative and Sponsored label as siblings.
-      // Stop at the direct placement row instead of climbing to and hiding the
-      // entire Results region, which also contains every normal product row.
       const resultRegion = searchResultRegionFor(marker);
       const searchPlacement = directChildWithin(marker, resultRegion);
 
@@ -251,9 +235,6 @@
         continue;
       }
 
-      // Current storefront ads are mounted as direct children of this stable
-      // placement root. The label and creative can be siblings, so selecting
-      // from the label's nearest section leaves most of the ad behind.
       const unifiedPlacement = directChildWithin(marker, '[data-placements="unified"]');
 
       if (unifiedPlacement) {
@@ -372,8 +353,9 @@
   }
 
   function setNativeInputValue(input, value) {
+    const view = input.ownerDocument?.defaultView || window;
     const setter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
+      view.HTMLInputElement.prototype,
       'value'
     )?.set;
 
@@ -383,12 +365,35 @@
       input.value = value;
     }
 
-    input.dispatchEvent(new InputEvent('input', {
+    const InputEventCtor = view.InputEvent || InputEvent;
+    const EventCtor = view.Event || Event;
+
+    input.dispatchEvent(new InputEventCtor('input', {
       bubbles: true,
       inputType: 'insertText',
       data: value
     }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new EventCtor('change', { bubbles: true }));
+  }
+
+  function setInputValueViaEditing(input, value) {
+    input.focus();
+
+    try {
+      input.setSelectionRange(0, input.value.length);
+    } catch {
+      input.select?.();
+    }
+
+    try {
+      document.execCommand('insertText', false, value);
+    } catch {
+      // Fall through to the React/native setter path below.
+    }
+
+    if (Number.parseFloat(input.value) !== Number.parseFloat(value)) {
+      setNativeInputValue(input, value);
+    }
   }
 
   // Keep the checkout tip at zero. Instacart renders the preset buttons in the
@@ -432,8 +437,7 @@
       if (!otherInput) return;
 
       if (Number.parseFloat(otherInput.value) !== 0) {
-        otherInput.focus();
-        setNativeInputValue(otherInput, '0');
+        setInputValueViaEditing(otherInput, '0');
         otherInput.blur();
         setTimeout(scheduleCleanup, 150);
         return;
