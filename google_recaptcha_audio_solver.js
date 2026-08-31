@@ -2,9 +2,9 @@
 // @name         Google Search reCAPTCHA audio solver
 // @namespace    https://github.com/usernomom/personal-adblock-filterlist
 // @author       nobody
-// @description  Automatically solves Google Search unusual-traffic reCAPTCHA audio challenges with iOS-safe source discovery, detailed diagnostics, bounded retries, and transcriber failover.
+// @description  Solves Google Search unusual-traffic reCAPTCHA audio challenges with iOS-safe submission, diagnostics, bounded retries, and transcriber failover.
 // @license      MIT
-// @version      3
+// @version      4
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_recaptcha_audio_solver.js
 // @match        https://*.google.com/sorry/*
 // @match        https://*.google.ca/sorry/*
@@ -26,609 +26,383 @@
     'use strict';
 
     const TAG = '[GoogleAudioCaptcha]';
-    const ACTIVE_KEY = 'google-sorry-active-v3';
-    const PREFERRED_SERVER_KEY = 'google-sorry-transcriber-v3';
-    const ACTIVE_TTL_MS = 3 * 60 * 1000;
-    const MAX_GOOGLE_REJECTIONS = 3;
-    const REQUEST_TIMEOUT_MS = 60000;
-    const VERIFY_TIMEOUT_MS = 9000;
-    const SOURCE_TIMEOUT_MS = 15000;
-
-    const TRANSCRIBERS = [
+    const ACTIVE_KEY = 'google-sorry-active-v4';
+    const SERVER_KEY = 'google-sorry-transcriber-v4';
+    const TTL = 3 * 60 * 1000;
+    const REQUEST_TIMEOUT = 60000;
+    const SOURCE_TIMEOUT = 15000;
+    const QUICK_SUBMIT_CHECK = 1400;
+    const VERIFY_TIMEOUT = 9000;
+    const MAX_REJECTIONS = 2;
+    const SERVERS = [
         'https://engageub.pythonanywhere.com',
         'https://engageub1.pythonanywhere.com'
     ];
-
-    const SELECTORS = {
+    const S = {
         anchor: '#recaptcha-anchor',
-        audioModeButton: '#recaptcha-audio-button',
-        audioInput: '#audio-response, .rc-audiochallenge-response-field, input[name="audio-response"]',
-        verifyButton: '#recaptcha-verify-button',
-        reloadButton: '#recaptcha-reload-button',
-        audioError: '.rc-audiochallenge-error-message',
+        audioMode: '#recaptcha-audio-button',
+        input: '#audio-response, .rc-audiochallenge-response-field, input[name="audio-response"]',
+        verify: '#recaptcha-verify-button',
+        reload: '#recaptcha-reload-button',
+        error: '.rc-audiochallenge-error-message',
         blocked: '.rc-doscaptcha-body',
-        playButton: '.rc-audiochallenge-play-button, #audio-source + button, button[aria-label*="PLAY" i]'
+        status: '#recaptcha-accessible-status',
+        play: '.rc-audiochallenge-play-button, #audio-source + button, button[aria-label*="PLAY" i]'
     };
 
-    let statusElement = null;
     let solving = false;
-    const statusHistory = [];
+    let overlay = null;
+    const history = [];
 
-    function delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const jitter = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
+    const preview = (v, n = 100) => String(v == null ? '' : v)
+        .replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
+
+    function visible(el) {
+        if (!el) return false;
+        const st = getComputedStyle(el), r = el.getBoundingClientRect();
+        return st.display !== 'none' && st.visibility !== 'hidden' &&
+            Number(st.opacity || 1) !== 0 && r.width > 0 && r.height > 0;
     }
 
-    function jitter(min, max) {
-        return Math.floor(min + Math.random() * (max - min + 1));
-    }
-
-    function visible(element) {
-        if (!element) return false;
-        const style = window.getComputedStyle(element);
-        const rect = element.getBoundingClientRect();
-        return style.display !== 'none' &&
-            style.visibility !== 'hidden' &&
-            Number(style.opacity || 1) !== 0 &&
-            rect.width > 0 && rect.height > 0;
-    }
-
-    function log(...args) {
-        console.log(TAG, ...args);
-    }
-
-    function warn(...args) {
-        console.warn(TAG, ...args);
-    }
-
-    function ensureStatusElement() {
-        if (statusElement && statusElement.isConnected) return statusElement;
-        if (!document.documentElement) return null;
-
-        const host = document.body || document.documentElement;
-        const el = document.createElement('div');
-        el.id = 'google-audio-captcha-status';
-        el.setAttribute('aria-hidden', 'true');
-        Object.assign(el.style, {
-            position: 'fixed',
-            left: '6px',
-            top: '6px',
-            zIndex: '2147483647',
-            width: 'calc(100% - 12px)',
-            maxHeight: '92px',
-            overflow: 'hidden',
-            padding: '4px 6px',
-            borderRadius: '4px',
-            background: 'rgba(0,0,0,.78)',
-            color: '#fff',
-            font: '10px/1.25 -apple-system, BlinkMacSystemFont, sans-serif',
-            whiteSpace: 'pre-wrap',
-            pointerEvents: 'none',
-            opacity: '.94',
-            boxSizing: 'border-box'
-        });
-        host.appendChild(el);
-        statusElement = el;
-        return el;
-    }
-
-    function safePreview(value, max = 80) {
-        return String(value == null ? '' : value)
-            .replace(/[\r\n\t]+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, max);
-    }
-
-    function setStatus(message, { error = false } = {}) {
-        const rendered = (error ? 'ERROR: ' : '') + safePreview(message, 180);
-        statusHistory.push(rendered);
-        while (statusHistory.length > 6) statusHistory.shift();
-
-        if (error) warn(message); else log(message);
+    function log(message, error = false) {
+        (error ? console.warn : console.log)(TAG, message);
+        history.push((error ? 'ERROR: ' : '') + preview(message, 180));
+        while (history.length > 7) history.shift();
 
         const render = () => {
-            const el = ensureStatusElement();
-            if (!el) return;
-            el.textContent = statusHistory.join('\n');
-            el.style.background = error ? 'rgba(110,0,0,.84)' : 'rgba(0,0,0,.78)';
+            if (!overlay || !overlay.isConnected) {
+                overlay = document.createElement('div');
+                overlay.id = 'google-audio-captcha-status';
+                overlay.setAttribute('aria-hidden', 'true');
+                Object.assign(overlay.style, {
+                    position: 'fixed', left: '6px', top: '6px', zIndex: '2147483647',
+                    width: 'calc(100% - 12px)', maxHeight: '106px', overflow: 'hidden',
+                    padding: '4px 6px', borderRadius: '4px', color: '#fff',
+                    font: '10px/1.25 -apple-system,BlinkMacSystemFont,sans-serif',
+                    whiteSpace: 'pre-wrap', pointerEvents: 'none', opacity: '.94',
+                    boxSizing: 'border-box'
+                });
+                (document.body || document.documentElement).appendChild(overlay);
+            }
+            overlay.textContent = history.join('\n');
+            overlay.style.background = error ? 'rgba(110,0,0,.84)' : 'rgba(0,0,0,.78)';
         };
-
         if (document.readyState === 'loading' && !document.body) {
             document.addEventListener('DOMContentLoaded', render, { once: true });
-        } else {
-            render();
-        }
+        } else render();
     }
 
-    function isGoogleSorryPage() {
-        return /(^|\.)google\.(com|ca)$/i.test(location.hostname) &&
-            location.pathname.startsWith('/sorry/');
+    function sorryPage() {
+        return /(^|\.)google\.(com|ca)$/i.test(location.hostname) && location.pathname.startsWith('/sorry/');
     }
-
-    function isRecaptchaFrame() {
-        return (location.hostname === 'www.google.com' || location.hostname === 'www.recaptcha.net') &&
-            location.pathname.includes('/recaptcha/');
+    function recaptchaFrame() {
+        return ['www.google.com', 'www.recaptcha.net'].includes(location.hostname) && location.pathname.includes('/recaptcha/');
     }
-
-    function referrerLooksLikeGoogleSorry() {
+    function sorryReferrer() {
         try {
-            const ref = new URL(document.referrer);
-            return /(^|\.)google\.(com|ca)$/i.test(ref.hostname) &&
-                ref.pathname.startsWith('/sorry/');
-        } catch (_) {
-            return false;
-        }
+            const u = new URL(document.referrer);
+            return /(^|\.)google\.(com|ca)$/i.test(u.hostname) && u.pathname.startsWith('/sorry/');
+        } catch (_) { return false; }
     }
 
     async function gmGet(key, fallback) {
         try {
-            if (typeof GM_getValue === 'function') {
-                const value = GM_getValue(key, fallback);
-                return value === undefined ? fallback : value;
-            }
-            if (globalThis.GM && typeof GM.getValue === 'function') {
-                const value = await GM.getValue(key, fallback);
-                return value === undefined ? fallback : value;
-            }
-        } catch (error) {
-            warn('GM get failed:', error);
-        }
+            if (typeof GM_getValue === 'function') return GM_getValue(key, fallback);
+            if (globalThis.GM && typeof GM.getValue === 'function') return await GM.getValue(key, fallback);
+        } catch (_) {}
         return fallback;
     }
-
     async function gmSet(key, value) {
         try {
-            if (typeof GM_setValue === 'function') {
-                GM_setValue(key, value);
-                return;
-            }
-            if (globalThis.GM && typeof GM.setValue === 'function') {
-                await GM.setValue(key, value);
-            }
-        } catch (error) {
-            warn('GM set failed:', error);
-        }
+            if (typeof GM_setValue === 'function') return void GM_setValue(key, value);
+            if (globalThis.GM && typeof GM.setValue === 'function') await GM.setValue(key, value);
+        } catch (_) {}
     }
-
-    function getGmRequestFunction() {
-        if (typeof GM_xmlhttpRequest === 'function') return GM_xmlhttpRequest;
-        if (globalThis.GM && typeof GM.xmlhttpRequest === 'function') return GM.xmlhttpRequest.bind(GM);
-        if (globalThis.GM && typeof GM.xmlHttpRequest === 'function') return GM.xmlHttpRequest.bind(GM);
-        return null;
-    }
-
     function gmRequest(details) {
+        const fn = typeof GM_xmlhttpRequest === 'function' ? GM_xmlhttpRequest :
+            globalThis.GM && typeof GM.xmlhttpRequest === 'function' ? GM.xmlhttpRequest.bind(GM) :
+            globalThis.GM && typeof GM.xmlHttpRequest === 'function' ? GM.xmlHttpRequest.bind(GM) : null;
+        if (!fn) return Promise.reject(new Error('GM.xmlhttpRequest unavailable'));
+
         return new Promise((resolve, reject) => {
-            const request = getGmRequestFunction();
-            if (!request) {
-                reject(new Error('GM.xmlhttpRequest unavailable'));
-                return;
-            }
-
-            let settled = false;
-            const finish = (callback, value) => {
-                if (settled) return;
-                settled = true;
-                callback(value);
-            };
-
-            const watchdog = setTimeout(() => {
-                finish(reject, new Error('GM request watchdog timeout'));
-            }, (details.timeout || REQUEST_TIMEOUT_MS) + 2500);
-
-            request({
+            let done = false;
+            const finish = (cb, v) => { if (!done) { done = true; cb(v); } };
+            const timer = setTimeout(() => finish(reject, new Error('GM request watchdog timeout')),
+                (details.timeout || REQUEST_TIMEOUT) + 2500);
+            fn({
                 ...details,
-                onload(response) {
-                    clearTimeout(watchdog);
-                    finish(resolve, response);
-                },
-                onerror(error) {
-                    clearTimeout(watchdog);
-                    finish(reject, new Error('GM request error: ' + safePreview(error, 100)));
-                },
-                ontimeout() {
-                    clearTimeout(watchdog);
-                    finish(reject, new Error('GM request timed out'));
-                },
-                onabort() {
-                    clearTimeout(watchdog);
-                    finish(reject, new Error('GM request aborted'));
-                }
+                onload: r => { clearTimeout(timer); finish(resolve, r); },
+                onerror: e => { clearTimeout(timer); finish(reject, new Error('GM request error: ' + preview(e))); },
+                ontimeout: () => { clearTimeout(timer); finish(reject, new Error('GM request timed out')); },
+                onabort: () => { clearTimeout(timer); finish(reject, new Error('GM request aborted')); }
             });
         });
     }
 
-    async function activateSorrySession() {
-        await gmSet(ACTIVE_KEY, { ts: Date.now(), host: location.hostname });
-        log('Google /sorry/ session armed.');
+    async function active() {
+        if (sorryReferrer()) return true;
+        const v = await gmGet(ACTIVE_KEY, null);
+        return !!(v && Number.isFinite(v.ts) && Date.now() - v.ts < TTL);
     }
 
-    async function clearSorrySession() {
-        await gmSet(ACTIVE_KEY, { ts: 0, host: '' });
-    }
-
-    async function activationIsValid() {
-        if (referrerLooksLikeGoogleSorry()) return true;
-        const value = await gmGet(ACTIVE_KEY, null);
-        return Boolean(value && Number.isFinite(value.ts) && Date.now() - value.ts < ACTIVE_TTL_MS);
-    }
-
-    function onDomReady(callback) {
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', callback, { once: true });
-        } else {
-            callback();
-        }
-    }
-
-    async function waitFor(selector, timeoutMs, predicate = visible) {
-        const deadline = Date.now() + timeoutMs;
-        while (Date.now() < deadline) {
-            const element = document.querySelector(selector);
-            if (element && (!predicate || predicate(element))) return element;
-            await delay(120);
+    async function waitFor(selector, timeout, predicate = visible) {
+        const until = Date.now() + timeout;
+        while (Date.now() < until) {
+            const el = document.querySelector(selector);
+            if (el && (!predicate || predicate(el))) return el;
+            await sleep(120);
         }
         return null;
     }
 
-    function blockedMessage() {
-        const element = document.querySelector(SELECTORS.blocked);
-        const text = element ? element.textContent.trim() : '';
-        return visible(element) && text ? text : '';
+    function text(selector) {
+        const el = document.querySelector(selector);
+        return el ? preview(el.textContent || el.innerText || '', 180) : '';
+    }
+    function blocked() {
+        const el = document.querySelector(S.blocked);
+        return visible(el) ? text(S.blocked) : '';
     }
 
-    function audioErrorMessage() {
-        const element = document.querySelector(SELECTORS.audioError);
-        const text = element ? element.textContent.trim() : '';
-        return visible(element) && text ? text : '';
-    }
-
-    function absolutize(raw) {
-        if (!raw) return '';
-        try {
-            return new URL(raw, location.href).toString();
-        } catch (_) {
-            return String(raw);
-        }
-    }
-
-    function candidateAudioUrls() {
-        const candidates = [];
-        const add = value => {
-            const url = absolutize(value);
-            if (url && !candidates.includes(url)) candidates.push(url);
+    function audioUrls() {
+        const out = [];
+        const add = raw => {
+            if (!raw) return;
+            try { raw = new URL(raw, location.href).toString(); } catch (_) {}
+            if (/^https:\/\//i.test(raw) && !out.includes(raw)) out.push(raw);
         };
-
-        const audioSource = document.querySelector('#audio-source');
-        if (audioSource) {
-            add(audioSource.currentSrc);
-            add(audioSource.src);
-            add(audioSource.getAttribute('src'));
-        }
-
-        for (const audio of document.querySelectorAll('audio')) {
-            add(audio.currentSrc);
-            add(audio.src);
-            add(audio.getAttribute('src'));
-            const source = audio.querySelector('source[src]');
-            if (source) add(source.getAttribute('src'));
-        }
-
-        for (const source of document.querySelectorAll('audio source[src], source#audio-source[src]')) {
-            add(source.src);
-            add(source.getAttribute('src'));
-        }
-
-        for (const link of document.querySelectorAll('.rc-audiochallenge-tdownload-link a[href], a.rc-audiochallenge-tdownload-link[href]')) {
-            add(link.href);
-            add(link.getAttribute('href'));
-        }
-
-        return candidates.filter(url => /^https:\/\//i.test(url));
+        const root = document.querySelector('#audio-source');
+        if (root) { add(root.currentSrc); add(root.src); add(root.getAttribute('src')); }
+        document.querySelectorAll('audio').forEach(a => {
+            add(a.currentSrc); add(a.src); add(a.getAttribute('src'));
+            const source = a.querySelector('source[src]'); if (source) add(source.src);
+        });
+        document.querySelectorAll('audio source[src],source#audio-source[src]').forEach(e => add(e.src || e.getAttribute('src')));
+        document.querySelectorAll('.rc-audiochallenge-tdownload-link a[href],a.rc-audiochallenge-tdownload-link[href]')
+            .forEach(e => add(e.href || e.getAttribute('href')));
+        return out;
     }
+    const audioUrl = () => audioUrls()[0] || '';
 
-    function currentAudioUrl() {
-        return candidateAudioUrls()[0] || '';
-    }
-
-    async function waitForAudioUrl(timeoutMs) {
-        const deadline = Date.now() + timeoutMs;
-        while (Date.now() < deadline) {
-            const url = currentAudioUrl();
-            if (url) return url;
-            await delay(120);
+    async function waitForAudio(timeout) {
+        const until = Date.now() + timeout;
+        while (Date.now() < until) {
+            const u = audioUrl(); if (u) return u;
+            await sleep(120);
         }
         return '';
     }
 
-    function normalizedAudioUrl(rawUrl) {
-        try {
-            const url = new URL(rawUrl);
-            if (url.hostname === 'www.recaptcha.net') url.hostname = 'www.google.com';
-            return url.toString();
-        } catch (_) {
-            return String(rawUrl).replace('recaptcha.net', 'google.com');
-        }
-    }
-
-    function responseTextOf(response) {
+    function responseText(response) {
         if (!response) return '';
         if (typeof response.responseText === 'string') return response.responseText;
         if (typeof response.response === 'string') return response.response;
-        if (response.response && typeof response.response === 'object') {
-            try {
-                return JSON.stringify(response.response);
-            } catch (_) {}
-        }
         return '';
     }
 
-    function normalizeTranscript(text) {
-        const normalized = String(text || '').trim().replace(/\s+/g, ' ');
-        if (!normalized || normalized === '0') return '';
-        if (normalized.length > 80) return '';
-        if (/[<>\r\n]/.test(normalized)) return '';
-        return normalized;
-    }
-
-    async function transcribeWith(server, audioUrl, language) {
-        const shortServer = new URL(server).hostname.split('.')[0];
-        setStatus('POST ' + shortServer);
-
-        const response = await gmRequest({
-            method: 'POST',
-            url: server,
+    async function transcribeOne(server, url, lang) {
+        const name = new URL(server).hostname.split('.')[0];
+        log('POST ' + name);
+        const r = await gmRequest({
+            method: 'POST', url: server,
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            data: 'input=' + encodeURIComponent(normalizedAudioUrl(audioUrl)) + '&lang=' + (language || 'en-US'),
-            timeout: REQUEST_TIMEOUT_MS
+            data: 'input=' + encodeURIComponent(url.replace('recaptcha.net', 'google.com')) +
+                '&lang=' + encodeURIComponent(lang || 'en-US'),
+            timeout: REQUEST_TIMEOUT
         });
-
-        const status = Number(response && response.status);
-        const raw = responseTextOf(response);
-        setStatus(shortServer + ' HTTP ' + (Number.isFinite(status) ? status : '?') + ' → "' + safePreview(raw, 60) + '"');
-
-        if (status && (status < 200 || status >= 300)) {
-            throw new Error(shortServer + ' HTTP ' + status);
-        }
-
-        const transcript = normalizeTranscript(raw);
-        if (!transcript) {
-            throw new Error(shortServer + ' invalid response: "' + safePreview(raw, 60) + '"');
-        }
-        return { transcript, shortServer };
+        const raw = responseText(r), status = Number(r && r.status);
+        log(name + ' HTTP ' + (Number.isFinite(status) ? status : '?') + ' → "' + preview(raw, 60) + '"');
+        if (status && (status < 200 || status >= 300)) throw new Error(name + ' HTTP ' + status);
+        const t = preview(raw, 80);
+        if (!t || t === '0' || /[<>]/.test(t)) throw new Error(name + ' invalid response: "' + preview(raw, 60) + '"');
+        return t;
     }
 
-    async function transcribe(audioUrl) {
-        const htmlLang = document.documentElement.lang || 'en-US';
-        const language = /^en(?:-|$)/i.test(htmlLang) ? htmlLang : 'en-US';
-        const preferred = Math.max(0, Math.min(
-            TRANSCRIBERS.length - 1,
-            Number(await gmGet(PREFERRED_SERVER_KEY, 0)) || 0
-        ));
-        const order = [preferred, ...TRANSCRIBERS.map((_, index) => index).filter(index => index !== preferred)];
+    async function transcribe(url) {
+        const lang = /^en(?:-|$)/i.test(document.documentElement.lang || '') ? document.documentElement.lang : 'en-US';
+        const preferred = Math.max(0, Math.min(SERVERS.length - 1, Number(await gmGet(SERVER_KEY, 0)) || 0));
+        const order = [preferred, ...SERVERS.map((_, i) => i).filter(i => i !== preferred)];
         const errors = [];
-
-        for (const index of order) {
-            const server = TRANSCRIBERS[index];
+        for (const i of order) {
             try {
-                const result = await transcribeWith(server, audioUrl, language);
-                await gmSet(PREFERRED_SERVER_KEY, index);
-                setStatus('Transcript: "' + safePreview(result.transcript, 60) + '"');
-                return result.transcript;
-            } catch (error) {
-                errors.push(error.message || String(error));
-            }
+                const t = await transcribeOne(SERVERS[i], url, lang);
+                await gmSet(SERVER_KEY, i);
+                log('Transcript: "' + preview(t, 60) + '"');
+                return t;
+            } catch (e) { errors.push(e.message || String(e)); }
         }
-
         throw new Error(errors.join(' | ') || 'all transcribers failed');
     }
 
-    function setInputValue(input, value) {
-        input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-
-        if (input.value !== value) {
-            const prototype = input instanceof HTMLTextAreaElement
-                ? HTMLTextAreaElement.prototype
-                : HTMLInputElement.prototype;
-            const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
-            if (descriptor && descriptor.set) descriptor.set.call(input, value);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
+    function setAnswer(input, value) {
+        input.focus();
+        const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (setter) setter.call(input, value); else input.value = value;
+        try {
+            input.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: value }));
+        } catch (_) { input.dispatchEvent(new Event('input', { bubbles: true, composed: true })); }
+        input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
         return input.value === value;
     }
 
-    async function waitForVerificationOutcome(previousAudioUrl) {
-        const deadline = Date.now() + VERIFY_TIMEOUT_MS;
-        while (Date.now() < deadline) {
-            const blocked = blockedMessage();
-            if (blocked) return { state: 'blocked', message: blocked };
-
-            const error = audioErrorMessage();
-            if (error) return { state: 'incorrect', message: error };
-
-            const nextAudio = currentAudioUrl();
-            if (nextAudio && nextAudio !== previousAudioUrl) {
-                return { state: 'new-audio', audioUrl: nextAudio };
-            }
-
-            const input = document.querySelector(SELECTORS.audioInput);
-            const verify = document.querySelector(SELECTORS.verifyButton);
-            if ((!input || !visible(input)) && (!verify || !visible(verify))) {
-                return { state: 'accepted' };
-            }
-
-            await delay(180);
-        }
-        return { state: 'timeout' };
+    // Mirrors Buster's non-native submission path: focus + Enter events + click.
+    function dispatchEnter(node) {
+        const ev = { code: 'Enter', key: 'Enter', keyCode: 13, which: 13,
+            view: window, bubbles: true, composed: true, cancelable: true };
+        node.focus();
+        node.dispatchEvent(new KeyboardEvent('keydown', ev));
+        node.dispatchEvent(new KeyboardEvent('keypress', ev));
+        node.click();
+        node.dispatchEvent(new KeyboardEvent('keyup', ev));
     }
 
-    async function reloadAudio(previousAudioUrl) {
-        const button = document.querySelector(SELECTORS.reloadButton);
+    function state() {
+        const input = document.querySelector(S.input), verify = document.querySelector(S.verify);
+        return {
+            audio: audioUrl(), value: input ? input.value : '',
+            inputVisible: visible(input), verifyVisible: visible(verify),
+            error: text(S.error), status: text(S.status), blocked: blocked()
+        };
+    }
+
+    function classify(before) {
+        const now = state();
+        if (now.blocked) return { state: 'blocked', message: now.blocked };
+        if (!now.inputVisible && !now.verifyVisible) return { state: 'accepted' };
+        if (now.error && now.error !== before.error) return { state: 'incorrect', message: now.error };
+        if (now.audio && now.audio !== before.audio) return { state: 'new-audio', audioUrl: now.audio, message: now.error || now.status };
+        if (now.status && now.status !== before.status) {
+            if (/verified|success|solved/i.test(now.status)) return { state: 'accepted', message: now.status };
+            if (/incorrect|try again|multiple correct|solve more/i.test(now.status)) return { state: 'incorrect', message: now.status };
+        }
+        if (before.value && !now.value && now.verifyVisible) {
+            return { state: 'incorrect', message: now.error || now.status || 'answer consumed but challenge remained' };
+        }
+        return { state: 'unchanged' };
+    }
+
+    async function waitSignal(before, timeout) {
+        const until = Date.now() + timeout;
+        let r = { state: 'unchanged' };
+        while (Date.now() < until) {
+            r = classify(before);
+            if (r.state !== 'unchanged') return r;
+            await sleep(120);
+        }
+        return r;
+    }
+
+    async function submit(input, verify, transcript, currentAudio) {
+        const before = state();
+        before.value = transcript;
+        before.audio = currentAudio;
+
+        log('Submitting with Enter+click');
+        dispatchEnter(verify);
+        let r = await waitSignal(before, QUICK_SUBMIT_CHECK);
+        if (r.state !== 'unchanged') return r;
+
+        log('No effect; trying Enter from answer field');
+        dispatchEnter(input);
+        return await waitSignal(before, VERIFY_TIMEOUT);
+    }
+
+    async function newAudio(previous) {
+        const button = document.querySelector(S.reload);
         if (!button || !visible(button) || button.disabled) return '';
-
-        setStatus('Google rejected answer; requesting new clip');
-        await delay(jitter(350, 650));
-        button.click();
-
-        const deadline = Date.now() + 7000;
-        while (Date.now() < deadline) {
-            const next = currentAudioUrl();
-            if (next && next !== previousAudioUrl) return next;
-            await delay(120);
+        log('Google rejected answer; requesting new clip');
+        await sleep(jitter(350, 650));
+        dispatchEnter(button);
+        const until = Date.now() + 7000;
+        while (Date.now() < until) {
+            const u = audioUrl(); if (u && u !== previous) return u;
+            await sleep(120);
         }
         return '';
     }
 
-    async function solveChallengeFrame() {
-        if (solving || !await activationIsValid()) return;
+    async function solveFrame() {
+        if (solving || !await active()) return;
         solving = true;
-
         try {
-            setStatus('Solver v3 active');
+            log('Solver v4 active');
+            if (blocked()) return log('Google disabled audio: ' + blocked(), true);
 
-            const blocked = blockedMessage();
-            if (blocked) {
-                setStatus('Google disabled audio: ' + blocked, { error: true });
-                return;
+            let url = audioUrl();
+            if (!url) {
+                const audioButton = await waitFor(S.audioMode, 10000);
+                if (!audioButton) return log('Audio-mode button not found', true);
+                log('Switching to audio challenge');
+                await sleep(jitter(350, 700));
+                audioButton.click();
             }
+            url = url || await waitForAudio(SOURCE_TIMEOUT);
+            if (!url) return log(visible(document.querySelector(S.play)) ?
+                'No audio URL exposed before PLAY' : 'Audio source URL not found', true);
 
-            let audioUrl = currentAudioUrl();
-            if (!audioUrl) {
-                const audioModeButton = await waitFor(SELECTORS.audioModeButton, 10000);
-                if (!audioModeButton) {
-                    setStatus('Audio-mode button not found', { error: true });
-                    return;
-                }
-                setStatus('Switching to audio challenge');
-                await delay(jitter(350, 700));
-                audioModeButton.click();
-            }
-
-            audioUrl = audioUrl || await waitForAudioUrl(SOURCE_TIMEOUT_MS);
-            if (!audioUrl) {
-                setStatus(
-                    visible(document.querySelector(SELECTORS.playButton))
-                        ? 'No audio URL exposed before PLAY'
-                        : 'Audio source URL not found',
-                    { error: true }
-                );
-                return;
-            }
-
-            let googleRejections = 0;
-            while (googleRejections < MAX_GOOGLE_REJECTIONS) {
+            let rejections = 0;
+            while (rejections < MAX_REJECTIONS) {
                 let transcript;
-                try {
-                    transcript = await transcribe(audioUrl);
-                } catch (error) {
-                    // Critical v3 change: a transcription transport/provider failure is NOT
-                    // a reason to burn a new reCAPTCHA audio challenge. Stop and expose the
-                    // exact provider failure instead of looping blindly.
-                    setStatus('Transcription failed: ' + (error.message || error), { error: true });
-                    return;
-                }
+                try { transcript = await transcribe(url); }
+                catch (e) { return log('Transcription failed: ' + (e.message || e), true); }
 
-                const input = await waitFor(SELECTORS.audioInput, 4000);
-                const verify = document.querySelector(SELECTORS.verifyButton);
-                if (!input || !verify || !visible(verify)) {
-                    setStatus('Answer controls unavailable', { error: true });
-                    return;
-                }
+                const input = await waitFor(S.input, 4000);
+                const verify = document.querySelector(S.verify);
+                if (!input || !verify || !visible(verify)) return log('Answer controls unavailable', true);
+                if (!setAnswer(input, transcript)) return log('Could not set answer field', true);
 
-                if (!setInputValue(input, transcript)) {
-                    setStatus('Could not set answer field', { error: true });
-                    return;
-                }
+                log('Answer field="' + preview(input.value, 60) + '"');
+                await sleep(jitter(250, 450));
+                const result = await submit(input, verify, transcript, url);
+                log('Submit result: ' + result.state + (result.message ? ' → ' + result.message : ''));
 
-                setStatus('Answer field="' + safePreview(input.value, 60) + '"; submitting');
-                await delay(jitter(300, 600));
-                verify.click();
+                if (result.state === 'accepted') return log('Solved');
+                if (result.state === 'blocked') return log('Google blocked audio: ' + result.message, true);
+                if (result.state === 'unchanged') return log('Submission produced no DOM/state change', true);
 
-                const outcome = await waitForVerificationOutcome(audioUrl);
-                if (outcome.state === 'accepted') {
-                    setStatus('Solved');
-                    return;
-                }
-                if (outcome.state === 'blocked') {
-                    setStatus('Google blocked audio: ' + outcome.message, { error: true });
-                    return;
-                }
-                if (outcome.state === 'timeout') {
-                    setStatus('Verify click produced no clear outcome', { error: true });
-                    return;
-                }
-
-                googleRejections++;
-                setStatus('Google rejection ' + googleRejections + ': ' + (outcome.message || 'new audio'));
-
-                if (googleRejections >= MAX_GOOGLE_REJECTIONS) {
-                    setStatus('Stopped after ' + googleRejections + ' Google rejections', { error: true });
-                    return;
-                }
-
-                if (outcome.state === 'new-audio' && outcome.audioUrl) {
-                    audioUrl = outcome.audioUrl;
-                    continue;
-                }
-
-                const nextAudio = await reloadAudio(audioUrl);
-                if (!nextAudio) {
-                    setStatus('Could not obtain replacement audio', { error: true });
-                    return;
-                }
-                audioUrl = nextAudio;
+                rejections++;
+                if (rejections >= MAX_REJECTIONS) return log('Stopped after ' + rejections + ' Google rejections', true);
+                if (result.state === 'new-audio' && result.audioUrl) { url = result.audioUrl; continue; }
+                const next = await newAudio(url);
+                if (!next) return log('Could not obtain replacement audio', true);
+                url = next;
             }
-        } finally {
-            solving = false;
-        }
+        } finally { solving = false; }
     }
 
-    async function handleAnchorFrame() {
-        if (!await activationIsValid()) return;
-        const anchor = await waitFor(SELECTORS.anchor, 8000);
+    async function anchorFrame() {
+        if (!await active()) return;
+        const anchor = await waitFor(S.anchor, 8000);
         if (!anchor) return;
-
-        const clearIfSolved = async () => {
+        const clear = async () => {
             if (anchor.getAttribute('aria-checked') === 'true') {
-                await clearSorrySession();
+                await gmSet(ACTIVE_KEY, { ts: 0 });
                 return true;
             }
             return false;
         };
-
-        if (await clearIfSolved()) return;
-
-        const observer = new MutationObserver(() => {
-            clearIfSolved().then(solved => {
-                if (solved) observer.disconnect();
-            });
-        });
-        observer.observe(anchor, { attributes: true, attributeFilter: ['aria-checked'] });
-
+        if (await clear()) return;
+        const obs = new MutationObserver(() => clear().then(ok => { if (ok) obs.disconnect(); }));
+        obs.observe(anchor, { attributes: true, attributeFilter: ['aria-checked'] });
         if (visible(anchor) && anchor.getAttribute('aria-checked') !== 'true') {
-            await delay(jitter(250, 550));
+            await sleep(jitter(250, 550));
             anchor.click();
         }
     }
 
-    if (isGoogleSorryPage()) {
-        activateSorrySession();
+    if (sorryPage()) {
+        gmSet(ACTIVE_KEY, { ts: Date.now(), host: location.hostname });
         return;
     }
+    if (!recaptchaFrame()) return;
 
-    if (!isRecaptchaFrame()) return;
-
-    onDomReady(() => {
-        const path = location.pathname;
-        if (path.includes('/anchor')) {
-            handleAnchorFrame().catch(error => warn('Anchor handler failed:', error));
-        } else if (path.includes('/bframe')) {
-            solveChallengeFrame().catch(error => {
-                setStatus('Solver crashed: ' + (error.message || error), { error: true });
-            });
-        }
-    });
+    const start = () => {
+        if (location.pathname.includes('/anchor')) anchorFrame().catch(e => console.warn(TAG, e));
+        else if (location.pathname.includes('/bframe')) solveFrame().catch(e => log('Solver crashed: ' + (e.message || e), true));
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+    else start();
 })();
