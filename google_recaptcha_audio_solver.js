@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Solves Google Search unusual-traffic reCAPTCHA audio challenges with iOS-safe submission, diagnostics, bounded retries, and transcriber failover.
 // @license      MIT
-// @version      4
+// @version      5
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_recaptcha_audio_solver.js
 // @match        https://*.google.com/sorry/*
 // @match        https://*.google.ca/sorry/*
@@ -26,14 +26,15 @@
     'use strict';
 
     const TAG = '[GoogleAudioCaptcha]';
-    const ACTIVE_KEY = 'google-sorry-active-v4';
-    const SERVER_KEY = 'google-sorry-transcriber-v4';
+    const ACTIVE_KEY = 'google-sorry-active-v5';
+    const SERVER_KEY = 'google-sorry-transcriber-v5';
     const TTL = 3 * 60 * 1000;
     const REQUEST_TIMEOUT = 60000;
     const SOURCE_TIMEOUT = 15000;
     const QUICK_SUBMIT_CHECK = 1400;
     const VERIFY_TIMEOUT = 9000;
     const MAX_REJECTIONS = 2;
+    const MAX_NO_RECOGNITION_RETRIES = 1;
     const SERVERS = [
         'https://engageub.pythonanywhere.com',
         'https://engageub1.pythonanywhere.com'
@@ -41,7 +42,10 @@
     const S = {
         anchor: '#recaptcha-anchor',
         audioMode: '#recaptcha-audio-button',
-        input: '#audio-response, .rc-audiochallenge-response-field, input[name="audio-response"]',
+        // Only editable controls. The v4 selector also matched the wrapper div
+        // .rc-audiochallenge-response-field, which caused the HTMLInputElement
+        // native value setter to throw when applied to that div.
+        input: 'input#audio-response, textarea#audio-response, input[name="audio-response"], textarea[name="audio-response"], .rc-audiochallenge-response-field input, .rc-audiochallenge-response-field textarea',
         verify: '#recaptcha-verify-button',
         reload: '#recaptcha-reload-button',
         error: '.rc-audiochallenge-error-message',
@@ -202,6 +206,12 @@
         return '';
     }
 
+    function noRecognitionError(message) {
+        const e = new Error(message);
+        e.code = 'NO_RECOGNITION';
+        return e;
+    }
+
     async function transcribeOne(server, url, lang) {
         const name = new URL(server).hostname.split('.')[0];
         log('POST ' + name);
@@ -216,7 +226,8 @@
         log(name + ' HTTP ' + (Number.isFinite(status) ? status : '?') + ' → "' + preview(raw, 60) + '"');
         if (status && (status < 200 || status >= 300)) throw new Error(name + ' HTTP ' + status);
         const t = preview(raw, 80);
-        if (!t || t === '0' || /[<>]/.test(t)) throw new Error(name + ' invalid response: "' + preview(raw, 60) + '"');
+        if (t === '0') throw noRecognitionError(name + ' returned no recognition');
+        if (!t || /[<>]/.test(t)) throw new Error(name + ' invalid response: "' + preview(raw, 60) + '"');
         return t;
     }
 
@@ -231,19 +242,30 @@
                 await gmSet(SERVER_KEY, i);
                 log('Transcript: "' + preview(t, 60) + '"');
                 return t;
-            } catch (e) { errors.push(e.message || String(e)); }
+            } catch (e) { errors.push(e); }
         }
-        throw new Error(errors.join(' | ') || 'all transcribers failed');
+        if (errors.length && errors.every(e => e && e.code === 'NO_RECOGNITION')) {
+            throw noRecognitionError(errors.map(e => e.message).join(' | '));
+        }
+        throw new Error(errors.map(e => e.message || String(e)).join(' | ') || 'all transcribers failed');
     }
 
     function setAnswer(input, value) {
+        // reCAPTCHA is plain DOM here; direct assignment is both sufficient and
+        // safer than borrowing a native value setter from the wrong element type.
+        if (!input || !('value' in input)) return false;
         input.focus();
-        const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-        if (setter) setter.call(input, value); else input.value = value;
+        input.value = value;
         try {
-            input.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: value }));
-        } catch (_) { input.dispatchEvent(new Event('input', { bubbles: true, composed: true })); }
+            input.dispatchEvent(new InputEvent('input', {
+                bubbles: true,
+                composed: true,
+                inputType: 'insertText',
+                data: value
+            }));
+        } catch (_) {
+            input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        }
         input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
         return input.value === value;
     }
@@ -262,7 +284,7 @@
     function state() {
         const input = document.querySelector(S.input), verify = document.querySelector(S.verify);
         return {
-            audio: audioUrl(), value: input ? input.value : '',
+            audio: audioUrl(), value: input && 'value' in input ? input.value : '',
             inputVisible: visible(input), verifyVisible: visible(verify),
             error: text(S.error), status: text(S.status), blocked: blocked()
         };
@@ -310,10 +332,10 @@
         return await waitSignal(before, VERIFY_TIMEOUT);
     }
 
-    async function newAudio(previous) {
+    async function newAudio(previous, reason = 'Requesting fresh audio clip') {
         const button = document.querySelector(S.reload);
         if (!button || !visible(button) || button.disabled) return '';
-        log('Google rejected answer; requesting new clip');
+        log(reason);
         await sleep(jitter(350, 650));
         dispatchEnter(button);
         const until = Date.now() + 7000;
@@ -328,7 +350,7 @@
         if (solving || !await active()) return;
         solving = true;
         try {
-            log('Solver v4 active');
+            log('Solver v5 active');
             if (blocked()) return log('Google disabled audio: ' + blocked(), true);
 
             let url = audioUrl();
@@ -344,10 +366,21 @@
                 'No audio URL exposed before PLAY' : 'Audio source URL not found', true);
 
             let rejections = 0;
+            let noRecognitionRetries = 0;
             while (rejections < MAX_REJECTIONS) {
                 let transcript;
-                try { transcript = await transcribe(url); }
-                catch (e) { return log('Transcription failed: ' + (e.message || e), true); }
+                try {
+                    transcript = await transcribe(url);
+                } catch (e) {
+                    if (e && e.code === 'NO_RECOGNITION' && noRecognitionRetries < MAX_NO_RECOGNITION_RETRIES) {
+                        noRecognitionRetries++;
+                        const next = await newAudio(url, 'No transcription; requesting one fresh clip');
+                        if (!next) return log('No transcription and could not obtain fresh audio', true);
+                        url = next;
+                        continue;
+                    }
+                    return log('Transcription failed: ' + (e.message || e), true);
+                }
 
                 const input = await waitFor(S.input, 4000);
                 const verify = document.querySelector(S.verify);
@@ -366,7 +399,7 @@
                 rejections++;
                 if (rejections >= MAX_REJECTIONS) return log('Stopped after ' + rejections + ' Google rejections', true);
                 if (result.state === 'new-audio' && result.audioUrl) { url = result.audioUrl; continue; }
-                const next = await newAudio(url);
+                const next = await newAudio(url, 'Google rejected answer; requesting new clip');
                 if (!next) return log('Could not obtain replacement audio', true);
                 url = next;
             }
