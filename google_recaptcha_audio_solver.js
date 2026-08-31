@@ -1,13 +1,15 @@
 // ==UserScript==
-// @name         Google Search reCAPTCHA audio solver
+// @name         Google/Reddit reCAPTCHA audio solver
 // @namespace    https://github.com/usernomom/personal-adblock-filterlist
 // @author       nobody
-// @description  Solves Google Search unusual-traffic reCAPTCHA audio challenges with iOS-safe submission, diagnostics, bounded retries, and transcriber failover.
+// @description  Solves reCAPTCHA audio challenges on Google Search unusual-traffic pages and Reddit, with iOS-safe submission, diagnostics, bounded retries, and transcriber failover.
 // @license      MIT
-// @version      6
+// @version      7
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_recaptcha_audio_solver.js
 // @match        https://*.google.com/sorry/*
 // @match        https://*.google.ca/sorry/*
+// @match        https://reddit.com/*
+// @match        https://*.reddit.com/*
 // @match        https://www.google.com/recaptcha/*
 // @match        https://www.recaptcha.net/recaptcha/*
 // @run-at       document-start
@@ -25,10 +27,10 @@
 (function () {
     'use strict';
 
-    const TAG = '[GoogleAudioCaptcha]';
-    const ACTIVE_KEY = 'google-sorry-active-v6';
-    const SERVER_KEY = 'google-sorry-transcriber-v6';
-    const TTL = 3 * 60 * 1000;
+    const TAG = '[RecaptchaAudio]';
+    const ACTIVE_KEY = 'recaptcha-audio-active-v7';
+    const SERVER_KEY = 'recaptcha-audio-transcriber-v7';
+    const TTL = 10 * 60 * 1000;
     const REQUEST_TIMEOUT = 60000;
     const SOURCE_TIMEOUT = 15000;
     const QUICK_SUBMIT_CHECK = 1400;
@@ -75,7 +77,7 @@
         const render = () => {
             if (!overlay || !overlay.isConnected) {
                 overlay = document.createElement('div');
-                overlay.id = 'google-audio-captcha-status';
+                overlay.id = 'recaptcha-audio-solver-status';
                 overlay.setAttribute('aria-hidden', 'true');
                 Object.assign(overlay.style, {
                     position: 'fixed', left: '6px', top: '6px', zIndex: '2147483647',
@@ -95,17 +97,39 @@
         } else render();
     }
 
-    function sorryPage() {
-        return /(^|\.)google\.(com|ca)$/i.test(location.hostname) && location.pathname.startsWith('/sorry/');
+    function isRedditHost(hostname) {
+        const host = String(hostname || '').toLowerCase();
+        return host === 'reddit.com' || host.endsWith('.reddit.com');
     }
+
+    function isGoogleSorryUrl(url) {
+        return /(^|\.)google\.(com|ca)$/i.test(url.hostname) &&
+            url.pathname.startsWith('/sorry/');
+    }
+
+    function supportedTopPage() {
+        if (isRedditHost(location.hostname)) return true;
+        try { return isGoogleSorryUrl(new URL(location.href)); }
+        catch (_) { return false; }
+    }
+
     function recaptchaFrame() {
-        return ['www.google.com', 'www.recaptcha.net'].includes(location.hostname) && location.pathname.includes('/recaptcha/');
+        return ['www.google.com', 'www.recaptcha.net'].includes(location.hostname) &&
+            location.pathname.includes('/recaptcha/');
     }
-    function sorryReferrer() {
-        try {
-            const u = new URL(document.referrer);
-            return /(^|\.)google\.(com|ca)$/i.test(u.hostname) && u.pathname.startsWith('/sorry/');
-        } catch (_) { return false; }
+
+    function referrerUrl() {
+        try { return document.referrer ? new URL(document.referrer) : null; }
+        catch (_) { return null; }
+    }
+
+    function supportedReferrer(url) {
+        return !!url && (isRedditHost(url.hostname) || isGoogleSorryUrl(url));
+    }
+
+    function recaptchaReferrer(url) {
+        return !!url && ['www.google.com', 'www.recaptcha.net'].includes(url.hostname) &&
+            url.pathname.includes('/recaptcha/');
     }
 
     async function gmGet(key, fallback) {
@@ -115,12 +139,14 @@
         } catch (_) {}
         return fallback;
     }
+
     async function gmSet(key, value) {
         try {
             if (typeof GM_setValue === 'function') return void GM_setValue(key, value);
             if (globalThis.GM && typeof GM.setValue === 'function') await GM.setValue(key, value);
         } catch (_) {}
     }
+
     function gmRequest(details) {
         const fn = typeof GM_xmlhttpRequest === 'function' ? GM_xmlhttpRequest :
             globalThis.GM && typeof GM.xmlhttpRequest === 'function' ? GM.xmlhttpRequest.bind(GM) :
@@ -143,7 +169,11 @@
     }
 
     async function active() {
-        if (sorryReferrer()) return true;
+        const ref = referrerUrl();
+        if (supportedReferrer(ref)) return true;
+
+        if (ref && !recaptchaReferrer(ref)) return false;
+
         const v = await gmGet(ACTIVE_KEY, null);
         return !!(v && Number.isFinite(v.ts) && Date.now() - v.ts < TTL);
     }
@@ -162,6 +192,7 @@
         const el = document.querySelector(selector);
         return el ? preview(el.textContent || el.innerText || '', 180) : '';
     }
+
     function blocked() {
         const el = document.querySelector(S.blocked);
         return visible(el) ? text(S.blocked) : '';
@@ -174,23 +205,28 @@
             try { raw = new URL(raw, location.href).toString(); } catch (_) {}
             if (/^https:\/\//i.test(raw) && !out.includes(raw)) out.push(raw);
         };
+
         const root = document.querySelector('#audio-source');
         if (root) { add(root.currentSrc); add(root.src); add(root.getAttribute('src')); }
         document.querySelectorAll('audio').forEach(a => {
             add(a.currentSrc); add(a.src); add(a.getAttribute('src'));
-            const source = a.querySelector('source[src]'); if (source) add(source.src);
+            const source = a.querySelector('source[src]');
+            if (source) add(source.src);
         });
-        document.querySelectorAll('audio source[src],source#audio-source[src]').forEach(e => add(e.src || e.getAttribute('src')));
+        document.querySelectorAll('audio source[src],source#audio-source[src]')
+            .forEach(e => add(e.src || e.getAttribute('src')));
         document.querySelectorAll('.rc-audiochallenge-tdownload-link a[href],a.rc-audiochallenge-tdownload-link[href]')
             .forEach(e => add(e.href || e.getAttribute('href')));
         return out;
     }
+
     const audioUrl = () => audioUrls()[0] || '';
 
     async function waitForAudio(timeout) {
         const until = Date.now() + timeout;
         while (Date.now() < until) {
-            const u = audioUrl(); if (u) return u;
+            const u = audioUrl();
+            if (u) return u;
             await sleep(120);
         }
         return '';
@@ -213,7 +249,8 @@
         const name = new URL(server).hostname.split('.')[0];
         log('POST ' + name);
         const r = await gmRequest({
-            method: 'POST', url: server,
+            method: 'POST',
+            url: server,
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             data: 'input=' + encodeURIComponent(url.replace('recaptcha.net', 'google.com')) +
                 '&lang=' + encodeURIComponent(lang || 'en-US'),
@@ -229,18 +266,24 @@
     }
 
     async function transcribe(url) {
-        const lang = /^en(?:-|$)/i.test(document.documentElement.lang || '') ? document.documentElement.lang : 'en-US';
-        const preferred = Math.max(0, Math.min(SERVERS.length - 1, Number(await gmGet(SERVER_KEY, 0)) || 0));
+        const lang = /^en(?:-|$)/i.test(document.documentElement.lang || '') ?
+            document.documentElement.lang : 'en-US';
+        const preferred = Math.max(0, Math.min(SERVERS.length - 1,
+            Number(await gmGet(SERVER_KEY, 0)) || 0));
         const order = [preferred, ...SERVERS.map((_, i) => i).filter(i => i !== preferred)];
         const errors = [];
+
         for (const i of order) {
             try {
                 const t = await transcribeOne(SERVERS[i], url, lang);
                 await gmSet(SERVER_KEY, i);
                 log('Transcript: "' + preview(t, 60) + '"');
                 return t;
-            } catch (e) { errors.push(e); }
+            } catch (e) {
+                errors.push(e);
+            }
         }
+
         if (errors.length && errors.every(e => e && e.code === 'NO_RECOGNITION')) {
             throw noRecognitionError(errors.map(e => e.message).join(' | '));
         }
@@ -265,10 +308,6 @@
         return input.value === value;
     }
 
-    // Safari userscripts run in an isolated world. In that environment WebKit can
-    // reject richer KeyboardEvent init dictionaries (notably a cross-world `view`).
-    // KeyboardEvent options are optional, so use the minimal dictionary and never
-    // allow a synthetic keyboard-event failure to prevent the ordinary click.
     function dispatchEnter(node) {
         if (!node) throw new Error('activation target missing');
         node.focus();
@@ -289,8 +328,6 @@
             }
         }
 
-        // This is the actual activation path. It must run even if WebKit rejected
-        // one of the synthetic keyboard events above.
         node.click();
 
         try {
@@ -303,9 +340,13 @@
     function state() {
         const input = document.querySelector(S.input), verify = document.querySelector(S.verify);
         return {
-            audio: audioUrl(), value: input && 'value' in input ? input.value : '',
-            inputVisible: visible(input), verifyVisible: visible(verify),
-            error: text(S.error), status: text(S.status), blocked: blocked()
+            audio: audioUrl(),
+            value: input && 'value' in input ? input.value : '',
+            inputVisible: visible(input),
+            verifyVisible: visible(verify),
+            error: text(S.error),
+            status: text(S.status),
+            blocked: blocked()
         };
     }
 
@@ -314,10 +355,14 @@
         if (now.blocked) return { state: 'blocked', message: now.blocked };
         if (!now.inputVisible && !now.verifyVisible) return { state: 'accepted' };
         if (now.error && now.error !== before.error) return { state: 'incorrect', message: now.error };
-        if (now.audio && now.audio !== before.audio) return { state: 'new-audio', audioUrl: now.audio, message: now.error || now.status };
+        if (now.audio && now.audio !== before.audio) {
+            return { state: 'new-audio', audioUrl: now.audio, message: now.error || now.status };
+        }
         if (now.status && now.status !== before.status) {
             if (/verified|success|solved/i.test(now.status)) return { state: 'accepted', message: now.status };
-            if (/incorrect|try again|multiple correct|solve more/i.test(now.status)) return { state: 'incorrect', message: now.status };
+            if (/incorrect|try again|multiple correct|solve more/i.test(now.status)) {
+                return { state: 'incorrect', message: now.status };
+            }
         }
         if (before.value && !now.value && now.verifyVisible) {
             return { state: 'incorrect', message: now.error || now.status || 'answer consumed but challenge remained' };
@@ -357,9 +402,11 @@
         log(reason);
         await sleep(jitter(350, 650));
         dispatchEnter(button);
+
         const until = Date.now() + 7000;
         while (Date.now() < until) {
-            const u = audioUrl(); if (u && u !== previous) return u;
+            const u = audioUrl();
+            if (u && u !== previous) return u;
             await sleep(120);
         }
         return '';
@@ -368,9 +415,10 @@
     async function solveFrame() {
         if (solving || !await active()) return;
         solving = true;
+
         try {
-            log('Solver v6 active');
-            if (blocked()) return log('Google disabled audio: ' + blocked(), true);
+            log('Solver v7 active');
+            if (blocked()) return log('reCAPTCHA disabled audio: ' + blocked(), true);
 
             let url = audioUrl();
             if (!url) {
@@ -380,18 +428,23 @@
                 await sleep(jitter(350, 700));
                 audioButton.click();
             }
+
             url = url || await waitForAudio(SOURCE_TIMEOUT);
-            if (!url) return log(visible(document.querySelector(S.play)) ?
-                'No audio URL exposed before PLAY' : 'Audio source URL not found', true);
+            if (!url) {
+                return log(visible(document.querySelector(S.play)) ?
+                    'No audio URL exposed before PLAY' : 'Audio source URL not found', true);
+            }
 
             let rejections = 0;
             let noRecognitionRetries = 0;
+
             while (rejections < MAX_REJECTIONS) {
                 let transcript;
                 try {
                     transcript = await transcribe(url);
                 } catch (e) {
-                    if (e && e.code === 'NO_RECOGNITION' && noRecognitionRetries < MAX_NO_RECOGNITION_RETRIES) {
+                    if (e && e.code === 'NO_RECOGNITION' &&
+                        noRecognitionRetries < MAX_NO_RECOGNITION_RETRIES) {
                         noRecognitionRetries++;
                         const next = await newAudio(url, 'No transcription; requesting one fresh clip');
                         if (!next) return log('No transcription and could not obtain fresh audio', true);
@@ -412,23 +465,32 @@
                 log('Submit result: ' + result.state + (result.message ? ' → ' + result.message : ''));
 
                 if (result.state === 'accepted') return log('Solved');
-                if (result.state === 'blocked') return log('Google blocked audio: ' + result.message, true);
+                if (result.state === 'blocked') return log('reCAPTCHA blocked audio: ' + result.message, true);
                 if (result.state === 'unchanged') return log('Submission produced no DOM/state change', true);
 
                 rejections++;
-                if (rejections >= MAX_REJECTIONS) return log('Stopped after ' + rejections + ' Google rejections', true);
-                if (result.state === 'new-audio' && result.audioUrl) { url = result.audioUrl; continue; }
-                const next = await newAudio(url, 'Google rejected answer; requesting new clip');
+                if (rejections >= MAX_REJECTIONS) {
+                    return log('Stopped after ' + rejections + ' reCAPTCHA rejections', true);
+                }
+                if (result.state === 'new-audio' && result.audioUrl) {
+                    url = result.audioUrl;
+                    continue;
+                }
+
+                const next = await newAudio(url, 'reCAPTCHA rejected answer; requesting new clip');
                 if (!next) return log('Could not obtain replacement audio', true);
                 url = next;
             }
-        } finally { solving = false; }
+        } finally {
+            solving = false;
+        }
     }
 
     async function anchorFrame() {
         if (!await active()) return;
         const anchor = await waitFor(S.anchor, 8000);
         if (!anchor) return;
+
         const clear = async () => {
             if (anchor.getAttribute('aria-checked') === 'true') {
                 await gmSet(ACTIVE_KEY, { ts: 0 });
@@ -436,25 +498,38 @@
             }
             return false;
         };
+
         if (await clear()) return;
-        const obs = new MutationObserver(() => clear().then(ok => { if (ok) obs.disconnect(); }));
+
+        const obs = new MutationObserver(() => clear().then(ok => {
+            if (ok) obs.disconnect();
+        }));
         obs.observe(anchor, { attributes: true, attributeFilter: ['aria-checked'] });
+
         if (visible(anchor) && anchor.getAttribute('aria-checked') !== 'true') {
             await sleep(jitter(250, 550));
             anchor.click();
         }
     }
 
-    if (sorryPage()) {
-        gmSet(ACTIVE_KEY, { ts: Date.now(), host: location.hostname });
+    if (supportedTopPage()) {
+        void gmSet(ACTIVE_KEY, { ts: Date.now(), host: location.hostname });
         return;
     }
+
     if (!recaptchaFrame()) return;
 
     const start = () => {
-        if (location.pathname.includes('/anchor')) anchorFrame().catch(e => console.warn(TAG, e));
-        else if (location.pathname.includes('/bframe')) solveFrame().catch(e => log('Solver crashed: ' + (e.message || e), true));
+        if (location.pathname.includes('/anchor')) {
+            anchorFrame().catch(e => console.warn(TAG, e));
+        } else if (location.pathname.includes('/bframe')) {
+            solveFrame().catch(e => log('Solver crashed: ' + (e.message || e), true));
+        }
     };
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-    else start();
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start, { once: true });
+    } else {
+        start();
+    }
 })();
