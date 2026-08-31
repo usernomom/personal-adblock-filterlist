@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Solves Google Search unusual-traffic reCAPTCHA audio challenges with iOS-safe submission, diagnostics, bounded retries, and transcriber failover.
 // @license      MIT
-// @version      5
+// @version      6
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_recaptcha_audio_solver.js
 // @match        https://*.google.com/sorry/*
 // @match        https://*.google.ca/sorry/*
@@ -26,8 +26,8 @@
     'use strict';
 
     const TAG = '[GoogleAudioCaptcha]';
-    const ACTIVE_KEY = 'google-sorry-active-v5';
-    const SERVER_KEY = 'google-sorry-transcriber-v5';
+    const ACTIVE_KEY = 'google-sorry-active-v6';
+    const SERVER_KEY = 'google-sorry-transcriber-v6';
     const TTL = 3 * 60 * 1000;
     const REQUEST_TIMEOUT = 60000;
     const SOURCE_TIMEOUT = 15000;
@@ -42,9 +42,6 @@
     const S = {
         anchor: '#recaptcha-anchor',
         audioMode: '#recaptcha-audio-button',
-        // Only editable controls. The v4 selector also matched the wrapper div
-        // .rc-audiochallenge-response-field, which caused the HTMLInputElement
-        // native value setter to throw when applied to that div.
         input: 'input#audio-response, textarea#audio-response, input[name="audio-response"], textarea[name="audio-response"], .rc-audiochallenge-response-field input, .rc-audiochallenge-response-field textarea',
         verify: '#recaptcha-verify-button',
         reload: '#recaptcha-reload-button',
@@ -251,8 +248,6 @@
     }
 
     function setAnswer(input, value) {
-        // reCAPTCHA is plain DOM here; direct assignment is both sufficient and
-        // safer than borrowing a native value setter from the wrong element type.
         if (!input || !('value' in input)) return false;
         input.focus();
         input.value = value;
@@ -270,15 +265,39 @@
         return input.value === value;
     }
 
-    // Mirrors Buster's non-native submission path: focus + Enter events + click.
+    // Safari userscripts run in an isolated world. In that environment WebKit can
+    // reject richer KeyboardEvent init dictionaries (notably a cross-world `view`).
+    // KeyboardEvent options are optional, so use the minimal dictionary and never
+    // allow a synthetic keyboard-event failure to prevent the ordinary click.
     function dispatchEnter(node) {
-        const ev = { code: 'Enter', key: 'Enter', keyCode: 13, which: 13,
-            view: window, bubbles: true, composed: true, cancelable: true };
+        if (!node) throw new Error('activation target missing');
         node.focus();
-        node.dispatchEvent(new KeyboardEvent('keydown', ev));
-        node.dispatchEvent(new KeyboardEvent('keypress', ev));
+
+        const ev = {
+            code: 'Enter',
+            key: 'Enter',
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        };
+
+        for (const type of ['keydown', 'keypress']) {
+            try {
+                node.dispatchEvent(new KeyboardEvent(type, ev));
+            } catch (e) {
+                log(type + ' KeyboardEvent skipped: ' + (e && e.message ? e.message : String(e)));
+            }
+        }
+
+        // This is the actual activation path. It must run even if WebKit rejected
+        // one of the synthetic keyboard events above.
         node.click();
-        node.dispatchEvent(new KeyboardEvent('keyup', ev));
+
+        try {
+            node.dispatchEvent(new KeyboardEvent('keyup', ev));
+        } catch (e) {
+            log('keyup KeyboardEvent skipped: ' + (e && e.message ? e.message : String(e)));
+        }
     }
 
     function state() {
@@ -350,7 +369,7 @@
         if (solving || !await active()) return;
         solving = true;
         try {
-            log('Solver v5 active');
+            log('Solver v6 active');
             if (blocked()) return log('Google disabled audio: ' + blocked(), true);
 
             let url = audioUrl();
