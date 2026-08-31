@@ -1,8 +1,10 @@
 // ==UserScript==
 // @name         Google - uBlacklist compatibility bridge
+// @namespace    https://github.com/usernomom/personal-adblock-filterlist
+// @author       nobody
 // @description  Expose Google result URLs that uBlacklist cannot reliably parse, including Top Stories and rich social/profile results.
 // @license      MIT
-// @version      2
+// @version      3
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -16,8 +18,11 @@
     'use strict';
 
     const NEWS_CARD_SELECTOR = '[data-news-cluster-id]';
-    const DEFAULT_RESULT_SELECTOR = '.vt6azd, .Ww4FFb';
+    const UBLACKLIST_RESULT_SELECTOR = '[data-ub-result]';
+    const LEGACY_RESULT_SELECTOR = '.vt6azd, .Ww4FFb';
+    const DEFAULT_RESULT_SELECTOR = `${UBLACKLIST_RESULT_SELECTOR}, ${LEGACY_RESULT_SELECTOR}`;
     const PROXY_WRAPPER_SELECTOR = ':scope > [data-ub-google-source-proxy]';
+    const DISPLAYED_DOMAIN_RE = /(?:[\p{L}\p{N}][\p{L}\p{N}_-]*\.)+\p{L}{2,}/u;
     let scanScheduled = false;
 
     function isGoogleHost(hostname) {
@@ -66,13 +71,24 @@
         }
     }
 
+    function isExternalTarget(rawURL) {
+        const normalized = normalizeTargetURL(rawURL);
+        if (!normalized) return '';
+
+        try {
+            return isGoogleHost(new URL(normalized).hostname) ? '' : normalized;
+        } catch (_) {
+            return '';
+        }
+    }
+
     function addProxy(root, sourceURL, kind) {
         if (!(root instanceof Element) ||
             root.querySelector(PROXY_WRAPPER_SELECTOR)) {
             return false;
         }
 
-        const source = normalizeTargetURL(sourceURL);
+        const source = isExternalTarget(sourceURL);
         if (!source) return false;
 
         const wrapper = document.createElement('span');
@@ -80,7 +96,7 @@
         wrapper.setAttribute('aria-hidden', 'true');
         wrapper.setAttribute('data-ub-google-source-proxy', kind);
 
-        // Match both the current mobile and desktop default-result URL selectors:
+        // Match both current default-result URL selectors:
         //   mobile:  .UBFage
         //   desktop: :is(.yuRUbf, .xe8e1b) a
         wrapper.className = 'yuRUbf';
@@ -92,8 +108,7 @@
         proxy.setAttribute('aria-hidden', 'true');
         proxy.setAttribute('data-ub-google-source-proxy-anchor', kind);
 
-        // Keep the old marker on news proxies for compatibility with the existing
-        // new-tab userscript and any already-installed code that knows this marker.
+        // Preserve the original marker used by the new-tab userscript.
         if (kind === 'news') {
             proxy.setAttribute('data-ub-news-source-proxy', '');
         }
@@ -160,23 +175,67 @@
         }
     }
 
-    function primaryResultURL(root) {
-        const heading = root.querySelector(
-            '[role="heading"][aria-level="3"], h3'
-        );
+    function displayedDomainURL(root) {
+        const text = root.querySelector('.ob9lvb')?.textContent || '';
+        const match = DISPLAYED_DOMAIN_RE.exec(text);
+        return match ? `https://${match[0]}/` : '';
+    }
 
-        if (!heading) return '';
-
-        let anchor = heading.closest('a[href]');
-
-        if (!anchor || !root.contains(anchor)) {
-            anchor = [...root.querySelectorAll('a[href]')]
-                .find((candidate) => candidate.contains(heading)) || null;
-        }
-
+    function builtInDirectURL(root) {
+        const anchor = root.querySelector('.UBFage, a[role="presentation"]');
         if (!anchor) return '';
 
-        return normalizeTargetURL(anchor.getAttribute('href') || anchor.href);
+        // uBlacklist currently accepts this branch only when the literal href
+        // attribute starts with http(s). A relative Google redirect is therefore
+        // not usable by the built-in parser.
+        const raw = anchor.getAttribute('href') || '';
+        if (!/^https?:\/\//.test(raw)) return '';
+
+        return isExternalTarget(raw);
+    }
+
+    function builtInCanResolve(root) {
+        return Boolean(
+            builtInDirectURL(root) ||
+            displayedDomainURL(root)
+        );
+    }
+
+    function primaryResultURL(root) {
+        const heading = root.querySelector(
+            '[role="heading"][aria-level="3"], h3, .GkAmnd'
+        );
+
+        if (heading) {
+            const anchor = heading.closest('a[href]') ||
+                [...root.querySelectorAll('a[href]')]
+                    .find((candidate) => candidate.contains(heading));
+
+            if (anchor) {
+                const source = isExternalTarget(
+                    anchor.getAttribute('href') || anchor.href
+                );
+                if (source) return source;
+            }
+        }
+
+        // Rich/profile cards can use unusual heading markup. Fall back to the
+        // first real external navigation target in the result container.
+        for (const anchor of root.querySelectorAll('a[href]')) {
+            if (
+                anchor.hasAttribute('data-ub-google-source-proxy-anchor') ||
+                anchor.getAttribute('aria-hidden') === 'true'
+            ) {
+                continue;
+            }
+
+            const source = isExternalTarget(
+                anchor.getAttribute('href') || anchor.href
+            );
+            if (source) return source;
+        }
+
+        return '';
     }
 
     function bridgeDefaultResult(root) {
@@ -186,12 +245,11 @@
             return;
         }
 
-        // If the current built-in Google SERPINFO can already recover this result's
-        // URL, leave it alone. This bridge is only for the rich-result gap.
-        if (
-            root.querySelector('.UBFage, a[role="presentation"]') ||
-            root.querySelector('.ob9lvb')
-        ) {
+        // Presence of .ob9lvb alone is NOT enough. uBlacklist's domainToURL
+        // fallback only works when that text actually contains a domain such as
+        // example.com. New Google social/profile cards instead show labels like
+        // "Instagram · intel", which produce a null URL and therefore no button.
+        if (builtInCanResolve(root)) {
             return;
         }
 
@@ -220,9 +278,12 @@
 
         new MutationObserver(scheduleScan).observe(document.documentElement, {
             childList: true,
+            attributes: true,
+            attributeFilter: ['data-ub-result'],
             subtree: true
         });
 
+        // Cover ordering differences between Macaque and the Safari extension.
         setTimeout(scan, 100);
         setTimeout(scan, 500);
         setTimeout(scan, 1500);
