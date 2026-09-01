@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Expose real Google result destinations to uBlacklist when Google hides them behind opaque /goto links.
 // @license      MIT
-// @version      8
+// @version      9
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -493,6 +493,23 @@
         return Boolean(displayedDomainURL(root));
     }
 
+    function rewriteOpaqueLink(link, sourceURL) {
+        if (!isElement(link) ||
+            link.closest('[data-ub-google-source-proxy]')) {
+            return false;
+        }
+
+        const source = externalURL(sourceURL);
+        const current = link.getAttribute('href') || '';
+        if (!source || !normalizeGoto(current)) return false;
+
+        if (!link.hasAttribute('data-ub-google-original-href')) {
+            link.setAttribute('data-ub-google-original-href', current);
+        }
+        link.setAttribute('href', source);
+        return true;
+    }
+
     function addProxy(root, sourceURL, kind) {
         if (!isElement(root)) return false;
         const source = externalURL(sourceURL);
@@ -607,13 +624,21 @@
         const root =
             link.closest(RESULT_SELECTOR) ||
             semanticResultRoot(link);
-        if (!root || builtInCanResolve(root)) return;
+        if (!root) return;
 
         const key = normalizeGoto(link.getAttribute('href') || link.href);
-        const source =
-            (key && gotoMap.get(key)) ||
-            sourceURLForRoot(root);
+        const mappedSource = key && gotoMap.get(key);
+        if (mappedSource) {
+            // Restore the actual destination on Google's real result anchor.
+            // uBlacklist 10.0.3+ observes href changes and re-evaluates the
+            // existing result, avoiding hidden-proxy timing races.
+            rewriteOpaqueLink(link, mappedSource);
+            addProxy(root, mappedSource, 'default');
+            return;
+        }
 
+        if (builtInCanResolve(root)) return;
+        const source = sourceURLForRoot(root);
         if (source) addProxy(root, source, 'default');
     }
 
@@ -634,7 +659,7 @@
 
         document.documentElement?.setAttribute(
             'data-ub-google-bridge-version',
-            '8'
+            '9'
         );
     }
 
