@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Expose Google result URLs that uBlacklist cannot reliably parse, including Top Stories and rich social/profile results.
 // @license      MIT
-// @version      3
+// @version      4
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -23,6 +23,14 @@
     const DEFAULT_RESULT_SELECTOR = `${UBLACKLIST_RESULT_SELECTOR}, ${LEGACY_RESULT_SELECTOR}`;
     const PROXY_WRAPPER_SELECTOR = ':scope > [data-ub-google-source-proxy]';
     const DISPLAYED_DOMAIN_RE = /(?:[\p{L}\p{N}][\p{L}\p{N}_-]*\.)+\p{L}{2,}/u;
+    const PLATFORM_RULES = [
+        [/\bLinkedIn\b/i, ['linkedin.com']],
+        [/\bInstagram\b/i, ['instagram.com']],
+        [/\bYouTube\b/i, ['youtube.com', 'youtu.be']],
+        [/\bFacebook\b/i, ['facebook.com']],
+        [/(?:^|[\s·])X(?:\s*\(Twitter\))?(?:[\s·]|$)|\bTwitter\b/i, ['x.com', 'twitter.com']],
+        [/\bReddit\b/i, ['reddit.com']],
+    ];
     let scanScheduled = false;
 
     function isGoogleHost(hostname) {
@@ -160,6 +168,61 @@
         return '';
     }
 
+    function platformHostsForRoot(root) {
+        const text = root?.innerText || root?.textContent || '';
+        for (const [pattern, hosts] of PLATFORM_RULES) {
+            if (pattern.test(text)) return hosts;
+        }
+        return [];
+    }
+
+    function hostnameMatches(hostname, suffixes) {
+        const host = hostname.toLowerCase();
+        return suffixes.some((suffix) =>
+            host === suffix || host.endsWith(`.${suffix}`)
+        );
+    }
+
+    function sourceURLFromGoogleDataByPlatform(root) {
+        const hostSuffixes = platformHostsForRoot(root);
+        if (!hostSuffixes.length) return '';
+
+        for (const link of root.querySelectorAll('a[href*="/goto?url="]')) {
+            let token = '';
+            try {
+                token = new URL(link.href, location.href).searchParams.get('url') || '';
+            } catch (_) {}
+            if (!token) continue;
+
+            for (const script of document.scripts) {
+                const text = script.textContent || '';
+                let position = text.indexOf(token);
+
+                while (position !== -1) {
+                    const nearby = text
+                        .slice(position, position + 24000)
+                        .replace(/\\u003d/g, '=')
+                        .replace(/\\u0026/g, '&')
+                        .replace(/\\u002f/gi, '/')
+                        .replace(/\\\//g, '/');
+
+                    for (const match of nearby.matchAll(/https?:\/\/[^"'\\\s,\]\)<>]+/g)) {
+                        try {
+                            const candidate = new URL(match[0].replace(/[.;]+$/, ''));
+                            if (hostnameMatches(candidate.hostname, hostSuffixes)) {
+                                return candidate.href;
+                            }
+                        } catch (_) {}
+                    }
+
+                    position = text.indexOf(token, position + token.length);
+                }
+            }
+        }
+
+        return '';
+    }
+
     function bridgeNewsCard(card) {
         if (!(card instanceof Element) ||
             card.querySelector(PROXY_WRAPPER_SELECTOR)) {
@@ -235,7 +298,7 @@
             if (source) return source;
         }
 
-        return '';
+        return sourceURLFromGoogleDataByPlatform(root);
     }
 
     function bridgeDefaultResult(root) {
