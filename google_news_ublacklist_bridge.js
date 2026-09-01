@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Expose real Google result destinations to uBlacklist when Google hides them behind opaque /goto links.
 // @license      MIT
-// @version      7
+// @version      8
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -217,6 +217,30 @@
         }
     }
 
+    function collectNestedCandidates(node, urls, abouts, depth = 0) {
+        if (!node || depth > 12 || urls.length >= 128) return;
+
+        if (typeof node === 'string') {
+            const value = cleanEscapes(node);
+            const target = externalURL(value);
+            if (target) {
+                urls.push(target);
+            } else if (
+                value.includes('/search/about-this-result') &&
+                value.includes('req=')
+            ) {
+                abouts.push(value);
+            }
+            return;
+        }
+
+        const values = Array.isArray(node) ? node : Object.values(node);
+        for (const item of values) {
+            collectNestedCandidates(item, urls, abouts, depth + 1);
+            if (urls.length >= 128) break;
+        }
+    }
+
     function scanDataTree(node) {
         if (!node || typeof node === 'string') return;
 
@@ -225,18 +249,32 @@
             // positions, not site/domain special cases.
             const gotoValue =
                 typeof node[17] === 'string' ? normalizeGoto(node[17]) : '';
-            const structuralTarget =
+            let structuralTarget =
                 node[32]?.[3]?.[0] ||
                 node[33]?.[3]?.[0] ||
                 node[33]?.[14]?.[7] ||
                 node[9]?.['2003']?.[2] ||
                 '';
+
+            // Rich-result schemas change. If the usual target field is absent,
+            // search only inside this result record for an external destination.
+            if (gotoValue && !externalURL(structuralTarget)) {
+                const nestedURLs = [];
+                const nestedAbouts = [];
+                collectNestedCandidates(node, nestedURLs, nestedAbouts);
+                structuralTarget = pickBestURL(nestedURLs);
+                if (!structuralTarget) {
+                    for (const about of nestedAbouts) {
+                        structuralTarget = targetFromAboutURL(about);
+                        if (structuralTarget) break;
+                    }
+                }
+            }
             if (gotoValue && structuralTarget) {
                 maybeSetGoto(gotoValue, structuralTarget);
             }
 
-            // Conservative generic pairing: only pair values that are siblings in
-            // the same immediate Google data array.
+            // Conservative generic pairing: pair direct sibling values first.
             const gotos = [];
             const urls = [];
             const abouts = [];
@@ -596,7 +634,7 @@
 
         document.documentElement?.setAttribute(
             'data-ub-google-bridge-version',
-            '7'
+            '8'
         );
     }
 
