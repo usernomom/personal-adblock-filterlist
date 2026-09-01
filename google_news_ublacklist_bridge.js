@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Expose Google result URLs that uBlacklist cannot reliably parse, including Top Stories and rich social/profile results.
 // @license      MIT
-// @version      5
+// @version      6
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
@@ -30,29 +30,31 @@
     const RICH_RESULT_ATTRIBUTE = 'data-ub-google-rich-result';
     const DISPLAYED_DOMAIN_RE =
         /(?:[\p{L}\p{N}][\p{L}\p{N}_-]*\.)+\p{L}{2,}/u;
+    // Match source-label lines rather than arbitrary snippet mentions. Google can
+    // render a source either alone ("Instagram") or before a separator/source name.
     const PLATFORM_RULES = [
         {
-            pattern: /\bLinkedIn\s*[·•]\s*/i,
+            pattern: /^LinkedIn(?:\s*[\u00b7\u2022]|$)/i,
             url: 'https://www.linkedin.com/',
         },
         {
-            pattern: /\bInstagram\s*[·•]\s*/i,
+            pattern: /^Instagram(?:\s*[\u00b7\u2022]|$)/i,
             url: 'https://www.instagram.com/',
         },
         {
-            pattern: /\bYouTube\s*[·•]\s*/i,
+            pattern: /^YouTube(?:\s*[\u00b7\u2022]|$)/i,
             url: 'https://www.youtube.com/',
         },
         {
-            pattern: /\bFacebook\s*[·•]\s*/i,
+            pattern: /^Facebook(?:\s*[\u00b7\u2022]|$)/i,
             url: 'https://www.facebook.com/',
         },
         {
-            pattern: /(?:^|[\s\n])X\s*[·•]\s*/i,
+            pattern: /^(?:X(?:\s*\(Twitter\))?|Twitter)(?:\s*[\u00b7\u2022]|$)/i,
             url: 'https://x.com/',
         },
         {
-            pattern: /\bReddit\s*[·•]\s*/i,
+            pattern: /^Reddit(?:\s*[\u00b7\u2022]|$)/i,
             url: 'https://www.reddit.com/',
         },
     ];
@@ -265,10 +267,27 @@
         );
     }
 
+    function sourceLabelLines(text) {
+        return String(text || '')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .slice(0, 24);
+    }
+
+    function platformRuleMatchesText(rule, text) {
+        return sourceLabelLines(text)
+            .some((line) => rule.pattern.test(line));
+    }
+
     function platformRuleFromText(text) {
-        for (const rule of PLATFORM_RULES) {
-            if (rule.pattern.test(text)) {
-                return rule;
+        const lines = sourceLabelLines(text);
+
+        for (const line of lines) {
+            for (const rule of PLATFORM_RULES) {
+                if (rule.pattern.test(line)) {
+                    return rule;
+                }
             }
         }
 
@@ -301,15 +320,9 @@
     }
 
     function countPlatformLabels(text) {
-        let count = 0;
-
-        for (const rule of PLATFORM_RULES) {
-            if (rule.pattern.test(text)) {
-                count += 1;
-            }
-        }
-
-        return count;
+        return PLATFORM_RULES.filter((rule) =>
+            platformRuleMatchesText(rule, text)
+        ).length;
     }
 
     function findSemanticResultRoot(seed, rule) {
@@ -335,7 +348,7 @@
                 node.textContent ||
                 '';
 
-            if (!rule.pattern.test(text)) {
+            if (!platformRuleMatchesText(rule, text)) {
                 continue;
             }
 
@@ -494,7 +507,7 @@
         if (document.documentElement) {
             document.documentElement.setAttribute(
                 'data-ub-google-bridge-version',
-                '5'
+                '6'
             );
         }
     }
@@ -510,28 +523,54 @@
         });
     }
 
+    function resignalUBlacklist(root) {
+        if (!isElement(root) ||
+            !root.hasAttribute('data-ub-result')) {
+            return;
+        }
+
+        const proxy = root.querySelector(
+            '[data-ub-google-source-proxy-anchor]'
+        );
+        const href = proxy?.getAttribute('href') || '';
+        if (!href) return;
+
+        // uBlacklist watches href mutations inside roots it already registered.
+        // Re-setting the proxy href closes the bridge/uBlacklist ordering race.
+        proxy.setAttribute('href', href);
+    }
+
     function start() {
         scan();
 
-        new MutationObserver(
-            scheduleScan
-        ).observe(
+        new MutationObserver((records) => {
+            for (const record of records) {
+                if (
+                    record.type === 'attributes' &&
+                    record.attributeName === 'data-ub-result'
+                ) {
+                    resignalUBlacklist(record.target);
+                }
+            }
+
+            scheduleScan();
+        }).observe(
             document.documentElement,
             {
                 childList: true,
                 attributes: true,
                 attributeFilter: [
                     'data-ub-result',
-                    'href'
+                    'href',
+                    'src'
                 ],
                 subtree: true
             }
         );
 
-        setTimeout(scan, 100);
-        setTimeout(scan, 500);
-        setTimeout(scan, 1500);
-        setTimeout(scan, 3000);
+        [100, 500, 1500, 4000, 8000].forEach((delay) =>
+            setTimeout(scan, delay)
+        );
     }
 
     if (document.documentElement) {
