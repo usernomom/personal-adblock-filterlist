@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      11
+// @version      12
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.js
 // @match        https://*.google.com/search*
@@ -12,29 +12,38 @@
 // @match        https://*.google.fr/search*
 // @match        https://*.google.co.uk/search*
 // @run-at       document-start
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        GM.xmlHttpRequest
+// @grant        GM.xmlhttpRequest
+// @grant        unsafeWindow
+// @connect      *
 // ==/UserScript==
 
 (() => {
     'use strict';
 
-    const VERSION = '11';
+    const VERSION = '12';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const KNOWN_ROOT_SELECTOR = '.vt6azd, .Ww4FFb, .sHEJob, [data-news-cluster-id], .eejeod';
     const NEWS_CARD_SELECTOR = '[data-news-cluster-id]';
     const OPAQUE_LINK_SELECTOR = 'a[href*="/goto?"]';
     const HEADING_SELECTOR = '[role="heading"][aria-level="3"], h3, .GkAmnd';
+    const NESTED_RESULT_SELECTOR = '.xYkm8c';
+    const COLLAPSIBLE_SLOT_SELECTOR = '.Rb7Fnd, .dRzkFf';
     const PROXY_WRAPPER_SELECTOR = ':scope > [data-ub-google-source-proxy]';
     const BRIDGE_ROOT_ATTRIBUTE = 'data-ub-google-bridge-root';
 
     const gotoMap = new Map();
     const pendingByGoto = new Map();
+    const networkFallbacks = new Map();
     const scannedScripts = new WeakSet();
     const scannedComments = new WeakSet();
     const stats = {
         proxyAdds: 0,
         observerCallbacks: 0,
         observedAddedNodes: 0,
+        networkFallbacks: 0,
+        networkFallbackFailures: 0,
     };
 
     function isElement(node) {
@@ -294,11 +303,15 @@
 
     function installDirectWjdHook() {
         try {
-            if (window.__UB_GOOGLE_WJD_TRAMPOLINE__) return;
-            window.__UB_GOOGLE_WJD_TRAMPOLINE__ = true;
+            const pageWindow =
+                typeof unsafeWindow === 'object' && unsafeWindow
+                    ? unsafeWindow
+                    : window;
+            if (pageWindow.__UB_GOOGLE_WJD_TRAMPOLINE__) return;
+            pageWindow.__UB_GOOGLE_WJD_TRAMPOLINE__ = true;
             const store = {};
-            if (window.W_jd && typeof window.W_jd === 'object') {
-                Object.assign(store, window.W_jd);
+            if (pageWindow.W_jd && typeof pageWindow.W_jd === 'object') {
+                Object.assign(store, pageWindow.W_jd);
                 processWjdData(store);
             }
             const proxify = () => new Proxy(store, {
@@ -311,7 +324,7 @@
                 }
             });
             let proxy = proxify();
-            Object.defineProperty(window, 'W_jd', {
+            Object.defineProperty(pageWindow, 'W_jd', {
                 configurable: true,
                 enumerable: true,
                 get() { return proxy; },
@@ -519,8 +532,139 @@
         return best;
     }
 
+    function uniqueGotoCount(root) {
+        const keys = new Set();
+        for (const anchor of root.querySelectorAll(OPAQUE_LINK_SELECTOR)) {
+            const key = normalizeGoto(anchor.getAttribute('href') || anchor.href);
+            if (key) keys.add(key);
+            if (keys.size > 1) break;
+        }
+        return keys.size;
+    }
+
+    function isPrimaryNestedLink(link) {
+        return Boolean(
+            link.querySelector(HEADING_SELECTOR) ||
+            link.closest('[role="heading"][aria-level="3"], h3')
+        );
+    }
+
     function rootForOpaqueLink(link) {
-        return link.closest(KNOWN_ROOT_SELECTOR) || semanticResultRoot(link);
+        const known = link.closest(KNOWN_ROOT_SELECTOR);
+        if (known && uniqueGotoCount(known) > 1) {
+            const nested = link.closest(NESTED_RESULT_SELECTOR);
+            if (nested && nested !== known && known.contains(nested)) {
+                return nested;
+            }
+            const semantic = semanticResultRoot(link);
+            if (semantic && semantic !== known && known.contains(semantic)) {
+                return semantic;
+            }
+        }
+        return known || semanticResultRoot(link);
+    }
+
+    function parseLocationHeader(headers) {
+        const match = String(headers || '').match(/^location:\s*(.+)$/im);
+        return match ? match[1].trim() : '';
+    }
+
+    function gmRequest(details) {
+        const legacy =
+            typeof GM_xmlhttpRequest === 'function'
+                ? GM_xmlhttpRequest
+                : null;
+        const modern =
+            typeof GM === 'object' && GM
+                ? (typeof GM.xmlHttpRequest === 'function'
+                    ? GM.xmlHttpRequest.bind(GM)
+                    : (typeof GM.xmlhttpRequest === 'function'
+                        ? GM.xmlhttpRequest.bind(GM)
+                        : null))
+                : null;
+        const fn = legacy || modern;
+        if (!fn) return null;
+        try {
+            return fn(details);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function resolveGotoViaNetwork(key) {
+        if (!key || gotoMap.has(key)) return;
+        if (networkFallbacks.has(key)) return;
+
+        const url = `${location.origin}${key}`;
+        stats.networkFallbacks += 1;
+
+        const promise = new Promise((resolve) => {
+            let settled = false;
+            const finish = (response) => {
+                if (settled) return;
+                settled = true;
+                const headerTarget = parseLocationHeader(response?.responseHeaders);
+                const finalTarget = response?.finalUrl || '';
+                const target =
+                    externalURL(headerTarget) ||
+                    externalURL(finalTarget);
+                if (target) {
+                    maybeSetGoto(key, target);
+                    resolve(target);
+                } else {
+                    stats.networkFallbackFailures += 1;
+                    resolve('');
+                }
+            };
+            const fail = () => {
+                if (settled) return;
+                settled = true;
+                stats.networkFallbackFailures += 1;
+                resolve('');
+            };
+            // Last-resort resolver for nested discussion rows. The request is
+            // anonymous; some managers still follow Google's redirect to the target.
+            const control = gmRequest({
+                method: 'GET',
+                url,
+                anonymous: true,
+                nocache: true,
+                timeout: 5000,
+                redirect: 'manual',
+                onload: finish,
+                onerror: fail,
+                ontimeout: fail,
+                onabort: fail,
+            });
+            if (!control) fail();
+        }).finally(() => {
+            networkFallbacks.delete(key);
+        });
+
+        networkFallbacks.set(key, promise);
+    }
+
+    function scheduleNetworkFallback(link, key) {
+        if (!isPrimaryNestedLink(link)) return;
+        const known = link.closest(KNOWN_ROOT_SELECTOR);
+        if (!known || uniqueGotoCount(known) <= 1) return;
+
+        setTimeout(() => {
+            if (!gotoMap.has(key) && link.isConnected) {
+                resolveGotoViaNetwork(key);
+            }
+        }, 120);
+    }
+
+    function installGapCollapseStyle() {
+        if (document.querySelector('[data-ub-google-gap-style]')) return;
+        const style = document.createElement('style');
+        style.setAttribute('data-ub-google-gap-style', VERSION);
+        style.textContent = `
+html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-ub-block]:not([data-ub-preserve-space])) {
+    display: none !important;
+}`;
+        (document.head || document.documentElement).appendChild(style);
     }
 
     function bridgeResolvedLink(link, sourceURL) {
@@ -548,6 +692,7 @@
             pendingByGoto.set(key, links);
         }
         links.add(link);
+        scheduleNetworkFallback(link, key);
     }
 
     function bridgeSubtree(root) {
@@ -583,6 +728,7 @@
         // to uBlacklist's own mutations.
         installDirectWjdHook();
         installWjdTrampoline();
+        installGapCollapseStyle();
 
         const observer = new MutationObserver((records) => {
             stats.observerCallbacks += 1;
