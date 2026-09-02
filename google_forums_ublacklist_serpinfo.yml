@@ -1,0 +1,45 @@
+name: Google Forums bridge
+version: 1.0.0
+description: Adds Google Forums (udm=18 and udm=forums) result discovery for uBlacklist bridge proxies.
+homepage: https://github.com/usernomom/personal-adblock-filterlist
+lastModified: 2026-09-02T00:46:01Z
+
+pages:
+  - name: Forums (desktop)
+    matches: &matches
+      - https://www.google.com/search?*
+      - https://www.google.ca/search?*
+      - https://www.google.fr/search?*
+      - https://www.google.co.uk/search?*
+    includeRegex: "[?&]udm=(18|forums)(&|$)"
+    userAgent: desktop
+    results:
+      - name: Default
+        root: ".vt6azd:not(.g-blk), .Ww4FFb"
+        url:
+          - or
+          - - [regexInclude, "^https?://", [attribute, href, ":is(.yuRUbf, .xe8e1b) a"]]
+            - [domainToURL, cite]
+        props:
+          title: h3
+    commonProps:
+      $site: google
+      $category: web
+
+  - name: Forums (mobile)
+    matches: *matches
+    includeRegex: "[?&]udm=(18|forums)(&|$)"
+    userAgent: mobile
+    results:
+      - name: Default
+        root: ".vt6azd, .Ww4FFb"
+        url:
+          - or
+          - - [regexInclude, "^https?://", [attribute, href, '.UBFage, a[role="presentation"]']]
+            - [domainToURL, ".ob9lvb"]
+        props:
+          title: '[role="heading"][aria-level="3"]'
+        button: [inset, { top: "16px", right: "32px" }]
+    commonProps:
+      $site: google
+      $category: web

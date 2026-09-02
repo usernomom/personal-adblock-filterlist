@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      12
+// @version      13
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '12';
+    const VERSION = '13';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const KNOWN_ROOT_SELECTOR = '.vt6azd, .Ww4FFb, .sHEJob, [data-news-cluster-id], .eejeod';
     const NEWS_CARD_SELECTOR = '[data-news-cluster-id]';
@@ -569,6 +569,15 @@
         return match ? match[1].trim() : '';
     }
 
+    function parseRedirectBody(text) {
+        const body = String(text || '');
+        if (!/<title>302 moved<\/title>/i.test(body) || !/the document has moved/i.test(body)) {
+            return '';
+        }
+        const match = body.match(/<a\s+href=["']([^"']+)["'][^>]*>here<\/a>/i);
+        return match ? match[1] : '';
+    }
+
     function gmRequest(details) {
         const legacy =
             typeof GM_xmlhttpRequest === 'function'
@@ -604,10 +613,20 @@
                 if (settled) return;
                 settled = true;
                 const headerTarget = parseLocationHeader(response?.responseHeaders);
-                const finalTarget = response?.finalUrl || '';
+                const finalTarget =
+                    response?.finalUrl ||
+                    response?.finalURL ||
+                    response?.responseURL ||
+                    response?.responseUrl ||
+                    '';
+                const bodyTarget = parseRedirectBody(
+                    response?.responseText ||
+                    (typeof response?.response === 'string' ? response.response : '')
+                );
                 const target =
                     externalURL(headerTarget) ||
-                    externalURL(finalTarget);
+                    externalURL(finalTarget) ||
+                    externalURL(bodyTarget);
                 if (target) {
                     maybeSetGoto(key, target);
                     resolve(target);
@@ -630,6 +649,7 @@
                 anonymous: true,
                 nocache: true,
                 timeout: 5000,
+                responseType: 'text',
                 redirect: 'manual',
                 onload: finish,
                 onerror: fail,
@@ -645,9 +665,9 @@
     }
 
     function scheduleNetworkFallback(link, key) {
-        if (!isPrimaryNestedLink(link)) return;
+        if (!isPrimaryNestedLink(link) && !link.closest(NESTED_RESULT_SELECTOR)) return;
         const known = link.closest(KNOWN_ROOT_SELECTOR);
-        if (!known || uniqueGotoCount(known) <= 1) return;
+        if (!known || (uniqueGotoCount(known) <= 1 && !link.closest(NESTED_RESULT_SELECTOR))) return;
 
         setTimeout(() => {
             if (!gotoMap.has(key) && link.isConnected) {
