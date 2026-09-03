@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
-// @description  Removes sponsored products and placements, storefront autoplay banners, compacts search results, and hides cart cross-sells.
-// @version      85
+// @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
+// @version      86
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
@@ -269,17 +269,6 @@
     }
   }
 
-  function hideAutoplayHero(root = document) {
-    const stopButton = root.querySelector(
-      '[data-placements="unified"] button[aria-label="Stop animation"]'
-    );
-
-    if (!stopButton) return;
-
-    const placement = directChildWithin(stopButton, '[data-placements="unified"]');
-    hide(placement);
-  }
-
   function isProductList(list) {
     return [...list.children].some((item) =>
       item.tagName === 'LI' && item.querySelector(':scope > [data-item-card="true"]')
@@ -522,7 +511,6 @@
     cleanupScheduled = false;
     hideSponsoredProducts();
     hideStandalonePlacements();
-    hideAutoplayHero();
     compactSearchResults();
     hideCartCrossSells();
     handleTipOptions();

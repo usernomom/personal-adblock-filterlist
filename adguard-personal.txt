@@ -2,7 +2,7 @@
 ! Title: Personal AdGuard Filter List
 ! Description: Personal cosmetic, scriptlet, and network filters organized by website.
 ! Homepage: https://github.com/usernomom/personal-adblock-filterlist
-! Version: 2026.08.30.4
+! Version: 2026.09.02.1
 ! Expires: 1 day
 
 ! Walmart.ca
@@ -116,6 +116,7 @@ costco.ca###onetrust-consent-sdk
 
 ! Costco Same-Day
 sameday.costco.ca##[role="region"][aria-label^="Results for"] > div:has(a[href*="/collections/"])
+sameday.costco.ca##[data-placements="unified"] > div:has(button[aria-label="Stop animation"])
 
 ! Outerwords
 ||outerwords.com^
