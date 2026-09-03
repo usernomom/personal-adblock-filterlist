@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.0.1
+// @version      13.0.2
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.0.1';
+    const VERSION = '13.0.2';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const KNOWN_ROOT_SELECTOR = '.vt6azd, .Ww4FFb, .sHEJob, [data-news-cluster-id], .eejeod';
     const NEWS_CARD_SELECTOR = '[data-news-cluster-id]';
@@ -665,9 +665,10 @@
     }
 
     function scheduleNetworkFallback(link, key) {
-        if (!isPrimaryNestedLink(link) && !link.closest(NESTED_RESULT_SELECTOR)) return;
         const known = link.closest(KNOWN_ROOT_SELECTOR);
-        if (!known || (uniqueGotoCount(known) <= 1 && !link.closest(NESTED_RESULT_SELECTOR))) return;
+        const isNewsCard = Boolean(known?.matches(NEWS_CARD_SELECTOR));
+        if (!isNewsCard && !isPrimaryNestedLink(link) && !link.closest(NESTED_RESULT_SELECTOR)) return;
+        if (!known || (!isNewsCard && uniqueGotoCount(known) <= 1 && !link.closest(NESTED_RESULT_SELECTOR))) return;
 
         setTimeout(() => {
             if (!gotoMap.has(key) && link.isConnected) {
