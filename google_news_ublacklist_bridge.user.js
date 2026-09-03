@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.0.2
+// @version      13.0.3
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,8 +22,14 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.0.2';
+    const VERSION = '13.0.3';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
+    const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
+    const NEWS_NETWORK_CONCURRENCY = 4;
+    const NEWS_NETWORK_RETRIES = 2;
+    const NEWS_NETWORK_RETRY_DELAY_MS = 100;
+    const NEWS_NETWORK_TIMEOUT_MS = 1500;
+    const NEWS_PENDING_ATTRIBUTE = 'data-ub-google-news-pending';
     const KNOWN_ROOT_SELECTOR = '.vt6azd, .Ww4FFb, .sHEJob, [data-news-cluster-id], .eejeod';
     const NEWS_CARD_SELECTOR = '[data-news-cluster-id]';
     const OPAQUE_LINK_SELECTOR = 'a[href*="/goto?"]';
@@ -36,6 +42,9 @@
     const gotoMap = new Map();
     const pendingByGoto = new Map();
     const networkFallbacks = new Map();
+    const newsNetworkQueue = [];
+    const queuedNewsGotoKeys = new Set();
+    let activeNewsNetworkRequests = 0;
     const scannedScripts = new WeakSet();
     const scannedComments = new WeakSet();
     const stats = {
@@ -600,14 +609,8 @@
         }
     }
 
-    function resolveGotoViaNetwork(key) {
-        if (!key || gotoMap.has(key)) return;
-        if (networkFallbacks.has(key)) return;
-
-        const url = `${location.origin}${key}`;
-        stats.networkFallbacks += 1;
-
-        const promise = new Promise((resolve) => {
+    function requestGotoTarget(url, timeout = 5000) {
+        return new Promise((resolve) => {
             let settled = false;
             const finish = (response) => {
                 if (settled) return;
@@ -623,32 +626,24 @@
                     response?.responseText ||
                     (typeof response?.response === 'string' ? response.response : '')
                 );
-                const target =
+                resolve(
                     externalURL(headerTarget) ||
                     externalURL(finalTarget) ||
-                    externalURL(bodyTarget);
-                if (target) {
-                    maybeSetGoto(key, target);
-                    resolve(target);
-                } else {
-                    stats.networkFallbackFailures += 1;
-                    resolve('');
-                }
+                    externalURL(bodyTarget) ||
+                    ''
+                );
             };
             const fail = () => {
                 if (settled) return;
                 settled = true;
-                stats.networkFallbackFailures += 1;
                 resolve('');
             };
-            // Last-resort resolver for nested discussion rows. The request is
-            // anonymous; some managers still follow Google's redirect to the target.
             const control = gmRequest({
                 method: 'GET',
                 url,
                 anonymous: true,
                 nocache: true,
-                timeout: 5000,
+                timeout,
                 responseType: 'text',
                 redirect: 'manual',
                 onload: finish,
@@ -657,11 +652,67 @@
                 onabort: fail,
             });
             if (!control) fail();
-        }).finally(() => {
+        });
+    }
+
+    function resolveGotoViaNetwork(key, { retries = 0, retryDelayMs = 0, timeout = 5000 } = {}) {
+        if (!key) return Promise.resolve('');
+        const mapped = gotoMap.get(key);
+        if (mapped) return Promise.resolve(mapped);
+        const existing = networkFallbacks.get(key);
+        if (existing) return existing;
+
+        const url = `${location.origin}${key}`;
+        stats.networkFallbacks += 1;
+
+        const promise = (async () => {
+            for (let attempt = 0; attempt <= retries; attempt += 1) {
+                const target = await requestGotoTarget(url, timeout);
+                if (target) {
+                    maybeSetGoto(key, target);
+                    return target;
+                }
+                if (attempt < retries && retryDelayMs > 0) {
+                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+                }
+            }
+            stats.networkFallbackFailures += 1;
+            return '';
+        })().finally(() => {
             networkFallbacks.delete(key);
         });
 
         networkFallbacks.set(key, promise);
+        return promise;
+    }
+
+    function pumpNewsNetworkQueue() {
+        while (activeNewsNetworkRequests < NEWS_NETWORK_CONCURRENCY && newsNetworkQueue.length) {
+            const key = newsNetworkQueue.shift();
+            if (!key) continue;
+            if (gotoMap.has(key)) {
+                queuedNewsGotoKeys.delete(key);
+                continue;
+            }
+
+            activeNewsNetworkRequests += 1;
+            resolveGotoViaNetwork(key, {
+                retries: NEWS_NETWORK_RETRIES,
+                retryDelayMs: NEWS_NETWORK_RETRY_DELAY_MS,
+                timeout: NEWS_NETWORK_TIMEOUT_MS,
+            }).finally(() => {
+                activeNewsNetworkRequests -= 1;
+                queuedNewsGotoKeys.delete(key);
+                pumpNewsNetworkQueue();
+            });
+        }
+    }
+
+    function enqueueNewsNetworkFallback(key) {
+        if (!key || gotoMap.has(key) || queuedNewsGotoKeys.has(key) || networkFallbacks.has(key)) return;
+        queuedNewsGotoKeys.add(key);
+        newsNetworkQueue.push(key);
+        pumpNewsNetworkQueue();
     }
 
     function scheduleNetworkFallback(link, key) {
@@ -670,11 +721,31 @@
         if (!isNewsCard && !isPrimaryNestedLink(link) && !link.closest(NESTED_RESULT_SELECTOR)) return;
         if (!known || (!isNewsCard && uniqueGotoCount(known) <= 1 && !link.closest(NESTED_RESULT_SELECTOR))) return;
 
+        if (IS_NEWS_TAB && isNewsCard) {
+            enqueueNewsNetworkFallback(key);
+            return;
+        }
+
         setTimeout(() => {
             if (!gotoMap.has(key) && link.isConnected) {
                 resolveGotoViaNetwork(key);
             }
         }, 120);
+    }
+
+    function installNewsPendingStyle() {
+        if (!IS_NEWS_TAB || document.querySelector('[data-ub-google-news-pending-style]')) return;
+        const style = document.createElement('style');
+        style.setAttribute('data-ub-google-news-pending-style', VERSION);
+        style.textContent = `${NEWS_CARD_SELECTOR}[${NEWS_PENDING_ATTRIBUTE}] { display: none !important; }`;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    function releaseNewsPending(root) {
+        if (!IS_NEWS_TAB || !root?.matches?.(NEWS_CARD_SELECTOR)) return;
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => root.removeAttribute(NEWS_PENDING_ATTRIBUTE));
+        });
     }
 
     function installGapCollapseStyle() {
@@ -693,13 +764,20 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         const root = rootForOpaqueLink(link);
         if (!root) return false;
         const kind = root.matches(NEWS_CARD_SELECTOR) ? 'news' : 'default';
-        return addProxyOnce(root, sourceURL, kind);
+        const added = addProxyOnce(root, sourceURL, kind);
+        if (kind === 'news' && (added || root.querySelector(PROXY_WRAPPER_SELECTOR))) {
+            releaseNewsPending(root);
+        }
+        return added;
     }
 
     function registerOpaqueLink(link) {
         if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return;
         const key = normalizeGoto(link.getAttribute('href') || link.href);
         if (!key) return;
+
+        const newsRoot = IS_NEWS_TAB ? link.closest(NEWS_CARD_SELECTOR) : null;
+        if (newsRoot) newsRoot.setAttribute(NEWS_PENDING_ATTRIBUTE, '1');
 
         const mapped = gotoMap.get(key);
         if (mapped) {
@@ -749,6 +827,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         // to uBlacklist's own mutations.
         installDirectWjdHook();
         installWjdTrampoline();
+        installNewsPendingStyle();
         installGapCollapseStyle();
 
         const observer = new MutationObserver((records) => {
