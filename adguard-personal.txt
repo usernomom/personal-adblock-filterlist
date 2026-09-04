@@ -2,7 +2,7 @@
 ! Title: Personal AdGuard Filter List
 ! Description: Personal cosmetic, scriptlet, and network filters organized by website.
 ! Homepage: https://github.com/usernomom/personal-adblock-filterlist
-! Version: 2026.09.04.2
+! Version: 2026.09.04.3
 ! Expires: 1 day
 
 ! Walmart.ca
@@ -26,7 +26,7 @@ walmart.ca#?#div.h2.relative.mv2:has(> span.dark-primary.f7:contains(Bought))
 walmart.ca#?#span[data-testid="tag-leading-badge"]:contains(Flyer feature)
 
 ! The general Walmart homepage is a discovery/engagement feed. Preserve the site header, search, cart, and fulfillment/location controls only.
-walmart.ca#?#main > span:contains(Online Shopping Canada) + div[data-testid="flex-container"]
+[$path=/^\/(en\/?)?(\?.*)?$/]walmart.ca#?#main > span:contains(Online Shopping Canada) + div[data-testid="flex-container"]
 
 ! Grocery-home merchandising modules. Keep the useful aisle/category navigation.
 walmart.ca#?#div[data-testid="HubSpokesNxM"]:has(h2:contains(Top picks, low prices!))
