@@ -1,6 +1,6 @@
 name: Personal SERPINFO Add-ons
 homepage: https://github.com/usernomom/personal-adblock-filterlist
-lastModified: 2026-09-04T13:32:58Z
+lastModified: 2026-09-04T15:36:00Z
 
 pages:
   - name: DuckDuckGo News carousel
@@ -39,23 +39,6 @@ pages:
         url: [attribute, href, ':scope > [data-ub-google-source-proxy] a[data-ub-google-source-proxy-anchor="news"]']
         props:
           title: '[role="heading"][aria-level="3"]'
-    commonProps:
-      $site: google
-      $category: web
-
-  - name: Google Visual Digest videos (mobile)
-    matches:
-      - https://www.google.com/search?*
-      - https://www.google.ca/search?*
-      - https://www.google.fr/search?*
-      - https://www.google.co.uk/search?*
-    excludeRegex: "[?&](udm|tbm)="
-    userAgent: mobile
-    delay: true
-    results:
-      - name: Visual Digest video
-        root: '[data-attrid="VisualDigestVideoResult"]'
-        url: [attribute, href, ':scope > [data-ub-google-source-proxy] a[data-ub-google-source-proxy-anchor="visual-digest-video"]']
     commonProps:
       $site: google
       $category: web
