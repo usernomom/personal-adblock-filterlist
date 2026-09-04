@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.0.3
+// @version      13.0.4
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.0.3';
+    const VERSION = '13.0.4';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
     const NEWS_NETWORK_CONCURRENCY = 4;
@@ -30,8 +30,9 @@
     const NEWS_NETWORK_RETRY_DELAY_MS = 100;
     const NEWS_NETWORK_TIMEOUT_MS = 1500;
     const NEWS_PENDING_ATTRIBUTE = 'data-ub-google-news-pending';
-    const KNOWN_ROOT_SELECTOR = '.vt6azd, .Ww4FFb, .sHEJob, [data-news-cluster-id], .eejeod';
     const NEWS_CARD_SELECTOR = '[data-news-cluster-id]';
+    const VISUAL_DIGEST_VIDEO_SELECTOR = '[data-attrid="VisualDigestVideoResult"]';
+    const KNOWN_ROOT_SELECTOR = `.vt6azd, .Ww4FFb, .sHEJob, ${NEWS_CARD_SELECTOR}, ${VISUAL_DIGEST_VIDEO_SELECTOR}, .eejeod`;
     const OPAQUE_LINK_SELECTOR = 'a[href*="/goto?"]';
     const HEADING_SELECTOR = '[role="heading"][aria-level="3"], h3, .GkAmnd';
     const NESTED_RESULT_SELECTOR = '.xYkm8c';
@@ -718,8 +719,10 @@
     function scheduleNetworkFallback(link, key) {
         const known = link.closest(KNOWN_ROOT_SELECTOR);
         const isNewsCard = Boolean(known?.matches(NEWS_CARD_SELECTOR));
-        if (!isNewsCard && !isPrimaryNestedLink(link) && !link.closest(NESTED_RESULT_SELECTOR)) return;
-        if (!known || (!isNewsCard && uniqueGotoCount(known) <= 1 && !link.closest(NESTED_RESULT_SELECTOR))) return;
+        const isVisualDigestVideo = Boolean(known?.matches(VISUAL_DIGEST_VIDEO_SELECTOR));
+        const isSingleResultCard = isNewsCard || isVisualDigestVideo;
+        if (!isSingleResultCard && !isPrimaryNestedLink(link) && !link.closest(NESTED_RESULT_SELECTOR)) return;
+        if (!known || (!isSingleResultCard && uniqueGotoCount(known) <= 1 && !link.closest(NESTED_RESULT_SELECTOR))) return;
 
         if (IS_NEWS_TAB && isNewsCard) {
             enqueueNewsNetworkFallback(key);
@@ -763,7 +766,9 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return false;
         const root = rootForOpaqueLink(link);
         if (!root) return false;
-        const kind = root.matches(NEWS_CARD_SELECTOR) ? 'news' : 'default';
+        const kind = root.matches(NEWS_CARD_SELECTOR)
+            ? 'news'
+            : (root.matches(VISUAL_DIGEST_VIDEO_SELECTOR) ? 'visual-digest-video' : 'default');
         const added = addProxyOnce(root, sourceURL, kind);
         if (kind === 'news' && (added || root.querySelector(PROXY_WRAPPER_SELECTOR))) {
             releaseNewsPending(root);
