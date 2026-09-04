@@ -2,7 +2,7 @@
 ! Title: Personal AdGuard Filter List
 ! Description: Personal cosmetic, scriptlet, and network filters organized by website.
 ! Homepage: https://github.com/usernomom/personal-adblock-filterlist
-! Version: 2026.09.04.4
+! Version: 2026.09.04.5
 ! Expires: 1 day
 
 ! Walmart.ca
@@ -53,7 +53,7 @@ walmart.ca#?#section:has(:contains(Support for your GLP-1 journey))
 walmart.ca#?#section:has(:contains(Official Brand Partner))
 
 ! Product-page recommendation carousels.
-walmart.ca##[data-testid="ip-p13n-carousel"]
+walmart.ca#?#[data-testid="ip-p13n-carousel"]:upward(1)
 
 ! Google
 google.*#?#div[role="navigation"] div[role="listitem"]:has(> a:has(span:contains(Short videos)))
