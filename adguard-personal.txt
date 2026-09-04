@@ -2,7 +2,7 @@
 ! Title: Personal AdGuard Filter List
 ! Description: Personal cosmetic, scriptlet, and network filters organized by website.
 ! Homepage: https://github.com/usernomom/personal-adblock-filterlist
-! Version: 2026.09.04.3
+! Version: 2026.09.04.4
 ! Expires: 1 day
 
 ! Walmart.ca
@@ -35,7 +35,7 @@ walmart.ca#?#section:has(h2:contains(New arrivals))
 walmart.ca#?#div[data-testid="HubSpokesNxM"]:has(h2:contains(Must-haves for less))
 walmart.ca#?#section:has(h2:contains(Weekly flyer))
 walmart.ca#?#div[data-testid="HubSpokesNxM"]:has(h2:contains(More ways to save))
-walmart.ca#?#section:has(h2:contains(Related pages))
+walmart.ca#?#h2:contains(Related pages):upward(section)
 walmart.ca#?#section:has(h2:contains(Grocery Buying Guide))
 walmart.ca#?#section:has(h2:contains(Related Links))
 walmart.ca#?#section:has(h1:contains(Terms & Conditions)):has(:contains(Fees and restrictions apply))
@@ -52,12 +52,8 @@ walmart.ca#?#section:has(h2:contains(More items to explore))
 walmart.ca#?#section:has(:contains(Support for your GLP-1 journey))
 walmart.ca#?#section:has(:contains(Official Brand Partner))
 
-! Product-page/search upsell shelves.
-walmart.ca#?#section:has(h2:contains(You may also like))
-walmart.ca#?#section:has(h2:contains(Customers also bought))
-walmart.ca#?#section:has(h2:contains(Frequently bought together))
-walmart.ca#?#section:has(h2:contains(Similar items))
-walmart.ca#?#section:has(h2:contains(More like this))
+! Product-page recommendation carousels.
+walmart.ca##[data-testid="ip-p13n-carousel"]
 
 ! Google
 google.*#?#div[role="navigation"] div[role="listitem"]:has(> a:has(span:contains(Short videos)))
