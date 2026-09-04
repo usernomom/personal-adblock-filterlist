@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.0.4
+// @version      13.0.5
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.0.4';
+    const VERSION = '13.0.5';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
     const NEWS_NETWORK_CONCURRENCY = 4;
@@ -483,7 +483,7 @@
 
     function ensureUBlacklistRoot(root) {
         if (!isElement(root)) return false;
-        if (!root.matches(KNOWN_ROOT_SELECTOR)) {
+        if (root.matches(VISUAL_DIGEST_VIDEO_SELECTOR) || !root.matches(KNOWN_ROOT_SELECTOR)) {
             root.classList.add('vt6azd');
         }
         root.setAttribute(BRIDGE_ROOT_ATTRIBUTE, '1');
