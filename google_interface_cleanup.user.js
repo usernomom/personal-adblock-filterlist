@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove non-web Google result modules using structural signals instead of UI titles.
 // @license      MIT
-// @version      140.0.2
+// @version      140.0.3
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -15,7 +15,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.2';
+    const VERSION = '140.0.3';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const stats = {
@@ -251,6 +251,18 @@
         for (const root of resultRoots()) classifyTopLevel(root);
     }
 
+    function isExplicitVerticalPage() {
+        const params = new URL(location.href).searchParams;
+        return params.has('udm') || params.has('tbm');
+    }
+
+    function restoreCleanupHides() {
+        for (const node of document.querySelectorAll('[data-google-cleanup-hidden]')) {
+            node.style.removeProperty('display');
+            delete node.dataset.googleCleanupHidden;
+        }
+    }
+
     function removeSearchSuggestions() {
         for (const node of document.querySelectorAll('form[action="/search"] > div > div[jscontroller]')) {
             node.removeAttribute('jscontroller');
@@ -279,6 +291,12 @@
     }
 
     function cleanup() {
+        if (isExplicitVerticalPage()) {
+            restoreCleanupHides();
+            removeSearchSuggestions();
+            return;
+        }
+
         structuralCleanup();
         removeSearchSuggestions();
         hideVisualDigest();
