@@ -1,0 +1,31 @@
+name: Google cleanup deterministic tests
+
+on:
+  push:
+    paths:
+      - 'google_interface_cleanup.js'
+      - 'google_interface_cleanup.user.js'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/google-cleanup-tests.yml'
+  pull_request:
+    paths:
+      - 'google_interface_cleanup.js'
+      - 'google_interface_cleanup.user.js'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/google-cleanup-tests.yml'
+
+jobs:
+  deterministic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
