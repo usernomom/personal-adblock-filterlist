@@ -3,7 +3,7 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
-const scriptPath = path.join(repoRoot, 'google_interface_cleanup.js');
+const scriptPath = path.join(repoRoot, 'google_interface_cleanup.user.js');
 const source = fs.readFileSync(scriptPath, 'utf8');
 
 function installDomCompatibility(window) {

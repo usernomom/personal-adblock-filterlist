@@ -6,11 +6,12 @@ const vm = require('node:vm');
 
 const {
     repoRoot,
+    scriptPath,
     createHarness,
 } = require('../helpers/google-cleanup-harness');
 
-const sourcePath = path.join(repoRoot, 'google_interface_cleanup.js');
-const installPath = path.join(repoRoot, 'google_interface_cleanup.user.js');
+const canonicalPath = path.join(repoRoot, 'google_interface_cleanup.user.js');
+const legacySourcePath = path.join(repoRoot, 'google_interface_cleanup.js');
 
 function read(file) {
     return fs.readFileSync(file, 'utf8');
@@ -22,18 +23,22 @@ function metadataVersion(source) {
     return match[1].trim();
 }
 
-test('.js and .user.js copies are content-identical', () => {
-    assert.equal(read(sourcePath), read(installPath));
+test('legacy plain .js copy is absent', () => {
+    assert.equal(fs.existsSync(legacySourcePath), false);
+});
+
+test('test harness executes the canonical .user.js source', () => {
+    assert.equal(scriptPath, canonicalPath);
 });
 
 test('installable userscript starts at byte 0 with the metadata sentinel', () => {
-    const bytes = fs.readFileSync(installPath);
+    const bytes = fs.readFileSync(canonicalPath);
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
 });
 
 test('metadata URLs target the canonical stable .user.js path', () => {
-    const source = read(installPath);
+    const source = read(canonicalPath);
     const expected =
         'https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js';
     assert.ok(source.includes(`// @downloadURL  ${expected}`));
@@ -41,7 +46,7 @@ test('metadata URLs target the canonical stable .user.js path', () => {
 });
 
 test('metadata version matches runtime and live-install version markers', () => {
-    const source = read(installPath);
+    const source = read(canonicalPath);
     const h = createHarness({ scriptSource: source });
     const expected = metadataVersion(source);
     const marker = h.document.getElementById('google-interface-cleanup-style');
@@ -51,8 +56,6 @@ test('metadata version matches runtime and live-install version markers', () => 
     h.close();
 });
 
-for (const file of [sourcePath, installPath]) {
-    test(`${path.basename(file)} parses as valid JavaScript`, () => {
-        assert.doesNotThrow(() => new vm.Script(read(file), { filename: file }));
-    });
-}
+test('canonical .user.js parses as valid JavaScript', () => {
+    assert.doesNotThrow(() => new vm.Script(read(canonicalPath), { filename: canonicalPath }));
+});
