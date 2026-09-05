@@ -43,12 +43,14 @@ Run the live suite with:
 npm run test:live
 ```
 
-The live runner creates one temporary Neon tab, runs five fresh Google navigations, and closes only that tab. It tests:
+The live runner creates one temporary Neon tab, runs seven fresh Google navigations, and closes only that tab. It tests:
 
 - Columbus, Ohio knowledge/entity content under an iPhone/Safari UA, including the exact `data-kpid="vise:/m/01smm"` invariant.
 - Toronto weather/entity content under the mobile UA.
 - A live People Also Ask module hidden as `question-accordion`.
 - Live video/refinement junk, including an unwanted vertical and query-refinement removal.
+- A standalone YouTube result hidden on the normal All tab as `youtube-result`.
+- A YouTube result remaining visible on the explicit Videos tab (`udm=7`), with no cleanup-hidden elements on that route.
 - A normal desktop web result that must remain visible.
 
 Every live audit checks the smallest relevant DOM element using computed style and bounding rectangles. The runner also requires the userscript's live version marker to match the local working-tree `@version`, so a stale Violentmonkey install fails instead of producing a false pass.

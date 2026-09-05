@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @description  Remove non-web Google result modules using structural signals instead of UI titles.
+// @description  Remove unwanted Google result modules and standalone YouTube results using structural signals instead of UI titles.
 // @license      MIT
-// @version      140.0.5
+// @version      140.0.6
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -15,7 +15,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.5';
+    const VERSION = '140.0.6';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const stats = {
@@ -58,10 +58,42 @@
             hostname.includes('.google.');
     }
 
+    function isYouTubeHost(hostname) {
+        return hostname === 'youtube.com' ||
+            hostname.endsWith('.youtube.com') ||
+            hostname === 'youtu.be' ||
+            hostname === 'youtube-nocookie.com' ||
+            hostname.endsWith('.youtube-nocookie.com');
+    }
+
     function linksFor(root) {
         return [...root.querySelectorAll('a[href]')]
             .map(parseURL)
             .filter(Boolean);
+    }
+
+    function resolveExternalDestination(url) {
+        if (!isGoogleHost(url.hostname)) return url;
+        if (url.pathname !== '/url' && url.pathname !== '/goto') return url;
+
+        for (const key of ['url', 'q']) {
+            const rawTarget = url.searchParams.get(key);
+            if (!rawTarget) continue;
+            try {
+                const target = new URL(rawTarget, location.href);
+                if (/^https?:$/.test(target.protocol)) return target;
+            } catch (_) {
+                // Opaque Google redirect tokens cannot be resolved client-side.
+            }
+        }
+        return url;
+    }
+
+    function hasOnlyYouTubeExternalDestinations(root) {
+        const destinations = linksFor(root)
+            .map(resolveExternalDestination)
+            .filter(url => /^https?:$/.test(url.protocol) && !isGoogleHost(url.hostname));
+        return destinations.length > 0 && destinations.every(url => isYouTubeHost(url.hostname));
     }
 
     function hasNewsRoute(root) {
@@ -214,6 +246,14 @@
                 hide(root, 'unwanted-vertical');
                 return;
             }
+        }
+
+        if (!realNews &&
+            !hasForumRoute(root) &&
+            !hasKnowledgeSemantics(root) &&
+            hasOnlyYouTubeExternalDestinations(root)) {
+            hide(root, 'youtube-result');
+            return;
         }
 
         if (!realNews &&

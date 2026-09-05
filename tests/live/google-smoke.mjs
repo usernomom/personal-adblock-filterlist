@@ -240,6 +240,41 @@ try {
   );
   await assertInstalledVersion();
 
+  const youtubeAll = await runCase(
+    client,
+    'YouTube standalone result removal on All',
+    'https://www.google.com/search?q=roborock+qrevo+edge+2+review',
+    recordExpression(`Array.from(document.querySelectorAll('[data-google-cleanup-hidden="youtube-result"]')).find(root =>
+      Array.from(root.querySelectorAll('a[href]')).some(a => {
+        try {
+          const host = new URL(a.href, location.href).hostname;
+          return host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be';
+        } catch { return false; }
+      }))`),
+    result => assertCleanupHidden(result, 'youtube-result', 'Standalone YouTube result on All'),
+  );
+  await assertInstalledVersion();
+
+  const youtubeVideos = await runCase(
+    client,
+    'YouTube result preservation on Videos tab',
+    'https://www.google.com/search?q=roborock+qrevo+edge+2+review&udm=7',
+    recordExpression(`Array.from(document.querySelectorAll('a[href]')).find(a =>
+      /YouTube/i.test(a.innerText || '') &&
+      a.getBoundingClientRect().width > 0 &&
+      a.getBoundingClientRect().height > 0 &&
+      !a.closest('[data-google-cleanup-hidden]'))`),
+    result => assertVisible(result, 'YouTube result on Videos tab'),
+  );
+  const videosCleanupHiddenCount = await evaluate(
+    client,
+    `document.querySelectorAll('[data-google-cleanup-hidden]').length`,
+  );
+  if (videosCleanupHiddenCount !== 0) {
+    fail('Explicit Videos tab should contain no cleanup-hidden elements', { videosCleanupHiddenCount });
+  }
+  await assertInstalledVersion();
+
   await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   const webResult = await runCase(
     client,
@@ -254,8 +289,16 @@ try {
   );
   await assertInstalledVersion();
 
-  console.log(`\nLive Google smoke: 5/5 passed against userscript ${expectedVersion}`);
-  console.log(JSON.stringify({ columbus, toronto, paa, junk, webResult }, null, 2));
+  console.log(`\nLive Google smoke: 7/7 passed against userscript ${expectedVersion}`);
+  console.log(JSON.stringify({
+    columbus,
+    toronto,
+    paa,
+    junk,
+    youtubeAll,
+    youtubeVideos,
+    webResult,
+  }, null, 2));
 } finally {
   if (client) client.close();
   if (target?.id) {

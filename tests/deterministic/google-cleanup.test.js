@@ -22,6 +22,10 @@ function externalLink(url = 'https://example.com/article', text = 'Example') {
     return `<a href="${url}">${text}</a>`;
 }
 
+function youtubeLink(url = 'https://www.youtube.com/watch?v=test-video', text = 'YouTube video') {
+    return `<a href="${url}">${text}</a>`;
+}
+
 function newsLink() {
     return '<a href="/search?q=topic&tbm=nws">News</a>';
 }
@@ -246,6 +250,79 @@ test('non-image unwanted vertical is removed', () => {
     h.close();
 });
 
+for (const [label, url] of [
+    ['youtube.com', 'https://www.youtube.com/watch?v=test-video'],
+    ['YouTube subdomain', 'https://m.youtube.com/watch?v=test-video'],
+    ['youtu.be', 'https://youtu.be/test-video'],
+    ['youtube-nocookie.com', 'https://www.youtube-nocookie.com/embed/test-video'],
+]) {
+    test(`standalone ${label} result is removed from the All tab`, () => {
+        const h = createHarness({
+            html: withRoot(youtubeLink(url)),
+        });
+        assertHidden(h.document, 'root', 'youtube-result');
+        assert.equal(h.api.stats.reasons['youtube-result'], 1);
+        h.close();
+    });
+}
+
+for (const [label, path] of [
+    ['Google /url?url= wrapper', '/url?url='],
+    ['Google /url?q= wrapper', '/url?q='],
+    ['Google /goto?url= wrapper', '/goto?url='],
+]) {
+    test(`${label} to YouTube is removed from the All tab`, () => {
+        const target = encodeURIComponent('https://www.youtube.com/watch?v=test-video');
+        const h = createHarness({
+            html: withRoot(`<a href="${path}${target}">Wrapped YouTube result</a>`),
+        });
+        assertHidden(h.document, 'root', 'youtube-result');
+        h.close();
+    });
+}
+
+test('realistic YouTube result with an opaque Google tracking link is removed', () => {
+    const h = createHarness({
+        html: withRoot(
+            youtubeLink('https://www.youtube.com/watch?v=Ddu89kmaeTk', 'YouTube · Vacuum Wars') +
+            '<a href="/goto?url=CAESYwOpaqueGoogleToken">tracking</a>',
+        ),
+    });
+    assertHidden(h.document, 'root', 'youtube-result');
+    h.close();
+});
+
+test('mixed external content is preserved when YouTube is only one destination', () => {
+    const h = createHarness({
+        html: withRoot(
+            youtubeLink() +
+            externalLink('https://example.com/article', 'Independent article'),
+        ),
+    });
+    assertPreserved(h.document, 'root');
+    h.close();
+});
+
+test('knowledge/entity content is preserved even when its only external destination is YouTube', () => {
+    const h = createHarness({
+        html: withRoot(
+            `<div data-kpid="vise:/m/entity">Entity</div>${youtubeLink()}`,
+        ),
+    });
+    assertPreserved(h.document, 'root');
+    h.close();
+});
+
+test('YouTube results are preserved on the explicit Videos tab', () => {
+    const h = createHarness({
+        url: 'https://www.google.com/search?q=roborock&udm=7',
+        html: withRoot(youtubeLink()),
+    });
+    assertPreserved(h.document, 'root');
+    assert.equal(h.api.stats.scans, 0);
+    h.close();
+});
+
 test('query refinement is removed when it has only Google query links', () => {
     const h = createHarness({
         html: withRoot(queryLink('alpha') + queryLink('beta')),
@@ -437,17 +514,19 @@ test('reason accounting is exact across mixed cleanup branches', () => {
             '<div id="social"><div data-attrid="social media presence">Profiles</div></div>' +
             '<div id="products"><product-viewer-group>Products</product-viewer-group></div>' +
             `<div id="queries">${queryLink('a')}${queryLink('b')}</div>` +
+            `<div id="youtube">${youtubeLink()}</div>` +
             '<div id="digest"><div data-attrid="VisualDigestWebResult">Digest</div></div>' +
             '</div>',
     });
     assert.deepEqual(JSON.parse(JSON.stringify(h.api.stats)), {
         scans: 1,
-        hidden: 5,
+        hidden: 6,
         reasons: {
             'recipe-cluster': 1,
             'social-profiles': 1,
             products: 1,
             'query-refinement': 1,
+            'youtube-result': 1,
             'visual-digest': 1,
         },
     });
