@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove non-web Google result modules using structural signals instead of UI titles.
 // @license      MIT
-// @version      140.0.4
+// @version      140.0.5
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -15,7 +15,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.4';
+    const VERSION = '140.0.5';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const stats = {
@@ -25,6 +25,8 @@
     };
 
     const hiddenStyle = document.createElement('style');
+    hiddenStyle.id = 'google-interface-cleanup-style';
+    hiddenStyle.dataset.googleCleanupVersion = VERSION;
     hiddenStyle.textContent = '[data-google-cleanup-hidden] { display: none !important; }';
     (document.head || document.documentElement).appendChild(hiddenStyle);
 

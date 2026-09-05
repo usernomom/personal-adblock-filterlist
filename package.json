@@ -1,0 +1,14 @@
+{
+  "name": "personal-adblock-filterlist-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Regression tests for personal userscripts and filter rules.",
+  "scripts": {
+    "test": "node --test --test-reporter=spec tests/deterministic/*.test.js",
+    "test:live": "node tests/live/google-smoke.mjs",
+    "serve:google-userscript": "node tests/live/serve-userscript.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1"
+  }
+}
