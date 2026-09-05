@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove non-web Google result modules using structural signals instead of UI titles.
 // @license      MIT
-// @version      140.0.3
+// @version      140.0.4
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -15,7 +15,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.3';
+    const VERSION = '140.0.4';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const stats = {
@@ -92,13 +92,16 @@
     }
 
     function hasKnowledgeSemantics(root) {
-        return Boolean(root.querySelector([
+        const selector = [
+            '.kp-wholepage',
+            '[data-kpid]',
             '[data-mcpr]',
             '[data-attrid="title"]',
             '[data-attrid="subtitle"]',
             '[data-attrid^="kc:"]',
             '[data-attrid^="lab/fact/"]',
-        ].join(',')));
+        ].join(',');
+        return root.matches?.(selector) || Boolean(root.querySelector(selector));
     }
 
     function hasProtectedImageSemantics(root) {
@@ -136,8 +139,7 @@
     function hideGenericSections(root) {
         const rootText = visibleText(root);
         for (const section of root.querySelectorAll('g-section-with-header')) {
-            if (hasNewsRoute(section) || hasForumRoute(section)) continue;
-            if (section.querySelector('[data-mcpr], [data-attrid^="kc:"]')) continue;
+            if (hasNewsRoute(section) || hasForumRoute(section) || hasKnowledgeSemantics(section)) continue;
 
             const sectionText = visibleText(section);
             if (sectionText && sectionText === rootText) {
