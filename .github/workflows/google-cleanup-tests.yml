@@ -3,7 +3,6 @@ name: Google cleanup deterministic tests
 on:
   push:
     paths:
-      - 'google_interface_cleanup.js'
       - 'google_interface_cleanup.user.js'
       - 'tests/**'
       - 'package.json'
@@ -11,7 +10,6 @@ on:
       - '.github/workflows/google-cleanup-tests.yml'
   pull_request:
     paths:
-      - 'google_interface_cleanup.js'
       - 'google_interface_cleanup.user.js'
       - 'tests/**'
       - 'package.json'
