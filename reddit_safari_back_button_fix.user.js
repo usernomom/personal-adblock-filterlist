@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.3.7-macaque-clean
+// @version      1.3.8-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.3.7-macaque-clean';
+    const STATE_VERSION = '1.3.8-macaque-clean';
 
     const CONFIG = Object.freeze({
         minMsBetweenActions: 1200,
@@ -32,6 +32,8 @@
         pendingTarget: '__reddit_backfix_pending_target__',
         armedTarget: '__reddit_backfix_armed_target__',
         stateVersion: '__reddit_backfix_state_version__',
+        externalEntryOrigin: '__reddit_backfix_external_entry_origin__',
+        externalAutoBackTarget: '__reddit_backfix_external_auto_back_target__',
     });
 
     const CHALLENGE_PARAMS = Object.freeze([
@@ -332,12 +334,35 @@
         ssSetString(KEYS.lastTrapUrl, '');
         ssSetString(KEYS.pendingTarget, '');
         ssSetString(KEYS.armedTarget, '');
+        ssSetString(KEYS.externalEntryOrigin, '');
+        ssSetString(KEYS.externalAutoBackTarget, '');
         ssSetString(KEYS.stateVersion, STATE_VERSION);
     }
 
     const initialHref = location.href;
     const initialHadChallenge = hasChallengeParams(initialHref);
     const initialTarget = targetKey(initialHref);
+
+    const initialReferrerOrigin = originOf(document.referrer);
+    let initialExternalReferrer = false;
+    try {
+        const referrerUrl = new URL(document.referrer);
+        initialExternalReferrer =
+            (referrerUrl.protocol === 'https:' || referrerUrl.protocol === 'http:') &&
+            !isRedditHost(referrerUrl.hostname);
+    } catch (_) {
+        initialExternalReferrer = false;
+    }
+
+    if (!initialHadChallenge && initialExternalReferrer) {
+        ssSetString(KEYS.externalEntryOrigin, initialReferrerOrigin);
+        log('external-entry-recorded', {
+            origin: initialReferrerOrigin,
+            target: initialTarget,
+            href: location.href,
+            historyLength: history.length,
+        });
+    }
 
     function runTrapCheck(trigger, { persisted = false, traversalHint = false } = {}) {
         const navigationType = navType();
@@ -347,6 +372,8 @@
         const normalRedditSeen = ssGetString(KEYS.normalRedditSeen, '');
         const pendingTarget = ssGetString(KEYS.pendingTarget, '');
         const armedTarget = ssGetString(KEYS.armedTarget, '');
+        const externalEntryOrigin = ssGetString(KEYS.externalEntryOrigin, '');
+        const externalAutoBackTarget = ssGetString(KEYS.externalAutoBackTarget, '');
         const underActionCap = actionCount < CONFIG.maxActionsPerTab;
         const outsideThrottle = lastActionAt === 0 || now - lastActionAt >= CONFIG.minMsBetweenActions;
         const shortHistory = history.length <= 2;
@@ -382,6 +409,8 @@
             normalRedditSeen,
             pendingTarget,
             armedTarget,
+            externalEntryOrigin,
+            externalAutoBackTarget,
             underActionCap,
             outsideThrottle,
             shortHistory,
@@ -422,6 +451,23 @@
             return;
         }
 
+        if (
+            legacyShortHistoryTrap &&
+            externalAutoBackTarget !== '' &&
+            currentTarget === externalAutoBackTarget
+        ) {
+            // An externally opened tab already traversed itself back from Reddit's
+            // challenge entry to the clean first entry. Do not bounce it forward;
+            // the next Safari Back press can now perform Safari's native close-tab
+            // and return-to-parent behavior.
+            ssSetString(KEYS.externalAutoBackTarget, '');
+            log('external-auto-back-arrived', {
+                currentTarget,
+                externalEntryOrigin,
+                historyLength: history.length,
+            });
+            return;
+        }
         if (legacyShortHistoryTrap) {
             // This is the exact state observed after pressing Safari Back on iOS
             // 26.6.1: a clean Reddit URL, navType=back_forward, history.length=2.
@@ -439,7 +485,16 @@
                 currentTarget,
                 href: location.href,
                 historyLength: history.length,
+                externalEntryOrigin,
             });
+
+            // Safari's Navigation API shows Reddit pushing this challenge as entry 1
+            // on top of the clean entry 0. If the clean entry originally came from
+            // another site (for example Google opened in a new tab), move back to
+            // entry 0 after pageshow and suppress the normal short-history bounce.
+            if (externalEntryOrigin !== '' && shortHistory) {
+                ssSetString(KEYS.externalAutoBackTarget, currentTarget);
+            }
             return;
         }
 
@@ -484,7 +539,33 @@
                 persisted: Boolean(event.persisted),
                 context: pageContextSnapshot(),
             });
-            if (!event.persisted) return;
+            if (!event.persisted) {
+                const externalAutoBackTarget = ssGetString(KEYS.externalAutoBackTarget, '');
+                if (
+                    externalAutoBackTarget !== '' &&
+                    hasChallengeParams(location.href) &&
+                    targetKey(location.href) === externalAutoBackTarget
+                ) {
+                    log('external-challenge-auto-back', {
+                        target: externalAutoBackTarget,
+                        href: location.href,
+                        context: pageContextSnapshot(),
+                    });
+                    setTimeout(() => {
+                        try {
+                            history.back();
+                            log('external-challenge-history-back', {
+                                target: externalAutoBackTarget,
+                            });
+                        } catch (error) {
+                            log('external-challenge-history-back-failed', {
+                                error: String(error),
+                            });
+                        }
+                    }, CONFIG.historyFallbackDelayMs);
+                }
+                return;
+            }
             runTrapCheck('pageshow', { persisted: true });
         },
         true,
