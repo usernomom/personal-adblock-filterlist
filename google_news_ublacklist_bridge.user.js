@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.0.5
+// @version      13.1.0
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.0.5';
+    const VERSION = '13.1.0';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
     const NEWS_NETWORK_CONCURRENCY = 4;
@@ -39,6 +39,13 @@
     const COLLAPSIBLE_SLOT_SELECTOR = '.Rb7Fnd, .dRzkFf';
     const PROXY_WRAPPER_SELECTOR = ':scope > [data-ub-google-source-proxy]';
     const BRIDGE_ROOT_ATTRIBUTE = 'data-ub-google-bridge-root';
+    const FILTER_PENDING_ATTRIBUTE = 'data-ub-google-filter-pending';
+    const FILTER_READY_ATTRIBUTE = 'data-ub-google-filter-ready';
+    const FILTER_STYLE_ATTRIBUTE = 'data-ub-google-filter-shield-style';
+    const UBLACKLIST_RESULT_ATTRIBUTE = 'data-ub-result';
+    const UBLACKLIST_BLOCK_ATTRIBUTE = 'data-ub-block';
+    const FILTER_FAIL_OPEN_MS = 6000;
+    const FILTER_CLASSIFICATION_FAIL_OPEN_MS = 6000;
 
     const gotoMap = new Map();
     const pendingByGoto = new Map();
@@ -48,12 +55,18 @@
     let activeNewsNetworkRequests = 0;
     const scannedScripts = new WeakSet();
     const scannedComments = new WeakSet();
+    const filterStates = new WeakMap();
+    const shieldedRoots = new Set();
+    let filterClassificationObserver = null;
     const stats = {
         proxyAdds: 0,
         observerCallbacks: 0,
         observedAddedNodes: 0,
         networkFallbacks: 0,
         networkFallbackFailures: 0,
+        filterShields: 0,
+        filterReleases: 0,
+        filterFailOpenReleases: 0,
     };
 
     function isElement(node) {
@@ -481,6 +494,160 @@
         } catch (_) {}
     }
 
+    function installFilterShieldStyle() {
+        if (document.querySelector(`[${FILTER_STYLE_ATTRIBUTE}]`)) return;
+        const style = document.createElement('style');
+        style.setAttribute(FILTER_STYLE_ATTRIBUTE, VERSION);
+        const opaqueRoot =
+            `:is(${KNOWN_ROOT_SELECTOR}):has(${OPAQUE_LINK_SELECTOR}):not([${FILTER_READY_ATTRIBUTE}])`;
+        const pendingRoot =
+            `[${FILTER_PENDING_ATTRIBUTE}]:not([${FILTER_READY_ATTRIBUTE}])`;
+        style.textContent = `
+${opaqueRoot},
+${opaqueRoot} *,
+${pendingRoot},
+${pendingRoot} * {
+    visibility: hidden !important;
+}`;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    function releaseFilterShield(root, reason = 'classified') {
+        if (!isElement(root)) return false;
+        const wasPending =
+            root.hasAttribute(FILTER_PENDING_ATTRIBUTE) || shieldedRoots.has(root);
+        if (!wasPending) return false;
+
+        const state = filterStates.get(root);
+        if (state?.timer) {
+            clearTimeout(state.timer);
+            state.timer = 0;
+        }
+        root.setAttribute(FILTER_READY_ATTRIBUTE, '1');
+        root.removeAttribute(FILTER_PENDING_ATTRIBUTE);
+        shieldedRoots.delete(root);
+        stats.filterReleases += 1;
+        if (reason === 'timeout') stats.filterFailOpenReleases += 1;
+        return true;
+    }
+
+    function armFilterShield(root) {
+        if (!isElement(root)) return null;
+        if (root.hasAttribute(FILTER_PENDING_ATTRIBUTE)) return root;
+        if (
+            root.hasAttribute(FILTER_READY_ATTRIBUTE) &&
+            root.querySelector(PROXY_WRAPPER_SELECTOR)
+        ) {
+            return root;
+        }
+
+        root.removeAttribute(FILTER_READY_ATTRIBUTE);
+        root.setAttribute(FILTER_PENDING_ATTRIBUTE, '1');
+        shieldedRoots.add(root);
+        stats.filterShields += 1;
+
+        let state = filterStates.get(root);
+        if (!state) {
+            state = { generation: 0, proxyReady: false, timer: 0 };
+            filterStates.set(root, state);
+        }
+        state.generation += 1;
+        state.proxyReady = false;
+        if (state.timer) clearTimeout(state.timer);
+        const generation = state.generation;
+        state.timer = setTimeout(() => {
+            const current = filterStates.get(root);
+            if (!current || current.generation !== generation) return;
+            releaseFilterShield(root, 'timeout');
+        }, FILTER_FAIL_OPEN_MS);
+        return root;
+    }
+
+    function armFilterShieldForLink(link) {
+        if (!isElement(link)) return null;
+        const known = link.closest(KNOWN_ROOT_SELECTOR);
+        const root = rootForOpaqueLink(link);
+        if (!root) return null;
+
+        if (known && known !== root) {
+            if (!releaseFilterShield(known, 'split-root')) {
+                known.setAttribute(FILTER_READY_ATTRIBUTE, '1');
+            }
+            for (const opaque of known.querySelectorAll(OPAQUE_LINK_SELECTOR)) {
+                const childRoot = rootForOpaqueLink(opaque);
+                if (childRoot && childRoot !== known) armFilterShield(childRoot);
+            }
+        } else {
+            armFilterShield(root);
+        }
+        return root;
+    }
+
+    function noteFilterProxyReady(root) {
+        const state = filterStates.get(root);
+        if (!state || !root.hasAttribute(FILTER_PENDING_ATTRIBUTE)) return;
+        state.proxyReady = true;
+        const generation = state.generation;
+        if (state.timer) clearTimeout(state.timer);
+        state.timer = setTimeout(() => {
+            const current = filterStates.get(root);
+            if (
+                !current ||
+                current.generation !== generation ||
+                !current.proxyReady
+            ) {
+                return;
+            }
+            releaseFilterShield(root, 'timeout');
+        }, FILTER_CLASSIFICATION_FAIL_OPEN_MS);
+
+        // If uBlacklist had already classified the original opaque result, its
+        // proxy mutation may not need to change the final URL. Give its
+        // requestAnimationFrame mutation batch two frames to settle, then
+        // release only if the result is still classified.
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const current = filterStates.get(root);
+                if (
+                    current !== state ||
+                    current.generation !== generation ||
+                    !current.proxyReady ||
+                    !root.hasAttribute(UBLACKLIST_RESULT_ATTRIBUTE)
+                ) {
+                    return;
+                }
+                releaseFilterShield(root, 'settled-frame');
+            });
+        });
+    }
+
+    function installFilterClassificationObserver() {
+        if (filterClassificationObserver || !document.documentElement) return;
+        filterClassificationObserver = new MutationObserver((records) => {
+            for (const record of records) {
+                const root = record.target;
+                if (!isElement(root)) continue;
+                const state = filterStates.get(root);
+                if (
+                    !state?.proxyReady ||
+                    !root.hasAttribute(FILTER_PENDING_ATTRIBUTE) ||
+                    !root.hasAttribute(UBLACKLIST_RESULT_ATTRIBUTE)
+                ) {
+                    continue;
+                }
+                releaseFilterShield(root, 'classified');
+            }
+        });
+        filterClassificationObserver.observe(document.documentElement, {
+            attributes: true,
+            subtree: true,
+            attributeFilter: [
+                UBLACKLIST_RESULT_ATTRIBUTE,
+                UBLACKLIST_BLOCK_ATTRIBUTE,
+            ],
+        });
+    }
+
     function ensureUBlacklistRoot(root) {
         if (!isElement(root)) return false;
         if (root.matches(VISUAL_DIGEST_VIDEO_SELECTOR) || !root.matches(KNOWN_ROOT_SELECTOR)) {
@@ -766,10 +933,14 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return false;
         const root = rootForOpaqueLink(link);
         if (!root) return false;
+        armFilterShield(root);
         const kind = root.matches(NEWS_CARD_SELECTOR)
             ? 'news'
             : (root.matches(VISUAL_DIGEST_VIDEO_SELECTOR) ? 'visual-digest-video' : 'default');
         const added = addProxyOnce(root, sourceURL, kind);
+        if (added || root.querySelector(PROXY_WRAPPER_SELECTOR)) {
+            noteFilterProxyReady(root);
+        }
         if (kind === 'news' && (added || root.querySelector(PROXY_WRAPPER_SELECTOR))) {
             releaseNewsPending(root);
         }
@@ -780,6 +951,8 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return;
         const key = normalizeGoto(link.getAttribute('href') || link.href);
         if (!key) return;
+
+        armFilterShieldForLink(link);
 
         const newsRoot = IS_NEWS_TAB ? link.closest(NEWS_CARD_SELECTOR) : null;
         if (newsRoot) newsRoot.setAttribute(NEWS_PENDING_ATTRIBUTE, '1');
@@ -811,6 +984,16 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         document.documentElement?.setAttribute('data-ub-google-bridge-version', VERSION);
     }
 
+    function pruneFilterShields() {
+        for (const root of [...shieldedRoots]) {
+            if (root.isConnected) continue;
+            const state = filterStates.get(root);
+            if (state?.timer) clearTimeout(state.timer);
+            filterStates.delete(root);
+            shieldedRoots.delete(root);
+        }
+    }
+
     function prunePendingLinks() {
         for (const [key, links] of pendingByGoto) {
             for (const link of links) {
@@ -820,6 +1003,8 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         }
     }
     function start() {
+        installFilterShieldStyle();
+        installFilterClassificationObserver();
         window.addEventListener(WJD_EVENT, (event) => {
             try {
                 const detail = typeof event.detail === 'string' ? JSON.parse(event.detail) : event.detail;
@@ -827,9 +1012,9 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             } catch (_) {}
         });
 
-        // Capture Google's result metadata, but keep uBlacklist integration
-        // strictly one-way: the bridge never rewrites result hrefs or reacts
-        // to uBlacklist's own mutations.
+        // Capture Google's result metadata without rewriting result hrefs.
+        // The anti-flash shield separately watches only uBlacklist's result/block
+        // markers so a hidden card is revealed only after classification.
         installDirectWjdHook();
         installWjdTrampoline();
         installNewsPendingStyle();
@@ -853,6 +1038,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
                 }
             }
             prunePendingLinks();
+            pruneFilterShields();
         });
 
         observer.observe(document.documentElement, {
@@ -874,6 +1060,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             return count;
         },
         get stats() { return { ...stats }; },
+        get shieldedCount() { return shieldedRoots.size; },
         resolveGoto(value) { return gotoMap.get(normalizeGoto(value)) || ''; },
     };
     if (document.documentElement) start();

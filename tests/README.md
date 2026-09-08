@@ -11,7 +11,7 @@ npm ci
 npm test
 ```
 
-The deterministic tests execute the canonical `google_interface_cleanup.user.js` userscript in jsdom. They cover cleanup classifications, preservation invariants, reason accounting, repeated runs, async result roots, explicit vertical-page behavior, userscript packaging/version consistency, canonical-source integrity, and JavaScript syntax.
+The deterministic tests execute the canonical `google_interface_cleanup.user.js` and `google_news_ublacklist_bridge.user.js` userscripts in jsdom. They cover cleanup classifications, preservation invariants, reason accounting, repeated runs, async result roots, explicit vertical-page behavior, userscript packaging/version consistency, canonical-source integrity, JavaScript syntax, and the bridge's pre-paint shield / uBlacklist-classification handshake for opaque Google `/goto` results.
 
 Fixtures deliberately use stable structural/semantic signals instead of transient Google CSS class names. `tests/fixtures/columbus-data-kpid.html` reproduces the `data-kpid="vise:/m/01smm"` regression that prompted this suite.
 
