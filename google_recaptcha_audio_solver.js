@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Solves reCAPTCHA audio challenges on Google Search unusual-traffic pages and Reddit, with iOS-safe submission, diagnostics, bounded retries, and transcriber failover.
 // @license      MIT
-// @version      7
+// @version      8
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_recaptcha_audio_solver.js
 // @match        https://*.google.com/sorry/*
 // @match        https://*.google.ca/sorry/*
@@ -35,7 +35,7 @@
     const SOURCE_TIMEOUT = 15000;
     const QUICK_SUBMIT_CHECK = 1400;
     const VERIFY_TIMEOUT = 9000;
-    const MAX_REJECTIONS = 2;
+    const MAX_REJECTIONS = 5;
     const MAX_NO_RECOGNITION_RETRIES = 1;
     const SERVERS = [
         'https://engageub.pythonanywhere.com',
