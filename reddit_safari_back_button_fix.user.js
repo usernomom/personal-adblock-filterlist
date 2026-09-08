@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.3.8-macaque-clean
+// @version      1.3.9-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.3.8-macaque-clean';
+    const STATE_VERSION = '1.3.9-macaque-clean';
 
     const CONFIG = Object.freeze({
         minMsBetweenActions: 1200,
@@ -439,6 +439,13 @@
 
         // A true traversal into a challenge is also a trap even if the arm state
         // was lost (for example after an upgrade while the tab stayed open).
+        let openerLinked = false;
+        try {
+            openerLinked = window.opener != null;
+        } catch (_) {
+            openerLinked = false;
+        }
+
         if (challengeTraversal) {
             actOnTrap(
                 persisted
@@ -453,6 +460,7 @@
 
         if (
             legacyShortHistoryTrap &&
+            !openerLinked &&
             externalAutoBackTarget !== '' &&
             currentTarget === externalAutoBackTarget
         ) {
@@ -468,6 +476,20 @@
             });
             return;
         }
+        if (legacyShortHistoryTrap && openerLinked) {
+            ssSetString(KEYS.externalAutoBackTarget, '');
+            log('opener-short-history-close', {
+                currentTarget,
+                historyLength: history.length,
+            });
+            try {
+                window.close();
+            } catch (error) {
+                log('opener-short-history-close-failed', { error: String(error) });
+            }
+            return;
+        }
+
         if (legacyShortHistoryTrap) {
             // This is the exact state observed after pressing Safari Back on iOS
             // 26.6.1: a clean Reddit URL, navType=back_forward, history.length=2.
