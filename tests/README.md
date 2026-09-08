@@ -13,7 +13,7 @@ npm test
 
 The deterministic tests execute the canonical `google_interface_cleanup.user.js` and `google_news_ublacklist_bridge.user.js` userscripts in jsdom. They cover cleanup classifications, preservation invariants, reason accounting, repeated runs, async result roots, explicit vertical-page behavior, userscript packaging/version consistency, canonical-source integrity, JavaScript syntax, and the bridge's real-destination proxying for opaque Google `/goto` results. The bridge regression also asserts that ordinary results are not held behind any global anti-flash gate; uBlacklist may therefore briefly show a soon-to-be-blocked result while it classifies the injected proxy URL.
 
-The deterministic suite also executes `reddit_safari_back_button_fix.user.js` and covers initial-load challenge scrubbing, the current `jsc_token` parameter, duplicate/legacy challenge parameters, unrelated-query preservation, and client-side history writes.
+The deterministic suite also executes `reddit_safari_back_button_fix.user.js` and covers the Safari/Macaque `back_forward` + short-history trap guard, `window.close()` then `history.forward()` fallback sequence, 1200 ms throttle, four-action cap, one-time stale-session reset on upgrade, and challenge cleanup including the current `jsc_token` parameter.
 
 Fixtures deliberately use stable structural/semantic signals instead of transient Google CSS class names. `tests/fixtures/columbus-data-kpid.html` reproduces the `data-kpid="vise:/m/01smm"` regression that prompted this suite.
 

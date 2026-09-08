@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.3.2-macaque-clean
-// @description  Prevent Reddit JavaScript challenge URLs from trapping Safari's Back button.
+// @version      1.3.3-macaque-clean
+// @description  Escape Reddit back/forward history traps in Safari, including current JS-challenge URLs.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
 // @run-at       document-start
@@ -15,6 +15,24 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
+    const STATE_VERSION = '1.3.3-macaque-clean';
+
+    const CONFIG = Object.freeze({
+        minMsBetweenActions: 1200,
+        maxActionsPerTab: 4,
+        closeFallbackDelayMs: 350,
+        closeBlockedFallback: 'forward',
+        forwardDelayMs: 80,
+    });
+
+    const KEYS = Object.freeze({
+        actionCount: '__reddit_backfix_action_count__',
+        lastActionAt: '__reddit_backfix_last_action_at__',
+        normalRedditSeen: '__reddit_backfix_normal_reddit_seen__',
+        lastTrapUrl: '__reddit_backfix_last_trap_url__',
+        stateVersion: '__reddit_backfix_state_version__',
+    });
+
     const CHALLENGE_PARAMS = Object.freeze([
         'solution',
         'js_challenge',
@@ -23,90 +41,189 @@
         'jsc_orig_r',
     ]);
 
+    function log(event, details = {}) {
+        try {
+            if (typeof GM !== 'undefined' && GM && typeof GM.log === 'function') {
+                GM.log(TAG, event, details);
+            }
+        } catch (_) {
+            // Diagnostics must never affect navigation.
+        }
+    }
+
+    function ssGetString(key, fallback = '') {
+        try {
+            const value = sessionStorage.getItem(key);
+            return value == null ? fallback : value;
+        } catch (_) {
+            return fallback;
+        }
+    }
+
+    function ssSetString(key, value) {
+        try {
+            sessionStorage.setItem(key, String(value));
+        } catch (_) {
+            // Storage failures are non-fatal.
+        }
+    }
+
+    function ssGetNumber(key, fallback = 0) {
+        const value = Number(ssGetString(key, ''));
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    function ssSetNumber(key, value) {
+        ssSetString(key, Number(value));
+    }
+
     function isRedditHost(hostname) {
         const host = String(hostname || '').toLowerCase();
         return host === 'reddit.com' || host.endsWith('.reddit.com');
     }
 
-    function log(...parts) {
+    function isTopWindow() {
         try {
-            if (typeof GM !== 'undefined' && GM && typeof GM.log === 'function') {
-                GM.log(TAG, ...parts);
-                return;
-            }
+            return window.top === window.self;
         } catch (_) {
-            // Ignore userscript-manager logging failures.
-        }
-
-        try {
-            if (typeof GM_log === 'function') GM_log([TAG, ...parts].join(' '));
-        } catch (_) {
-            // Logging must never affect navigation.
+            return false;
         }
     }
 
-    function cleanRedditUrl(rawUrl, baseUrl = location.href) {
+    function navType() {
         try {
-            const url = new URL(String(rawUrl), baseUrl);
-            if (!isRedditHost(url.hostname)) return rawUrl;
+            const entry = performance.getEntriesByType('navigation')[0];
+            return entry && typeof entry.type === 'string' ? entry.type : '';
+        } catch (_) {
+            return '';
+        }
+    }
 
-            let changed = false;
+    function cleanUrl(rawUrl) {
+        try {
+            const url = new URL(String(rawUrl), location.href);
+            if (!isRedditHost(url.hostname)) return String(rawUrl);
+
             for (const name of CHALLENGE_PARAMS) {
-                if (!url.searchParams.has(name)) continue;
                 url.searchParams.delete(name);
-                changed = true;
             }
-
-            if (!changed) return rawUrl;
 
             if (url.origin === location.origin) {
                 return `${url.pathname}${url.search}${url.hash}`;
             }
             return url.href;
         } catch (_) {
-            return rawUrl;
+            return String(rawUrl);
         }
     }
 
-    function scrubCurrentUrl(reason) {
-        const before = location.href;
-        const cleaned = cleanRedditUrl(before);
-        const currentRelative = `${location.pathname}${location.search}${location.hash}`;
-        if (cleaned === before || cleaned === currentRelative) return false;
+    function handleCloseBlocked(reason) {
+        log('still-open-after-window-close', {
+            reason,
+            fallback: CONFIG.closeBlockedFallback,
+            href: location.href,
+        });
+
+        if (CONFIG.closeBlockedFallback === 'stay') return;
+
+        if (CONFIG.closeBlockedFallback === 'aboutblank') {
+            try {
+                location.replace('about:blank');
+            } catch (error) {
+                log('aboutblank-failed', { error: String(error) });
+            }
+            return;
+        }
+
+        setTimeout(() => {
+            try {
+                history.forward();
+                log('history-forward', { reason });
+            } catch (error) {
+                log('history-forward-failed', { error: String(error) });
+            }
+        }, CONFIG.forwardDelayMs);
+    }
+
+    function actOnTrap(reason) {
+        const now = Date.now();
+        const nextCount = ssGetNumber(KEYS.actionCount, 0) + 1;
+        const cleaned = cleanUrl(location.href);
+
+        ssSetNumber(KEYS.actionCount, nextCount);
+        ssSetNumber(KEYS.lastActionAt, now);
+        ssSetString(KEYS.lastTrapUrl, location.href);
+
+        log('trap-action', {
+            reason,
+            count: nextCount,
+            before: location.href,
+            cleaned,
+        });
 
         try {
             history.replaceState(history.state, '', cleaned);
-            log('scrubbed challenge URL', reason, cleaned);
-            return true;
         } catch (error) {
-            log('replaceState failed', reason, String(error));
-            return false;
+            log('replaceState-failed', { error: String(error) });
         }
+
+        try {
+            window.close();
+        } catch (error) {
+            log('window-close-failed', { error: String(error) });
+        }
+
+        // Safari normally blocks window.close() for a tab it did not open via script.
+        // The known-working Macaque strategy therefore always schedules the fallback.
+        setTimeout(() => {
+            handleCloseBlocked(reason);
+        }, CONFIG.closeFallbackDelayMs);
     }
 
-    function wrapHistoryMethod(name) {
-        const original = history[name];
-        if (typeof original !== 'function') return;
+    if (!isTopWindow() || !isRedditHost(location.hostname)) return;
 
-        history[name] = function patchedHistoryMethod(state, title, url) {
-            if (url == null) return original.apply(this, arguments);
-            const cleaned = cleanRedditUrl(url, location.href);
-            return original.call(this, state, title, cleaned);
-        };
+    // A Safari tab can survive userscript upgrades for months. Reset only the
+    // bounded-action bookkeeping when this script version first runs in the tab,
+    // so stale counters from an older build cannot disable the repaired logic.
+    if (ssGetString(KEYS.stateVersion, '') !== STATE_VERSION) {
+        ssSetNumber(KEYS.actionCount, 0);
+        ssSetNumber(KEYS.lastActionAt, 0);
+        ssSetString(KEYS.lastTrapUrl, '');
+        ssSetString(KEYS.normalRedditSeen, '');
+        ssSetString(KEYS.stateVersion, STATE_VERSION);
     }
 
-    // Server-side JS-challenge navigations create a new document. Replacing that
-    // entry at document-start prevents the challenge URL from becoming the Safari
-    // Back destination while preserving the actual Reddit destination.
-    scrubCurrentUrl('document-start');
+    const navigationType = navType();
+    const now = Date.now();
+    const actionCount = ssGetNumber(KEYS.actionCount, 0);
+    const lastActionAt = ssGetNumber(KEYS.lastActionAt, 0);
+    const normalRedditSeen = ssGetString(KEYS.normalRedditSeen, '');
+    const underActionCap = actionCount < CONFIG.maxActionsPerTab;
+    const outsideThrottle = lastActionAt === 0 || now - lastActionAt >= CONFIG.minMsBetweenActions;
+    const shortHistory = history.length <= 2;
+    const isBackForward = navigationType === 'back_forward';
 
-    // Reddit also mutates history client-side. Sanitize those writes before they
-    // can create another challenge-flavoured entry.
-    wrapHistoryMethod('pushState');
-    wrapHistoryMethod('replaceState');
+    if (!isBackForward) {
+        ssSetString(KEYS.normalRedditSeen, cleanUrl(location.href));
+    }
 
-    const rescrub = event => scrubCurrentUrl(event.type);
-    addEventListener('pageshow', rescrub, true);
-    addEventListener('popstate', rescrub, true);
-    addEventListener('hashchange', rescrub, true);
+    log('trap-check', {
+        href: location.href,
+        navigationType,
+        historyLength: history.length,
+        actionCount,
+        lastActionAt,
+        normalRedditSeen,
+        underActionCap,
+        outsideThrottle,
+        shortHistory,
+        isBackForward,
+    });
+
+    // This is the core Safari/Macaque behavior from the previously working build.
+    // Challenge parameters are deliberately NOT required: Safari's poisoned entry
+    // can restore as an apparently normal Reddit URL while still trapping Back.
+    if (isBackForward && shortHistory && underActionCap && outsideThrottle) {
+        actOnTrap('back_forward-short-history');
+    }
 })();

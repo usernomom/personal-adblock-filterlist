@@ -1,6 +1,6 @@
 # personal-adblock-filterlist
 
 Personal browser cleanup rules and userscripts.
-Stable userscripts include [`reddit_safari_back_button_fix.user.js`](https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/reddit_safari_back_button_fix.user.js), which removes Reddit JavaScript-challenge history pollution that can trap Safari's Back button.
+Stable userscripts include [`reddit_safari_back_button_fix.user.js`](https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/reddit_safari_back_button_fix.user.js), which restores the Safari/Macaque back-trap escape behavior and cleans Reddit JavaScript-challenge parameters, including `jsc_token`.
 
 Regression-test documentation: [`tests/README.md`](tests/README.md).
