@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.1.1
+// @version      13.1.2
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.1.1';
+    const VERSION = '13.1.2';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
     const NEWS_NETWORK_CONCURRENCY = 4;
@@ -498,16 +498,17 @@
         if (document.querySelector(`[${FILTER_STYLE_ATTRIBUTE}]`)) return;
         const style = document.createElement('style');
         style.setAttribute(FILTER_STYLE_ATTRIBUTE, VERSION);
-        const opaqueRoot =
-            `:is(${KNOWN_ROOT_SELECTOR}):has(${OPAQUE_LINK_SELECTOR}):not([${FILTER_READY_ATTRIBUTE}])`;
         const pendingRoot =
             `[${FILTER_PENDING_ATTRIBUTE}]:not([${FILTER_READY_ATTRIBUTE}])`;
+        // Only hide roots that the bridge has explicitly taken ownership of.
+        // A broad :has(/goto) selector also catches aggregate modules (Videos,
+        // People Also Ask, etc.) whose nested children are the actual results,
+        // leaving large blank placeholders when the parent itself is never bridged.
+        // MutationObserver callbacks run before the next rendering step, so a
+        // document-start observer can mark real result roots pending before paint.
         style.textContent = `
-${opaqueRoot},
-${opaqueRoot} *,
-${pendingRoot},
-${pendingRoot} * {
-    visibility: hidden !important;
+${pendingRoot} {
+    display: none !important;
 }`;
         (document.head || document.documentElement).appendChild(style);
     }
@@ -906,8 +907,8 @@ ${pendingRoot} * {
         const isNewsCard = Boolean(known?.matches(NEWS_CARD_SELECTOR));
         const isVisualDigestVideo = Boolean(known?.matches(VISUAL_DIGEST_VIDEO_SELECTOR));
         const isSingleResultCard = isNewsCard || isVisualDigestVideo;
-        if (!isSingleResultCard && !isPrimaryNestedLink(link) && !link.closest(NESTED_RESULT_SELECTOR)) return;
-        if (!known || (!isSingleResultCard && uniqueGotoCount(known) <= 1 && !link.closest(NESTED_RESULT_SELECTOR))) return;
+        if (!known) return;
+        if (!isSingleResultCard && !isPrimaryOpaqueLink(link) && !link.closest(NESTED_RESULT_SELECTOR)) return;
 
         if (IS_NEWS_TAB && isNewsCard) {
             enqueueNewsNetworkFallback(key);

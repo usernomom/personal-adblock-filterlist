@@ -80,7 +80,7 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.1\.1$/m);
+    assert.match(source, /^\/\/ @version\s+13\.1\.2$/m);
 });
 
 test('opaque regular Google result is shielded before proxy classification', () => {
@@ -95,8 +95,8 @@ test('opaque regular Google result is shielded before proxy classification', () 
     const root = h.document.getElementById('result');
     const style = h.document.querySelector('[data-ub-google-filter-shield-style]');
     assert.ok(style, 'document-start shield style must be installed');
-    assert.match(style.textContent, /visibility:\s*hidden\s*!important/);
-    assert.ok(style.textContent.includes(':has(a[href*="/goto?"])'));
+    assert.match(style.textContent, /display:\s*none\s*!important/);
+    assert.equal(style.textContent.includes(':has(a[href*="/goto?"])'), false);
     assert.equal(root.getAttribute('data-ub-google-filter-pending'), '1');
     assert.equal(root.hasAttribute('data-ub-google-filter-ready'), false);
     assert.ok(root.querySelector('[data-ub-google-source-proxy]'));
@@ -104,6 +104,34 @@ test('opaque regular Google result is shielded before proxy classification', () 
     h.close();
 });
 
+test('aggregate parent is not implicitly hidden when nested results own the opaque links', () => {
+    const gotoA = '/goto?url=opaque-video-a';
+    const gotoB = '/goto?url=opaque-video-b';
+    const h = createHarness({
+        html:
+            '<div id="module" class="Ww4FFb vt6azd">' +
+            '<div role="heading" aria-level="2">Videos</div>' +
+            `<div id="a" class="sHEJob"><a href="${gotoA}"><h3>Video A</h3></a></div>` +
+            `<div id="b" class="sHEJob"><a href="${gotoB}"><h3>Video B</h3></a></div>` +
+            '</div>',
+        wjd: {
+            a: [gotoA, 'https://video-a.example/watch'],
+            b: [gotoB, 'https://video-b.example/watch'],
+        },
+    });
+
+    const module = h.document.getElementById('module');
+    const a = h.document.getElementById('a');
+    const b = h.document.getElementById('b');
+    const style = h.document.querySelector('[data-ub-google-filter-shield-style]');
+
+    assert.equal(module.hasAttribute('data-ub-google-filter-pending'), false);
+    assert.equal(module.hasAttribute('data-ub-google-filter-ready'), false);
+    assert.equal(style.textContent.includes(':has('), false);
+    assert.equal(a.getAttribute('data-ub-google-filter-pending'), '1');
+    assert.equal(b.getAttribute('data-ub-google-filter-pending'), '1');
+    h.close();
+});
 test('proxy resolution replaces the unresolved fail-open timer with a fresh classification window', () => {
     const goto = '/goto?url=opaque-timer';
     const h = createHarness({
@@ -168,6 +196,23 @@ test('unblocked result becomes ready as soon as uBlacklist classifies it', async
     h.close();
 });
 
+test('unmapped ordinary result reaches network fallback without throwing', async () => {
+    const goto = '/goto?url=opaque-unmapped';
+    const h = createHarness({
+        html:
+            `<div id="result" class="Ww4FFb vt6azd">` +
+            `<a href="${goto}"><h3>Unmapped publisher</h3></a></div>`,
+        wjd: {},
+        captureTimers: true,
+    });
+
+    const fallbackTimer = h.timers.find(timer => timer.ms === 120);
+    assert.ok(fallbackTimer, 'regular unresolved result should schedule the 120ms network fallback');
+    assert.equal(h.document.getElementById('result').getAttribute('data-ub-google-filter-pending'), '1');
+    assert.doesNotThrow(() => fallbackTimer.callback());
+    await nextTask();
+    h.close();
+});
 test('ordinary result sitelinks stay coupled to the parent card', async () => {
     const mainGoto = '/goto?url=opaque-reddit-main';
     const childGoto = '/goto?url=opaque-reddit-child';
