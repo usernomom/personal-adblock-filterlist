@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.4.3-macaque-clean
+// @version      1.4.4-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.4.3-macaque-clean';
+    const STATE_VERSION = '1.4.4-macaque-clean';
     const GOOGLE_CHILD_PARAM = '__rbf_google_child';
 
     const CONFIG = Object.freeze({
@@ -650,6 +650,27 @@
         'popstate',
         () => {
             log('popstate', pageContextSnapshot());
+
+            // Safari Back from Reddit's pushed challenge lands on the clean
+            // entry first. A Google-opened child must close at that exact
+            // post-traversal point; PerformanceNavigationTiming may still say
+            // "navigate", so do not gate this on navType/history length.
+            if (
+                ssGetString(KEYS.googleChild, '') === '1' &&
+                !hasChallengeParams(location.href)
+            ) {
+                log('google-child-clean-popstate-close', {
+                    href: location.href,
+                    historyLength: history.length,
+                });
+                try {
+                    window.close();
+                } catch (error) {
+                    log('google-child-clean-popstate-close-failed', { error: String(error) });
+                }
+                return;
+            }
+
             if (!hasChallengeParams(location.href)) return;
             runTrapCheck('popstate', { traversalHint: true });
         },
