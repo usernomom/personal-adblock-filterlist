@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.3.9-macaque-clean
+// @version      1.4.0-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.3.9-macaque-clean';
+    const STATE_VERSION = '1.4.0-macaque-clean';
 
     const CONFIG = Object.freeze({
         minMsBetweenActions: 1200,
@@ -232,6 +232,20 @@
             }
 
             nav.addEventListener('navigate', event => {
+                const destinationUrl = event.destination && typeof event.destination.url === 'string' ? event.destination.url : '';
+                const replaceChallengePush = event.navigationType === 'push' && event.cancelable && !event.userInitiated && !hasChallengeParams(location.href) && hasChallengeParams(destinationUrl) && targetKey(destinationUrl) !== '' && targetKey(destinationUrl) === targetKey(location.href);
+
+                if (replaceChallengePush) {
+                    log('challenge-push-replaced', { from: location.href, to: destinationUrl });
+                    try {
+                        event.preventDefault();
+                        location.replace(destinationUrl);
+                    } catch (error) {
+                        log('challenge-push-replace-failed', { error: String(error), destinationUrl });
+                    }
+                    return;
+                }
+
                 log('navigation-navigate', {
                     navigationType: event.navigationType || '',
                     canIntercept: Boolean(event.canIntercept),

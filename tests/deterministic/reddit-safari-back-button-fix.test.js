@@ -103,7 +103,7 @@ test('canonical Reddit userscript packaging is installable and versioned', () =>
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.match(source, /^\/\/ @name\s+Reddit Safari Back Button Fix$/m);
     assert.match(source, /^\/\/ @namespace\s+local\.reddit\.safari\.backfix$/m);
-    assert.match(source, /^\/\/ @version\s+1\.3\.9-macaque-clean$/m);
+    assert.match(source, /^\/\/ @version\s+1\.4\.0-macaque-clean$/m);
 
     const raw = 'https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/reddit_safari_back_button_fix.user.js';
     assert.ok(source.includes(`// @downloadURL  ${raw}`));
@@ -281,7 +281,7 @@ test('a different fresh challenge target does not reuse a stale arm', () => {
         navigationType: 'navigate',
         historyLength: 4,
         stored: {
-            __reddit_backfix_state_version__: '1.3.9-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.0-macaque-clean',
             __reddit_backfix_armed_target__: '/r/intelstock/new',
         },
     });
@@ -313,7 +313,7 @@ test('BFCache pageshow restores an armed challenge and escapes backward', () => 
             navigationType: 'navigate',
             historyLength: 6,
             stored: {
-                __reddit_backfix_state_version__: '1.3.9-macaque-clean',
+                __reddit_backfix_state_version__: '1.4.0-macaque-clean',
                 __reddit_backfix_armed_target__: '/r/intelstock/new',
             },
         },
@@ -389,7 +389,7 @@ test('opener-linked clean short-history return closes the child tab without forw
         historyLength: 2,
         hasOpener: true,
         stored: {
-            __reddit_backfix_state_version__: '1.3.9-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.0-macaque-clean',
             __reddit_backfix_normal_reddit_seen__: '/r/codex/',
             __reddit_backfix_action_count__: 0,
             __reddit_backfix_last_action_at__: 0,
@@ -410,7 +410,7 @@ test('exact observed Safari Back state uses forward, not back', () => {
         navigationType: 'back_forward',
         historyLength: 2,
         stored: {
-            __reddit_backfix_state_version__: '1.3.9-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.0-macaque-clean',
             __reddit_backfix_normal_reddit_seen__: '/r/intelstock/new/',
             __reddit_backfix_pending_target__: '/r/intelstock/new',
             __reddit_backfix_armed_target__: '',
@@ -435,7 +435,7 @@ test('1200ms throttle prevents repeated trap actions', () => {
         historyLength: 2,
         now: 10_000,
         stored: {
-            __reddit_backfix_state_version__: '1.3.9-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.0-macaque-clean',
             __reddit_backfix_action_count__: 1,
             __reddit_backfix_last_action_at__: 9_500,
         },
@@ -466,7 +466,7 @@ test('upgrade resets stale per-tab action and arm state', () => {
     assert.equal(h.dom.window.sessionStorage.getItem('__reddit_backfix_pending_target__'), '/r/test');
     assert.equal(
         h.dom.window.sessionStorage.getItem('__reddit_backfix_state_version__'),
-        '1.3.9-macaque-clean',
+        '1.4.0-macaque-clean',
     );
     closeHarness(h);
 });
@@ -476,7 +476,7 @@ test('four-action cap prevents an infinite escape loop', () => {
         navigationType: 'back_forward',
         historyLength: 2,
         stored: {
-            __reddit_backfix_state_version__: '1.3.9-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.0-macaque-clean',
             __reddit_backfix_action_count__: 4,
             __reddit_backfix_last_action_at__: 0,
         },
