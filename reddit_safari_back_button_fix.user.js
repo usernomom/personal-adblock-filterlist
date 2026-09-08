@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.3.4-macaque-clean
-// @description  Escape Reddit back/forward history traps in Safari, including current JS-challenge URLs.
+// @version      1.3.5-macaque-clean
+// @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
 // @run-at       document-start
@@ -15,14 +15,13 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.3.4-macaque-clean';
+    const STATE_VERSION = '1.3.5-macaque-clean';
 
     const CONFIG = Object.freeze({
         minMsBetweenActions: 1200,
         maxActionsPerTab: 4,
         closeFallbackDelayMs: 350,
-        closeBlockedFallback: 'forward',
-        forwardDelayMs: 80,
+        historyFallbackDelayMs: 80,
     });
 
     const KEYS = Object.freeze({
@@ -30,6 +29,8 @@
         lastActionAt: '__reddit_backfix_last_action_at__',
         normalRedditSeen: '__reddit_backfix_normal_reddit_seen__',
         lastTrapUrl: '__reddit_backfix_last_trap_url__',
+        pendingTarget: '__reddit_backfix_pending_target__',
+        armedTarget: '__reddit_backfix_armed_target__',
         stateVersion: '__reddit_backfix_state_version__',
     });
 
@@ -99,63 +100,71 @@
         }
     }
 
-    function hasChallengeParams(rawUrl) {
+    function parsedRedditUrl(rawUrl) {
         try {
             const url = new URL(String(rawUrl), location.href);
-            if (!isRedditHost(url.hostname)) return false;
-            return CHALLENGE_PARAMS.some(name => url.searchParams.has(name));
+            return isRedditHost(url.hostname) ? url : null;
         } catch (_) {
-            return false;
+            return null;
         }
+    }
+
+    function hasChallengeParams(rawUrl) {
+        const url = parsedRedditUrl(rawUrl);
+        return Boolean(url && CHALLENGE_PARAMS.some(name => url.searchParams.has(name)));
     }
 
     function cleanUrl(rawUrl) {
-        try {
-            const url = new URL(String(rawUrl), location.href);
-            if (!isRedditHost(url.hostname)) return String(rawUrl);
+        const url = parsedRedditUrl(rawUrl);
+        if (!url) return String(rawUrl);
 
-            for (const name of CHALLENGE_PARAMS) {
-                url.searchParams.delete(name);
-            }
-
-            if (url.origin === location.origin) {
-                return `${url.pathname}${url.search}${url.hash}`;
-            }
-            return url.href;
-        } catch (_) {
-            return String(rawUrl);
+        for (const name of CHALLENGE_PARAMS) {
+            url.searchParams.delete(name);
         }
+
+        if (url.origin === location.origin) {
+            return `${url.pathname}${url.search}${url.hash}`;
+        }
+        return url.href;
     }
 
-    function handleCloseBlocked(reason) {
+    function targetKey(rawUrl) {
+        const url = parsedRedditUrl(rawUrl);
+        if (!url) return '';
+
+        let path = url.pathname || '/';
+        if (path.length > 1) path = path.replace(/\/+$/, '');
+        return path;
+    }
+
+    function handleCloseBlocked(reason, fallbackDirection) {
         log('still-open-after-window-close', {
             reason,
-            fallback: CONFIG.closeBlockedFallback,
+            fallbackDirection,
             href: location.href,
+            historyLength: history.length,
         });
-
-        if (CONFIG.closeBlockedFallback === 'stay') return;
-
-        if (CONFIG.closeBlockedFallback === 'aboutblank') {
-            try {
-                location.replace('about:blank');
-            } catch (error) {
-                log('aboutblank-failed', { error: String(error) });
-            }
-            return;
-        }
 
         setTimeout(() => {
             try {
-                history.forward();
-                log('history-forward', { reason });
+                if (fallbackDirection === 'back') {
+                    history.back();
+                    log('history-back', { reason });
+                } else {
+                    history.forward();
+                    log('history-forward', { reason });
+                }
             } catch (error) {
-                log('history-forward-failed', { error: String(error) });
+                log('history-fallback-failed', {
+                    reason,
+                    fallbackDirection,
+                    error: String(error),
+                });
             }
-        }, CONFIG.forwardDelayMs);
+        }, CONFIG.historyFallbackDelayMs);
     }
 
-    function actOnTrap(reason) {
+    function actOnTrap(reason, fallbackDirection = 'back') {
         const now = Date.now();
         const nextCount = ssGetNumber(KEYS.actionCount, 0) + 1;
         const cleaned = cleanUrl(location.href);
@@ -163,12 +172,16 @@
         ssSetNumber(KEYS.actionCount, nextCount);
         ssSetNumber(KEYS.lastActionAt, now);
         ssSetString(KEYS.lastTrapUrl, location.href);
+        ssSetString(KEYS.pendingTarget, '');
+        ssSetString(KEYS.armedTarget, '');
 
         log('trap-action', {
             reason,
             count: nextCount,
             before: location.href,
             cleaned,
+            fallbackDirection,
+            historyLength: history.length,
         });
 
         try {
@@ -183,28 +196,31 @@
             log('window-close-failed', { error: String(error) });
         }
 
-        // Safari normally blocks window.close() for a tab it did not open via script.
-        // The known-working Macaque strategy therefore always schedules the fallback.
+        // A script-opened Reddit tab can close here. In a normal same-tab
+        // navigation Safari blocks close(), so move one more entry backward from
+        // the zombie challenge entry to the page the user actually came from.
         setTimeout(() => {
-            handleCloseBlocked(reason);
+            handleCloseBlocked(reason, fallbackDirection);
         }, CONFIG.closeFallbackDelayMs);
     }
 
     if (!isTopWindow() || !isRedditHost(location.hostname)) return;
 
-    // A Safari tab can survive userscript upgrades for months. Reset only the
-    // bounded-action bookkeeping when this script version first runs in the tab,
-    // so stale counters from an older build cannot disable the repaired logic.
+    // A Safari tab can survive userscript upgrades for months. Reset the small
+    // state machine once per version so stale data cannot arm the wrong entry.
     if (ssGetString(KEYS.stateVersion, '') !== STATE_VERSION) {
         ssSetNumber(KEYS.actionCount, 0);
         ssSetNumber(KEYS.lastActionAt, 0);
-        ssSetString(KEYS.lastTrapUrl, '');
         ssSetString(KEYS.normalRedditSeen, '');
+        ssSetString(KEYS.lastTrapUrl, '');
+        ssSetString(KEYS.pendingTarget, '');
+        ssSetString(KEYS.armedTarget, '');
         ssSetString(KEYS.stateVersion, STATE_VERSION);
     }
 
     const initialHref = location.href;
     const initialHadChallenge = hasChallengeParams(initialHref);
+    const initialTarget = targetKey(initialHref);
 
     function runTrapCheck(trigger, { persisted = false, traversalHint = false } = {}) {
         const navigationType = navType();
@@ -212,25 +228,34 @@
         const actionCount = ssGetNumber(KEYS.actionCount, 0);
         const lastActionAt = ssGetNumber(KEYS.lastActionAt, 0);
         const normalRedditSeen = ssGetString(KEYS.normalRedditSeen, '');
+        const pendingTarget = ssGetString(KEYS.pendingTarget, '');
+        const armedTarget = ssGetString(KEYS.armedTarget, '');
         const underActionCap = actionCount < CONFIG.maxActionsPerTab;
         const outsideThrottle = lastActionAt === 0 || now - lastActionAt >= CONFIG.minMsBetweenActions;
         const shortHistory = history.length <= 2;
         const isBackForward = navigationType === 'back_forward';
         const isTraversal = persisted || traversalHint || isBackForward;
         const currentHasChallenge = hasChallengeParams(location.href);
-        const restoredChallengeDocument = persisted && initialHadChallenge;
-        const challengeTraversal = isTraversal && (currentHasChallenge || restoredChallengeDocument);
-        const legacyShortHistoryTrap = isBackForward && shortHistory;
-
-        if (!isTraversal) {
-            ssSetString(KEYS.normalRedditSeen, cleanUrl(location.href));
-        }
+        const currentTarget = targetKey(location.href);
+        const armedChallengeReturn =
+            currentHasChallenge &&
+            armedTarget !== '' &&
+            currentTarget !== '' &&
+            currentTarget === armedTarget;
+        const restoredArmedChallenge =
+            persisted &&
+            initialHadChallenge &&
+            armedTarget !== '' &&
+            initialTarget === armedTarget;
+        const challengeTraversal = isTraversal && currentHasChallenge;
+        const legacyShortHistoryTrap = isBackForward && shortHistory && !currentHasChallenge;
 
         log('trap-check', {
             trigger,
             href: location.href,
             initialHref,
             initialHadChallenge,
+            initialTarget,
             navigationType,
             historyLength: history.length,
             persisted,
@@ -238,20 +263,35 @@
             actionCount,
             lastActionAt,
             normalRedditSeen,
+            pendingTarget,
+            armedTarget,
             underActionCap,
             outsideThrottle,
             shortHistory,
             isBackForward,
             currentHasChallenge,
-            restoredChallengeDocument,
+            currentTarget,
+            armedChallengeReturn,
+            restoredArmedChallenge,
             challengeTraversal,
             legacyShortHistoryTrap,
         });
 
         if (!underActionCap || !outsideThrottle) return;
 
-        // Current Reddit can leave more than two history entries, so a challenge-
-        // bearing traversal is poisoned regardless of total history length.
+        // This is the key Safari 26.6.1 case observed in Macaque: returning to the
+        // zombie challenge can be reported as a plain "navigate". Session state is
+        // therefore the primary signal, not PerformanceNavigationTiming.type.
+        if (armedChallengeReturn || restoredArmedChallenge) {
+            actOnTrap(
+                armedChallengeReturn ? 'armed-challenge-return' : 'pageshow-armed-challenge',
+                'back',
+            );
+            return;
+        }
+
+        // A true traversal into a challenge is also a trap even if the arm state
+        // was lost (for example after an upgrade while the tab stayed open).
         if (challengeTraversal) {
             actOnTrap(
                 persisted
@@ -259,24 +299,49 @@
                     : traversalHint
                       ? 'popstate-challenge'
                       : 'back_forward-challenge',
+                'back',
             );
             return;
         }
 
-        // Preserve the previously working generic Safari/Macaque escape for the
-        // original short-history trap even when the visible URL looks normal.
         if (legacyShortHistoryTrap) {
-            actOnTrap('back_forward-short-history');
+            actOnTrap('back_forward-short-history', 'back');
+            return;
+        }
+
+        if (!isTraversal && currentHasChallenge) {
+            // First challenge load: do NOT scrub or mark it as a normal Reddit
+            // page. Let Reddit complete its challenge and remember only the target.
+            ssSetString(KEYS.pendingTarget, currentTarget);
+            log('challenge-pending', {
+                currentTarget,
+                href: location.href,
+                historyLength: history.length,
+            });
+            return;
+        }
+
+        if (!isTraversal && !currentHasChallenge) {
+            const cleaned = cleanUrl(location.href);
+            ssSetString(KEYS.normalRedditSeen, cleaned);
+
+            // The first clean Reddit page after a challenge arms that challenge
+            // entry. If Back later returns to it—even as navType="navigate"—we can
+            // identify it without touching unrelated Reddit navigations.
+            if (pendingTarget !== '' && currentTarget === pendingTarget) {
+                ssSetString(KEYS.armedTarget, currentTarget);
+                ssSetString(KEYS.pendingTarget, '');
+                log('challenge-armed', {
+                    currentTarget,
+                    cleaned,
+                    historyLength: history.length,
+                });
+            }
         }
     }
 
-    // Fresh non-BFCache back/forward traversals recreate the document, so the
-    // document-start check handles them.
     runTrapCheck('document-start');
 
-    // WebKit BFCache restores resume the old document instead of rerunning the
-    // userscript. The original event listeners survive and pageshow is the signal
-    // that the poisoned history entry has become active again.
     addEventListener(
         'pageshow',
         event => {
@@ -286,9 +351,6 @@
         true,
     );
 
-    // Same-document history traversals do not create a new document or fire a
-    // BFCache restore. Catch only challenge-bearing popstate entries to avoid
-    // interfering with ordinary Reddit SPA navigation.
     addEventListener(
         'popstate',
         () => {
