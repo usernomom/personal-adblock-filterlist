@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Open Google Search result links in new tabs while preserving uBlacklist and archive.ph link handling.
 // @license      MIT
-// @version      4
+// @version      5
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
 // @match        https://*.google.com/search*
@@ -19,6 +19,7 @@
     'use strict';
 
     const REDDIT_CHILD_MARKER = '__rbf_google_child';
+    const REDDIT_SCRIPT_OPEN_ATTRIBUTE = 'data-rbf-script-open';
 
     function isGoogleHost(hostname) {
         const host = String(hostname || '').toLowerCase();
@@ -74,6 +75,7 @@
     }
 
     function markRedditChild(anchor) {
+        anchor.removeAttribute(REDDIT_SCRIPT_OPEN_ATTRIBUTE);
         let original;
         try {
             original = new URL(anchor.getAttribute('href') || anchor.href, location.href);
@@ -92,12 +94,14 @@
         if (isGoogleHost(original.hostname) && (original.pathname === '/goto' || original.pathname === '/url')) {
             addRedditChildFragment(original);
             anchor.href = original.href;
+            anchor.setAttribute(REDDIT_SCRIPT_OPEN_ATTRIBUTE, '1');
             return true;
         }
 
         if (direct && isRedditHost(direct.hostname)) {
             addRedditChildFragment(direct);
             anchor.href = direct.href;
+            anchor.setAttribute(REDDIT_SCRIPT_OPEN_ATTRIBUTE, '1');
             return true;
         }
 
@@ -231,6 +235,18 @@
                 !event.altKey &&
                 !archiveScriptHasPrepared(anchor)
             ) {
+                if (anchor.getAttribute(REDDIT_SCRIPT_OPEN_ATTRIBUTE) === '1') {
+                    // Keep this call inside the user's click activation. A
+                    // window.open()-created tab is script-closable; if popup
+                    // blocking rejects it, fall back to target=_blank.
+                    const child = window.open(anchor.href, '_blank');
+                    if (child) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        return;
+                    }
+                }
+
                 event.stopImmediatePropagation();
             }
         },

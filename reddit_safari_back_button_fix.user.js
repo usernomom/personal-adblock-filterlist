@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.4.4-macaque-clean
+// @version      1.4.5-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.4.4-macaque-clean';
+    const STATE_VERSION = '1.4.5-macaque-clean';
     const GOOGLE_CHILD_PARAM = '__rbf_google_child';
 
     const CONFIG = Object.freeze({
@@ -270,6 +270,32 @@
             });
 
             nav.addEventListener('currententrychange', event => {
+                const fromUrl = event.from && typeof event.from.url === 'string' ? event.from.url : '';
+                const currentUrl = nav.currentEntry && typeof nav.currentEntry.url === 'string'
+                    ? nav.currentEntry.url
+                    : location.href;
+                const googleChild = ssGetString(KEYS.googleChild, '') === '1';
+                const closeGoogleChildChallengeReturn =
+                    googleChild &&
+                    hasChallengeParams(fromUrl) &&
+                    !hasChallengeParams(currentUrl) &&
+                    targetKey(fromUrl) !== '' &&
+                    targetKey(fromUrl) === targetKey(currentUrl);
+
+                if (closeGoogleChildChallengeReturn) {
+                    log('google-child-currententrychange-close', {
+                        navigationType: event.navigationType || '',
+                        from: fromUrl,
+                        current: currentUrl,
+                    });
+                    try {
+                        window.close();
+                    } catch (error) {
+                        log('google-child-currententrychange-close-failed', { error: String(error) });
+                    }
+                    return;
+                }
+
                 log('navigation-currententrychange', {
                     navigationType: event.navigationType || '',
                     from: navigationEntrySnapshot(event.from),

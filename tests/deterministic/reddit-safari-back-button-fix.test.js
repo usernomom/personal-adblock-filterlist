@@ -20,6 +20,7 @@ function makeDom(url, options = {}) {
         immediateTimers = true,
         referrer = '',
         hasOpener = false,
+        navigationApi = false,
     } = options;
 
     const dom = new JSDOM('<!doctype html><html><body></body></html>', {
@@ -46,8 +47,42 @@ function makeDom(url, options = {}) {
         },
     };
 
+    const navigationListeners = new Map();
+    let navigationMock = null;
+    const makeNavigationEntry = href => ({
+        url: href,
+        index: 0,
+        key: `key:${href}`,
+        id: `id:${href}`,
+        sameDocument: true,
+    });
+
     dom.window.performance.getEntriesByType = type =>
         type === 'navigation' ? [{ type: navigationType }] : [];
+
+    if (navigationApi) {
+        navigationMock = {
+            currentEntry: makeNavigationEntry(url),
+            activation: null,
+            canGoBack: true,
+            canGoForward: false,
+            entries() {
+                return [this.currentEntry];
+            },
+            addEventListener(type, handler) {
+                let handlers = navigationListeners.get(type);
+                if (!handlers) {
+                    handlers = [];
+                    navigationListeners.set(type, handlers);
+                }
+                handlers.push(handler);
+            },
+        };
+        Object.defineProperty(dom.window, 'navigation', {
+            configurable: true,
+            value: navigationMock,
+        });
+    }
 
     Object.defineProperty(dom.window.history, 'length', {
         configurable: true,
@@ -80,7 +115,18 @@ function makeDom(url, options = {}) {
     };
 
     dom.window.eval(source);
-    return { dom, calls };
+    return {
+        dom,
+        calls,
+        emitCurrentEntryChange(fromUrl, currentUrl, eventNavigationType = 'traverse') {
+            if (!navigationMock) throw new Error('Navigation API mock was not enabled');
+            const from = makeNavigationEntry(fromUrl);
+            navigationMock.currentEntry = makeNavigationEntry(currentUrl);
+            for (const handler of navigationListeners.get('currententrychange') || []) {
+                handler({ navigationType: eventNavigationType, from });
+            }
+        },
+    };
 }
 
 function storageSnapshot(h) {
@@ -103,7 +149,7 @@ test('canonical Reddit userscript packaging is installable and versioned', () =>
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.match(source, /^\/\/ @name\s+Reddit Safari Back Button Fix$/m);
     assert.match(source, /^\/\/ @namespace\s+local\.reddit\.safari\.backfix$/m);
-    assert.match(source, /^\/\/ @version\s+1\.4\.4-macaque-clean$/m);
+    assert.match(source, /^\/\/ @version\s+1\.4\.5-macaque-clean$/m);
     assert.ok(source.includes('google-child-back-traverse-close'));
     assert.ok(source.includes('google-child-short-history-close'));
     assert.ok(source.includes('__rbf_google_child'));
@@ -286,7 +332,7 @@ test('a different fresh challenge target does not reuse a stale arm', () => {
         navigationType: 'navigate',
         historyLength: 4,
         stored: {
-            __reddit_backfix_state_version__: '1.4.4-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.5-macaque-clean',
             __reddit_backfix_armed_target__: '/r/intelstock/new',
         },
     });
@@ -318,7 +364,7 @@ test('BFCache pageshow restores an armed challenge and escapes backward', () => 
             navigationType: 'navigate',
             historyLength: 6,
             stored: {
-                __reddit_backfix_state_version__: '1.4.4-macaque-clean',
+                __reddit_backfix_state_version__: '1.4.5-macaque-clean',
                 __reddit_backfix_armed_target__: '/r/intelstock/new',
             },
         },
@@ -345,13 +391,41 @@ test('BFCache pageshow on an ordinary Reddit document is left alone', () => {
     closeHarness(h);
 });
 
+test('Navigation API currententrychange closes marked Google child on challenge-to-clean return', () => {
+    const h = makeDom('https://www.reddit.com/r/codex/', {
+        navigationType: 'navigate',
+        historyLength: 2,
+        hasOpener: false,
+        navigationApi: true,
+        stored: {
+            __reddit_backfix_state_version__: '1.4.5-macaque-clean',
+            __reddit_backfix_google_child__: '1',
+        },
+    });
+
+    assert.equal(h.calls.close, 0);
+    h.emitCurrentEntryChange(
+        'https://www.reddit.com/r/codex/?solution=x&js_challenge=1&jsc_token=y&jsc_orig_r=',
+        'https://www.reddit.com/r/codex/',
+        'traverse',
+    );
+
+    assert.equal(h.calls.close, 1);
+    assert.equal(h.calls.back, 0);
+    assert.equal(h.calls.forward, 0);
+    assert.deepEqual(h.calls.timers, []);
+    assert.ok(h.calls.logs.some(args => args[1] === 'google-child-currententrychange-close'));
+    assert.equal(h.calls.logs.some(args => args[1] === 'trap-action'), false);
+    closeHarness(h);
+});
+
 test('Google child clean popstate closes after Safari Back even when navType stays navigate', () => {
     const h = makeDom('https://www.reddit.com/r/codex/', {
         navigationType: 'navigate',
         historyLength: 2,
         hasOpener: false,
         stored: {
-            __reddit_backfix_state_version__: '1.4.4-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.5-macaque-clean',
             __reddit_backfix_google_child__: '1',
         },
     });
@@ -417,7 +491,7 @@ test('Google child marker closes clean short-history return without opener or fo
         historyLength: 2,
         hasOpener: false,
         stored: {
-            __reddit_backfix_state_version__: '1.4.4-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.5-macaque-clean',
             __reddit_backfix_google_child__: '1',
             __reddit_backfix_normal_reddit_seen__: '/r/codex/',
             __reddit_backfix_action_count__: 0,
@@ -464,7 +538,7 @@ test('exact observed Safari Back state uses forward, not back', () => {
         navigationType: 'back_forward',
         historyLength: 2,
         stored: {
-            __reddit_backfix_state_version__: '1.4.4-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.5-macaque-clean',
             __reddit_backfix_normal_reddit_seen__: '/r/intelstock/new/',
             __reddit_backfix_pending_target__: '/r/intelstock/new',
             __reddit_backfix_armed_target__: '',
@@ -489,7 +563,7 @@ test('1200ms throttle prevents repeated trap actions', () => {
         historyLength: 2,
         now: 10_000,
         stored: {
-            __reddit_backfix_state_version__: '1.4.4-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.5-macaque-clean',
             __reddit_backfix_action_count__: 1,
             __reddit_backfix_last_action_at__: 9_500,
         },
@@ -520,7 +594,7 @@ test('upgrade resets stale per-tab action and arm state', () => {
     assert.equal(h.dom.window.sessionStorage.getItem('__reddit_backfix_pending_target__'), '/r/test');
     assert.equal(
         h.dom.window.sessionStorage.getItem('__reddit_backfix_state_version__'),
-        '1.4.4-macaque-clean',
+        '1.4.5-macaque-clean',
     );
     closeHarness(h);
 });
@@ -530,7 +604,7 @@ test('four-action cap prevents an infinite escape loop', () => {
         navigationType: 'back_forward',
         historyLength: 2,
         stored: {
-            __reddit_backfix_state_version__: '1.4.4-macaque-clean',
+            __reddit_backfix_state_version__: '1.4.5-macaque-clean',
             __reddit_backfix_action_count__: 4,
             __reddit_backfix_last_action_at__: 0,
         },
