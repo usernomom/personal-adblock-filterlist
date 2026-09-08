@@ -11,7 +11,7 @@ npm ci
 npm test
 ```
 
-The deterministic tests execute the canonical `google_interface_cleanup.user.js` and `google_news_ublacklist_bridge.user.js` userscripts in jsdom. They cover cleanup classifications, preservation invariants, reason accounting, repeated runs, async result roots, explicit vertical-page behavior, userscript packaging/version consistency, canonical-source integrity, JavaScript syntax, the bridge's pre-paint shield / uBlacklist-classification handshake for opaque Google `/goto` results, unresolved ordinary-result network fallback, ordinary-result sitelink coupling so one Google card is not revealed in fragments, and aggregate-module isolation so parent modules such as Videos are never turned into blank bridge placeholders.
+The deterministic tests execute the canonical `google_interface_cleanup.user.js` and `google_news_ublacklist_bridge.user.js` userscripts in jsdom. They cover cleanup classifications, preservation invariants, reason accounting, repeated runs, async result roots, explicit vertical-page behavior, userscript packaging/version consistency, canonical-source integrity, JavaScript syntax, and the bridge's real-destination proxying for opaque Google `/goto` results. The bridge regression also asserts that ordinary results are not held behind any global anti-flash gate; uBlacklist may therefore briefly show a soon-to-be-blocked result while it classifies the injected proxy URL.
 
 Fixtures deliberately use stable structural/semantic signals instead of transient Google CSS class names. `tests/fixtures/columbus-data-kpid.html` reproduces the `data-kpid="vise:/m/01smm"` regression that prompted this suite.
 
@@ -23,7 +23,7 @@ Prerequisites:
 - Violentmonkey enabled in that profile with **Allow User Scripts** enabled.
 - The local working-tree `google_interface_cleanup.user.js` installed in Violentmonkey through the normal userscript install flow.
 
-For an uncommitted userscript change, serve the local install target:
+For an uncommitted cleanup-userscript change, serve the local install target:
 
 ```powershell
 npm run serve:google-userscript
@@ -37,7 +37,7 @@ http://127.0.0.1:8766/google_interface_cleanup.user.js
 
 This is the development install path. Do not inject the source manually into a Google page and count that as a live pass.
 
-Run the live suite with:
+Run the live cleanup suite with:
 
 ```powershell
 npm run test:live
@@ -53,14 +53,6 @@ The live runner creates one temporary Neon tab, runs seven fresh Google navigati
 - A YouTube result remaining visible on the explicit Videos tab (`udm=7`), with no cleanup-hidden elements on that route.
 - A normal desktop web result that must remain visible.
 
-Every live audit checks the smallest relevant DOM element using computed style and bounding rectangles. The runner also requires the userscript's live version marker to match the local working-tree `@version`, so a stale Violentmonkey install fails instead of producing a false pass.
+Every live audit checks the smallest relevant DOM element using computed style and bounding rectangles. The runner also requires the cleanup userscript's live version marker to match the local working-tree `@version`, so a stale Violentmonkey install fails instead of producing a false pass.
 
 The live cleanup suite intentionally does not run in GitHub Actions because it depends on the local authenticated/dedicated Neon profile and current Google markup.
-
-The uBlacklist bridge has a separate live smoke test that injects the current working-tree bridge at `document-start`, so it does not depend on the Violentmonkey-installed bridge version:
-
-```powershell
-npm run test:bridge-live
-```
-
-It emulates the iPhone/Safari mobile layout and checks two live regressions: `codex reddit` must keep ordinary sitelinks coupled to their parent card without any ordinary result painting before bridge readiness, and `terafab` must keep an aggregate Videos module out of the parent-level anti-flash shield while still bridging its nested results. This test still requires the dedicated Neon automation profile on `127.0.0.1:9223`, with uBlacklist enabled, and current Google markup, so it is local-only.
