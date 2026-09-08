@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Open Google Search result links in new tabs while preserving uBlacklist and archive.ph link handling.
 // @license      MIT
-// @version      2
+// @version      3
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
 // @match        https://*.google.com/search*
@@ -17,6 +17,63 @@
 
 (() => {
     'use strict';
+
+    const REDDIT_CHILD_MARKER = '__rbf_google_child';
+
+    function isGoogleHost(hostname) {
+        const host = String(hostname || '').toLowerCase();
+        return host === 'google.com' || host.endsWith('.google.com') || /(^|\.)google\.[a-z.]+$/.test(host);
+    }
+
+    function isRedditHost(hostname) {
+        const host = String(hostname || '').toLowerCase();
+        return host === 'reddit.com' || host.endsWith('.reddit.com');
+    }
+
+    function externalDestination(rawHref) {
+        try {
+            const url = new URL(String(rawHref || ''), location.href);
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+            if (!isGoogleHost(url.hostname)) return url;
+            if (url.pathname !== '/url' && url.pathname !== '/goto') return null;
+
+            for (const key of ['url', 'q']) {
+                const rawTarget = url.searchParams.get(key);
+                if (!rawTarget) continue;
+                try {
+                    const target = new URL(rawTarget, location.href);
+                    if ((target.protocol === 'http:' || target.protocol === 'https:') && !isGoogleHost(target.hostname)) {
+                        return target;
+                    }
+                } catch (_) {}
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    function bridgedDestination(anchor) {
+        for (
+            let node = anchor.parentElement;
+            node && node !== document.body && node !== document.documentElement;
+            node = node.parentElement
+        ) {
+            const proxies = node.querySelectorAll('a[data-ub-google-source-proxy-anchor][href]');
+            if (!proxies.length) continue;
+            if (proxies.length !== 1) return null;
+            return externalDestination(proxies[0].getAttribute('href') || proxies[0].href);
+        }
+        return null;
+    }
+
+    function markRedditChild(anchor) {
+        const direct = externalDestination(anchor.getAttribute('href') || anchor.href);
+        const destination = direct && isRedditHost(direct.hostname) ? direct : bridgedDestination(anchor);
+        if (!destination || !isRedditHost(destination.hostname)) return false;
+
+        destination.searchParams.set(REDDIT_CHILD_MARKER, '1');
+        anchor.href = destination.href;
+        return true;
+    }
 
     function findAnchor(event) {
         for (const node of event.composedPath()) {
@@ -80,6 +137,10 @@
         rel.delete('noreferrer');
         rel.add('opener');
         anchor.setAttribute('rel', [...rel].join(' '));
+
+        // For Reddit results, use the bridge-resolved destination instead of
+        // Google's opaque /goto wrapper and carry an explicit child-tab marker.
+        markRedditChild(anchor);
 
         return true;
     }

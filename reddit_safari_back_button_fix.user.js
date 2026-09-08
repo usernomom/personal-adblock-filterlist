@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.4.1-macaque-clean
+// @version      1.4.2-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,8 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.4.1-macaque-clean';
+    const STATE_VERSION = '1.4.2-macaque-clean';
+    const GOOGLE_CHILD_PARAM = '__rbf_google_child';
 
     const CONFIG = Object.freeze({
         minMsBetweenActions: 1200,
@@ -34,6 +35,7 @@
         stateVersion: '__reddit_backfix_state_version__',
         externalEntryOrigin: '__reddit_backfix_external_entry_origin__',
         externalAutoBackTarget: '__reddit_backfix_external_auto_back_target__',
+        googleChild: '__reddit_backfix_google_child__',
     });
 
     const CHALLENGE_PARAMS = Object.freeze([
@@ -233,31 +235,25 @@
 
             nav.addEventListener('navigate', event => {
                 const destinationUrl = event.destination && typeof event.destination.url === 'string' ? event.destination.url : '';
-                let openerLinked = false;
-                try {
-                    openerLinked = window.opener != null;
-                } catch (_) {
-                    openerLinked = false;
-                }
-
-                const closeOpenerChallengeTraverse =
+                const googleChild = ssGetString(KEYS.googleChild, '') === '1';
+                const closeGoogleChildChallengeTraverse =
                     event.navigationType === 'traverse' &&
-                    openerLinked &&
+                    googleChild &&
                     hasChallengeParams(location.href) &&
                     destinationUrl !== '' &&
                     !hasChallengeParams(destinationUrl) &&
                     targetKey(destinationUrl) !== '' &&
                     targetKey(destinationUrl) === targetKey(location.href);
 
-                if (closeOpenerChallengeTraverse) {
-                    log('challenge-back-traverse-close', {
+                if (closeGoogleChildChallengeTraverse) {
+                    log('google-child-back-traverse-close', {
                         from: location.href,
                         to: destinationUrl,
                     });
                     try {
                         window.close();
                     } catch (error) {
-                        log('challenge-back-traverse-close-failed', { error: String(error) });
+                        log('google-child-back-traverse-close-failed', { error: String(error) });
                     }
                     return;
                 }
@@ -366,7 +362,23 @@
         ssSetString(KEYS.armedTarget, '');
         ssSetString(KEYS.externalEntryOrigin, '');
         ssSetString(KEYS.externalAutoBackTarget, '');
+        ssSetString(KEYS.googleChild, '');
         ssSetString(KEYS.stateVersion, STATE_VERSION);
+    }
+
+    // Google v3 marks only Reddit result child tabs. Persist that explicit
+    // provenance in sessionStorage, then strip the marker immediately.
+    try {
+        const markerUrl = parsedRedditUrl(location.href);
+        if (markerUrl && markerUrl.searchParams.get(GOOGLE_CHILD_PARAM) === '1') {
+            ssSetString(KEYS.googleChild, '1');
+            markerUrl.searchParams.delete(GOOGLE_CHILD_PARAM);
+            const markerCleaned = `${markerUrl.pathname}${markerUrl.search}${markerUrl.hash}`;
+            history.replaceState(history.state, '', markerCleaned);
+            log('google-child-recorded', { href: location.href, cleaned: markerCleaned });
+        }
+    } catch (error) {
+        log('google-child-marker-failed', { error: String(error) });
     }
 
     const initialHref = location.href;
@@ -404,6 +416,7 @@
         const armedTarget = ssGetString(KEYS.armedTarget, '');
         const externalEntryOrigin = ssGetString(KEYS.externalEntryOrigin, '');
         const externalAutoBackTarget = ssGetString(KEYS.externalAutoBackTarget, '');
+        const googleChild = ssGetString(KEYS.googleChild, '') === '1';
         const underActionCap = actionCount < CONFIG.maxActionsPerTab;
         const outsideThrottle = lastActionAt === 0 || now - lastActionAt >= CONFIG.minMsBetweenActions;
         const shortHistory = history.length <= 2;
@@ -441,6 +454,7 @@
             armedTarget,
             externalEntryOrigin,
             externalAutoBackTarget,
+            googleChild,
             underActionCap,
             outsideThrottle,
             shortHistory,
@@ -469,13 +483,6 @@
 
         // A true traversal into a challenge is also a trap even if the arm state
         // was lost (for example after an upgrade while the tab stayed open).
-        let openerLinked = false;
-        try {
-            openerLinked = window.opener != null;
-        } catch (_) {
-            openerLinked = false;
-        }
-
         if (challengeTraversal) {
             actOnTrap(
                 persisted
@@ -488,9 +495,22 @@
             return;
         }
 
+        if (legacyShortHistoryTrap && googleChild) {
+            ssSetString(KEYS.externalAutoBackTarget, '');
+            log('google-child-short-history-close', {
+                currentTarget,
+                historyLength: history.length,
+            });
+            try {
+                window.close();
+            } catch (error) {
+                log('google-child-short-history-close-failed', { error: String(error) });
+            }
+            return;
+        }
+
         if (
             legacyShortHistoryTrap &&
-            !openerLinked &&
             externalAutoBackTarget !== '' &&
             currentTarget === externalAutoBackTarget
         ) {
@@ -506,20 +526,6 @@
             });
             return;
         }
-        if (legacyShortHistoryTrap && openerLinked) {
-            ssSetString(KEYS.externalAutoBackTarget, '');
-            log('opener-short-history-close', {
-                currentTarget,
-                historyLength: history.length,
-            });
-            try {
-                window.close();
-            } catch (error) {
-                log('opener-short-history-close-failed', { error: String(error) });
-            }
-            return;
-        }
-
         if (legacyShortHistoryTrap) {
             // This is the exact state observed after pressing Safari Back on iOS
             // 26.6.1: a clean Reddit URL, navType=back_forward, history.length=2.
@@ -544,7 +550,7 @@
             // on top of the clean entry 0. If the clean entry originally came from
             // another site (for example Google opened in a new tab), move back to
             // entry 0 after pageshow and suppress the normal short-history bounce.
-            if (externalEntryOrigin !== '' && shortHistory) {
+            if (!googleChild && externalEntryOrigin !== '' && shortHistory) {
                 ssSetString(KEYS.externalAutoBackTarget, currentTarget);
             }
             return;
