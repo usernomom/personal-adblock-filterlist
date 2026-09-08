@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.3.3-macaque-clean
+// @version      1.3.4-macaque-clean
 // @description  Escape Reddit back/forward history traps in Safari, including current JS-challenge URLs.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.3.3-macaque-clean';
+    const STATE_VERSION = '1.3.4-macaque-clean';
 
     const CONFIG = Object.freeze({
         minMsBetweenActions: 1200,
@@ -96,6 +96,16 @@
             return entry && typeof entry.type === 'string' ? entry.type : '';
         } catch (_) {
             return '';
+        }
+    }
+
+    function hasChallengeParams(rawUrl) {
+        try {
+            const url = new URL(String(rawUrl), location.href);
+            if (!isRedditHost(url.hostname)) return false;
+            return CHALLENGE_PARAMS.some(name => url.searchParams.has(name));
+        } catch (_) {
+            return false;
         }
     }
 
@@ -193,37 +203,98 @@
         ssSetString(KEYS.stateVersion, STATE_VERSION);
     }
 
-    const navigationType = navType();
-    const now = Date.now();
-    const actionCount = ssGetNumber(KEYS.actionCount, 0);
-    const lastActionAt = ssGetNumber(KEYS.lastActionAt, 0);
-    const normalRedditSeen = ssGetString(KEYS.normalRedditSeen, '');
-    const underActionCap = actionCount < CONFIG.maxActionsPerTab;
-    const outsideThrottle = lastActionAt === 0 || now - lastActionAt >= CONFIG.minMsBetweenActions;
-    const shortHistory = history.length <= 2;
-    const isBackForward = navigationType === 'back_forward';
+    const initialHref = location.href;
+    const initialHadChallenge = hasChallengeParams(initialHref);
 
-    if (!isBackForward) {
-        ssSetString(KEYS.normalRedditSeen, cleanUrl(location.href));
+    function runTrapCheck(trigger, { persisted = false, traversalHint = false } = {}) {
+        const navigationType = navType();
+        const now = Date.now();
+        const actionCount = ssGetNumber(KEYS.actionCount, 0);
+        const lastActionAt = ssGetNumber(KEYS.lastActionAt, 0);
+        const normalRedditSeen = ssGetString(KEYS.normalRedditSeen, '');
+        const underActionCap = actionCount < CONFIG.maxActionsPerTab;
+        const outsideThrottle = lastActionAt === 0 || now - lastActionAt >= CONFIG.minMsBetweenActions;
+        const shortHistory = history.length <= 2;
+        const isBackForward = navigationType === 'back_forward';
+        const isTraversal = persisted || traversalHint || isBackForward;
+        const currentHasChallenge = hasChallengeParams(location.href);
+        const restoredChallengeDocument = persisted && initialHadChallenge;
+        const challengeTraversal = isTraversal && (currentHasChallenge || restoredChallengeDocument);
+        const legacyShortHistoryTrap = isBackForward && shortHistory;
+
+        if (!isTraversal) {
+            ssSetString(KEYS.normalRedditSeen, cleanUrl(location.href));
+        }
+
+        log('trap-check', {
+            trigger,
+            href: location.href,
+            initialHref,
+            initialHadChallenge,
+            navigationType,
+            historyLength: history.length,
+            persisted,
+            traversalHint,
+            actionCount,
+            lastActionAt,
+            normalRedditSeen,
+            underActionCap,
+            outsideThrottle,
+            shortHistory,
+            isBackForward,
+            currentHasChallenge,
+            restoredChallengeDocument,
+            challengeTraversal,
+            legacyShortHistoryTrap,
+        });
+
+        if (!underActionCap || !outsideThrottle) return;
+
+        // Current Reddit can leave more than two history entries, so a challenge-
+        // bearing traversal is poisoned regardless of total history length.
+        if (challengeTraversal) {
+            actOnTrap(
+                persisted
+                    ? 'pageshow-bfcache-challenge'
+                    : traversalHint
+                      ? 'popstate-challenge'
+                      : 'back_forward-challenge',
+            );
+            return;
+        }
+
+        // Preserve the previously working generic Safari/Macaque escape for the
+        // original short-history trap even when the visible URL looks normal.
+        if (legacyShortHistoryTrap) {
+            actOnTrap('back_forward-short-history');
+        }
     }
 
-    log('trap-check', {
-        href: location.href,
-        navigationType,
-        historyLength: history.length,
-        actionCount,
-        lastActionAt,
-        normalRedditSeen,
-        underActionCap,
-        outsideThrottle,
-        shortHistory,
-        isBackForward,
-    });
+    // Fresh non-BFCache back/forward traversals recreate the document, so the
+    // document-start check handles them.
+    runTrapCheck('document-start');
 
-    // This is the core Safari/Macaque behavior from the previously working build.
-    // Challenge parameters are deliberately NOT required: Safari's poisoned entry
-    // can restore as an apparently normal Reddit URL while still trapping Back.
-    if (isBackForward && shortHistory && underActionCap && outsideThrottle) {
-        actOnTrap('back_forward-short-history');
-    }
+    // WebKit BFCache restores resume the old document instead of rerunning the
+    // userscript. The original event listeners survive and pageshow is the signal
+    // that the poisoned history entry has become active again.
+    addEventListener(
+        'pageshow',
+        event => {
+            if (!event.persisted) return;
+            runTrapCheck('pageshow', { persisted: true });
+        },
+        true,
+    );
+
+    // Same-document history traversals do not create a new document or fire a
+    // BFCache restore. Catch only challenge-bearing popstate entries to avoid
+    // interfering with ordinary Reddit SPA navigation.
+    addEventListener(
+        'popstate',
+        () => {
+            if (!hasChallengeParams(location.href)) return;
+            runTrapCheck('popstate', { traversalHint: true });
+        },
+        true,
+    );
 })();

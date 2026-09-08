@@ -81,7 +81,7 @@ test('canonical Reddit userscript packaging is installable and versioned', () =>
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.match(source, /^\/\/ @name\s+Reddit Safari Back Button Fix$/m);
     assert.match(source, /^\/\/ @namespace\s+local\.reddit\.safari\.backfix$/m);
-    assert.match(source, /^\/\/ @version\s+1\.3\.3-macaque-clean$/m);
+    assert.match(source, /^\/\/ @version\s+1\.3\.4-macaque-clean$/m);
 
     const raw = 'https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/reddit_safari_back_button_fix.user.js';
     assert.ok(source.includes(`// @downloadURL  ${raw}`));
@@ -143,8 +143,71 @@ test('current and legacy challenge parameters are all removed during trap handli
     closeHarness(h);
 });
 
-test('back_forward with history longer than two is left alone', () => {
-    const url = 'https://www.reddit.com/r/test/new/?jsc_token=x';
+test('challenge back_forward is escaped even when history is longer than two', () => {
+    const h = makeDom(
+        'https://www.reddit.com/r/intelstock/new/?solution=x&js_challenge=1&jsc_token=y&jsc_orig_r=',
+        { navigationType: 'back_forward', historyLength: 6 },
+    );
+
+    assert.equal(h.dom.window.location.href, 'https://www.reddit.com/r/intelstock/new/');
+    assert.equal(h.calls.close, 1);
+    assert.equal(h.calls.forward, 1);
+    closeHarness(h);
+});
+
+test('BFCache pageshow restores a challenge document and escapes it', () => {
+    const h = makeDom(
+        'https://www.reddit.com/r/intelstock/new/?solution=x&js_challenge=1&jsc_token=y&jsc_orig_r=',
+        { navigationType: 'navigate', historyLength: 6 },
+    );
+
+    assert.equal(h.calls.close, 0);
+    assert.equal(h.calls.forward, 0);
+
+    const event = new h.dom.window.PageTransitionEvent('pageshow', { persisted: true });
+    h.dom.window.dispatchEvent(event);
+
+    assert.equal(h.dom.window.location.href, 'https://www.reddit.com/r/intelstock/new/');
+    assert.equal(h.calls.close, 1);
+    assert.equal(h.calls.forward, 1);
+    closeHarness(h);
+});
+
+test('BFCache pageshow on an ordinary Reddit document is left alone', () => {
+    const h = makeDom('https://www.reddit.com/r/test/new/?sort=new', {
+        navigationType: 'navigate',
+        historyLength: 6,
+    });
+
+    const event = new h.dom.window.PageTransitionEvent('pageshow', { persisted: true });
+    h.dom.window.dispatchEvent(event);
+
+    assert.equal(h.calls.close, 0);
+    assert.equal(h.calls.forward, 0);
+    closeHarness(h);
+});
+
+test('challenge-bearing popstate is escaped without affecting ordinary SPA history', () => {
+    const h = makeDom('https://www.reddit.com/r/test/', {
+        navigationType: 'navigate',
+        historyLength: 6,
+    });
+
+    h.dom.window.history.replaceState(
+        {},
+        '',
+        '/r/test/?solution=x&js_challenge=1&jsc_token=y&jsc_orig_r=',
+    );
+    h.dom.window.dispatchEvent(new h.dom.window.PopStateEvent('popstate'));
+
+    assert.equal(h.dom.window.location.href, 'https://www.reddit.com/r/test/');
+    assert.equal(h.calls.close, 1);
+    assert.equal(h.calls.forward, 1);
+    closeHarness(h);
+});
+
+test('ordinary back_forward with history longer than two is left alone', () => {
+    const url = 'https://www.reddit.com/r/test/new/?sort=new';
     const h = makeDom(url, { navigationType: 'back_forward', historyLength: 3 });
 
     assert.equal(h.dom.window.location.href, url);
@@ -159,7 +222,7 @@ test('1200ms throttle prevents repeated trap actions', () => {
         historyLength: 2,
         now: 10_000,
         stored: {
-            __reddit_backfix_state_version__: '1.3.3-macaque-clean',
+            __reddit_backfix_state_version__: '1.3.4-macaque-clean',
             __reddit_backfix_action_count__: 1,
             __reddit_backfix_last_action_at__: 9_500,
         },
@@ -187,7 +250,7 @@ test('upgrade resets stale per-tab action state before trap detection', () => {
     assert.equal(h.dom.window.sessionStorage.getItem('__reddit_backfix_action_count__'), '1');
     assert.equal(
         h.dom.window.sessionStorage.getItem('__reddit_backfix_state_version__'),
-        '1.3.3-macaque-clean',
+        '1.3.4-macaque-clean',
     );
     closeHarness(h);
 });
@@ -196,7 +259,7 @@ test('four-action cap prevents an infinite escape loop', () => {
         navigationType: 'back_forward',
         historyLength: 2,
         stored: {
-            __reddit_backfix_state_version__: '1.3.3-macaque-clean',
+            __reddit_backfix_state_version__: '1.3.4-macaque-clean',
             __reddit_backfix_action_count__: 4,
             __reddit_backfix_last_action_at__: 0,
         },
