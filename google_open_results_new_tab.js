@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Open Google Search result links in new tabs while preserving uBlacklist and archive.ph link handling.
 // @license      MIT
-// @version      5
+// @version      6
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
 // @match        https://*.google.com/search*
@@ -20,6 +20,10 @@
 
     const REDDIT_CHILD_MARKER = '__rbf_google_child';
     const REDDIT_SCRIPT_OPEN_ATTRIBUTE = 'data-rbf-script-open';
+    const RETURN_SENTINEL_PARAM = '__rbf_return_sentinel';
+    const RETURN_TARGET_PARAM = '__rbf_target';
+    const RETURN_SENTINEL_QUERY = '__rbf_return_sentinel__';
+    const RETURN_STORAGE_PREFIX = '__rbf_return_sentinel__:';
 
     function isGoogleHost(hostname) {
         const host = String(hostname || '').toLowerCase();
@@ -30,6 +34,125 @@
         const host = String(hostname || '').toLowerCase();
         return host === 'reddit.com' || host.endsWith('.reddit.com');
     }
+
+    function sentinelStorageKey(id) {
+        return `${RETURN_STORAGE_PREFIX}${id}`;
+    }
+
+    function closeReturnSentinel(storageKey) {
+        try {
+            sessionStorage.removeItem(storageKey);
+        } catch (_) {}
+        try {
+            window.close();
+        } catch (_) {}
+    }
+
+    function handleReturnSentinel() {
+        let url;
+        try {
+            url = new URL(location.href);
+        } catch (_) {
+            return false;
+        }
+
+        const id = url.searchParams.get(RETURN_SENTINEL_PARAM);
+        if (
+            url.pathname !== '/search' ||
+            url.searchParams.get('q') !== RETURN_SENTINEL_QUERY ||
+            !id
+        ) {
+            return false;
+        }
+
+        try {
+            if (document.documentElement) document.documentElement.style.visibility = 'hidden';
+        } catch (_) {}
+
+        const storageKey = sentinelStorageKey(id);
+        let armed = false;
+        try {
+            armed = sessionStorage.getItem(storageKey) === 'armed';
+        } catch (_) {}
+
+        // If Safari rebuilt this Google document instead of restoring it from
+        // BFCache, the stored arm is enough to identify a return traversal.
+        if (armed) {
+            closeReturnSentinel(storageKey);
+            return true;
+        }
+
+        const fragment = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
+        const rawTarget = fragment.get(RETURN_TARGET_PARAM);
+        let target;
+        try {
+            target = new URL(String(rawTarget || ''), location.href);
+        } catch (_) {
+            return true;
+        }
+
+        if (
+            (target.protocol !== 'http:' && target.protocol !== 'https:') ||
+            (!isGoogleHost(target.hostname) && !isRedditHost(target.hostname))
+        ) {
+            return true;
+        }
+
+        // BFCache restores do not rerun the userscript. Keep a listener in the
+        // sentinel document itself; the initial pageshow is ignored because no
+        // pagehide has happened yet, while Back restoration closes the child.
+        let leftSentinel = false;
+        addEventListener('pagehide', () => {
+            leftSentinel = true;
+        }, true);
+        addEventListener('pageshow', () => {
+            if (!leftSentinel) return;
+            closeReturnSentinel(storageKey);
+        }, true);
+
+        try {
+            sessionStorage.setItem(storageKey, 'armed');
+        } catch (_) {
+            // BFCache restoration can still close the child even without storage;
+            // a rebuilt sentinel is the only degraded case.
+        }
+
+        let departed = false;
+        const depart = () => {
+            if (departed) return;
+            departed = true;
+            location.assign(target.href);
+        };
+
+        // Leave only after this actual Google document has completed loading.
+        // This avoids the newly-opened-tab history coalescing seen with fixed
+        // delays, while still keeping the sentinel invisible to Reddit.
+        if (document.readyState === 'complete') {
+            depart();
+        } else {
+            addEventListener('load', depart, { once: true });
+        }
+        return true;
+    }
+
+    function returnSentinelUrl(targetHref) {
+        const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        const url = new URL('/search', location.origin);
+        url.searchParams.set('q', RETURN_SENTINEL_QUERY);
+        url.searchParams.set(RETURN_SENTINEL_PARAM, id);
+        const fragment = new URLSearchParams();
+        fragment.set(RETURN_TARGET_PARAM, targetHref);
+        url.hash = fragment.toString();
+        return url.href;
+    }
+
+    function openRedditWithSentinel(targetHref) {
+        return window.open(returnSentinelUrl(targetHref), '_blank');
+    }
+
+    if (handleReturnSentinel()) return;
 
     function externalDestination(rawHref) {
         try {
@@ -239,7 +362,7 @@
                     // Keep this call inside the user's click activation. A
                     // window.open()-created tab is script-closable; if popup
                     // blocking rejects it, fall back to target=_blank.
-                    const child = window.open(anchor.href, '_blank');
+                    const child = openRedditWithSentinel(anchor.href);
                     if (child) {
                         event.preventDefault();
                         event.stopImmediatePropagation();

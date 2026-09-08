@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.4.5-macaque-clean
+// @version      1.4.6-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.4.5-macaque-clean';
+    const STATE_VERSION = '1.4.6-macaque-clean';
     const GOOGLE_CHILD_PARAM = '__rbf_google_child';
 
     const CONFIG = Object.freeze({
@@ -236,24 +236,23 @@
             nav.addEventListener('navigate', event => {
                 const destinationUrl = event.destination && typeof event.destination.url === 'string' ? event.destination.url : '';
                 const googleChild = ssGetString(KEYS.googleChild, '') === '1';
-                const closeGoogleChildChallengeTraverse =
-                    event.navigationType === 'traverse' &&
+                const replaceChallengePush =
                     googleChild &&
-                    hasChallengeParams(location.href) &&
-                    destinationUrl !== '' &&
-                    !hasChallengeParams(destinationUrl) &&
+                    event.navigationType === 'push' &&
+                    event.cancelable &&
+                    !event.userInitiated &&
+                    !hasChallengeParams(location.href) &&
+                    hasChallengeParams(destinationUrl) &&
                     targetKey(destinationUrl) !== '' &&
                     targetKey(destinationUrl) === targetKey(location.href);
 
-                if (closeGoogleChildChallengeTraverse) {
-                    log('google-child-back-traverse-close', {
-                        from: location.href,
-                        to: destinationUrl,
-                    });
+                if (replaceChallengePush) {
+                    log('challenge-push-replaced', { from: location.href, to: destinationUrl });
                     try {
-                        window.close();
+                        event.preventDefault();
+                        location.replace(destinationUrl);
                     } catch (error) {
-                        log('google-child-back-traverse-close-failed', { error: String(error) });
+                        log('challenge-push-replace-failed', { error: String(error), destinationUrl });
                     }
                     return;
                 }
@@ -270,32 +269,6 @@
             });
 
             nav.addEventListener('currententrychange', event => {
-                const fromUrl = event.from && typeof event.from.url === 'string' ? event.from.url : '';
-                const currentUrl = nav.currentEntry && typeof nav.currentEntry.url === 'string'
-                    ? nav.currentEntry.url
-                    : location.href;
-                const googleChild = ssGetString(KEYS.googleChild, '') === '1';
-                const closeGoogleChildChallengeReturn =
-                    googleChild &&
-                    hasChallengeParams(fromUrl) &&
-                    !hasChallengeParams(currentUrl) &&
-                    targetKey(fromUrl) !== '' &&
-                    targetKey(fromUrl) === targetKey(currentUrl);
-
-                if (closeGoogleChildChallengeReturn) {
-                    log('google-child-currententrychange-close', {
-                        navigationType: event.navigationType || '',
-                        from: fromUrl,
-                        current: currentUrl,
-                    });
-                    try {
-                        window.close();
-                    } catch (error) {
-                        log('google-child-currententrychange-close-failed', { error: String(error) });
-                    }
-                    return;
-                }
-
                 log('navigation-currententrychange', {
                     navigationType: event.navigationType || '',
                     from: navigationEntrySnapshot(event.from),
@@ -538,20 +511,6 @@
             return;
         }
 
-        if (legacyShortHistoryTrap && googleChild) {
-            ssSetString(KEYS.externalAutoBackTarget, '');
-            log('google-child-short-history-close', {
-                currentTarget,
-                historyLength: history.length,
-            });
-            try {
-                window.close();
-            } catch (error) {
-                log('google-child-short-history-close-failed', { error: String(error) });
-            }
-            return;
-        }
-
         if (
             legacyShortHistoryTrap &&
             externalAutoBackTarget !== '' &&
@@ -676,27 +635,6 @@
         'popstate',
         () => {
             log('popstate', pageContextSnapshot());
-
-            // Safari Back from Reddit's pushed challenge lands on the clean
-            // entry first. A Google-opened child must close at that exact
-            // post-traversal point; PerformanceNavigationTiming may still say
-            // "navigate", so do not gate this on navType/history length.
-            if (
-                ssGetString(KEYS.googleChild, '') === '1' &&
-                !hasChallengeParams(location.href)
-            ) {
-                log('google-child-clean-popstate-close', {
-                    href: location.href,
-                    historyLength: history.length,
-                });
-                try {
-                    window.close();
-                } catch (error) {
-                    log('google-child-clean-popstate-close-failed', { error: String(error) });
-                }
-                return;
-            }
-
             if (!hasChallengeParams(location.href)) return;
             runTrapCheck('popstate', { traversalHint: true });
         },
