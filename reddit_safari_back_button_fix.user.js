@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.3.6-macaque-clean
+// @version      1.3.7-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.3.6-macaque-clean';
+    const STATE_VERSION = '1.3.7-macaque-clean';
 
     const CONFIG = Object.freeze({
         minMsBetweenActions: 1200,
@@ -135,6 +135,122 @@
         let path = url.pathname || '/';
         if (path.length > 1) path = path.replace(/\/+$/, '');
         return path;
+    }
+
+    function originOf(rawUrl) {
+        if (!rawUrl) return '';
+        try {
+            return new URL(String(rawUrl), location.href).origin;
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function navigationEntrySnapshot(entry) {
+        if (!entry) return null;
+        try {
+            return {
+                index: typeof entry.index === 'number' ? entry.index : null,
+                url: typeof entry.url === 'string' ? entry.url : '',
+                key: typeof entry.key === 'string' ? entry.key : '',
+                id: typeof entry.id === 'string' ? entry.id : '',
+                sameDocument:
+                    typeof entry.sameDocument === 'boolean' ? entry.sameDocument : null,
+            };
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function navigationSnapshot() {
+        try {
+            const nav = window.navigation;
+            if (!nav) return { supported: false };
+
+            let entries = [];
+            try {
+                entries =
+                    typeof nav.entries === 'function'
+                        ? nav.entries().map(navigationEntrySnapshot)
+                        : [];
+            } catch (_) {
+                entries = [];
+            }
+
+            let activation = null;
+            try {
+                if (nav.activation) {
+                    activation = {
+                        navigationType: nav.activation.navigationType || '',
+                        from: navigationEntrySnapshot(nav.activation.from),
+                        entry: navigationEntrySnapshot(nav.activation.entry),
+                    };
+                }
+            } catch (_) {
+                activation = null;
+            }
+
+            return {
+                supported: true,
+                canGoBack: Boolean(nav.canGoBack),
+                canGoForward: Boolean(nav.canGoForward),
+                currentEntry: navigationEntrySnapshot(nav.currentEntry),
+                activation,
+                entries,
+            };
+        } catch (error) {
+            return { supported: true, error: String(error) };
+        }
+    }
+
+    function pageContextSnapshot() {
+        let hasOpener = false;
+        try {
+            hasOpener = window.opener != null;
+        } catch (_) {
+            hasOpener = false;
+        }
+
+        return {
+            referrerPresent: Boolean(document.referrer),
+            referrerOrigin: originOf(document.referrer),
+            hasOpener,
+            visibilityState: document.visibilityState || '',
+            historyLength: history.length,
+            navigation: navigationSnapshot(),
+        };
+    }
+
+    function installNavigationDiagnostics() {
+        try {
+            const nav = window.navigation;
+            if (!nav || typeof nav.addEventListener !== 'function') {
+                log('navigation-api-unavailable', pageContextSnapshot());
+                return;
+            }
+
+            nav.addEventListener('navigate', event => {
+                log('navigation-navigate', {
+                    navigationType: event.navigationType || '',
+                    canIntercept: Boolean(event.canIntercept),
+                    userInitiated: Boolean(event.userInitiated),
+                    hashChange: Boolean(event.hashChange),
+                    downloadRequest: event.downloadRequest || null,
+                    destination: navigationEntrySnapshot(event.destination),
+                    context: pageContextSnapshot(),
+                });
+            });
+
+            nav.addEventListener('currententrychange', event => {
+                log('navigation-currententrychange', {
+                    navigationType: event.navigationType || '',
+                    from: navigationEntrySnapshot(event.from),
+                    context: pageContextSnapshot(),
+                });
+            });
+        } catch (error) {
+            log('navigation-diagnostics-install-failed', { error: String(error) });
+        }
     }
 
     function handleCloseBlocked(reason, fallbackDirection) {
@@ -276,6 +392,7 @@
             restoredArmedChallenge,
             challengeTraversal,
             legacyShortHistoryTrap,
+            pageContext: pageContextSnapshot(),
         });
 
         if (!underActionCap || !outsideThrottle) return;
@@ -345,11 +462,28 @@
         }
     }
 
+    log('diagnostic-init', pageContextSnapshot());
+    installNavigationDiagnostics();
     runTrapCheck('document-start');
+
+    addEventListener(
+        'pagehide',
+        event => {
+            log('pagehide', {
+                persisted: Boolean(event.persisted),
+                context: pageContextSnapshot(),
+            });
+        },
+        true,
+    );
 
     addEventListener(
         'pageshow',
         event => {
+            log('pageshow', {
+                persisted: Boolean(event.persisted),
+                context: pageContextSnapshot(),
+            });
             if (!event.persisted) return;
             runTrapCheck('pageshow', { persisted: true });
         },
@@ -359,6 +493,7 @@
     addEventListener(
         'popstate',
         () => {
+            log('popstate', pageContextSnapshot());
             if (!hasChallengeParams(location.href)) return;
             runTrapCheck('popstate', { traversalHint: true });
         },
