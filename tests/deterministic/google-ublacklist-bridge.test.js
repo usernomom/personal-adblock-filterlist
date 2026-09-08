@@ -80,7 +80,7 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.1\.0$/m);
+    assert.match(source, /^\/\/ @version\s+13\.1\.1$/m);
 });
 
 test('opaque regular Google result is shielded before proxy classification', () => {
@@ -168,6 +168,39 @@ test('unblocked result becomes ready as soon as uBlacklist classifies it', async
     h.close();
 });
 
+test('ordinary result sitelinks stay coupled to the parent card', async () => {
+    const mainGoto = '/goto?url=opaque-reddit-main';
+    const childGoto = '/goto?url=opaque-reddit-child';
+    const h = createHarness({
+        html:
+            '<div id="group" class="Ww4FFb vt6azd">' +
+            `<a id="main" href="${mainGoto}"><h3>Codex coding tools by OpenAI</h3></a>` +
+            `<div id="sitelinks"><h3><a id="child" href="${childGoto}">Is Codex really that impressive?</a></h3></div>` +
+            '</div>',
+        wjd: {
+            main: [mainGoto, 'https://www.reddit.com/r/codex/'],
+            child: [childGoto, 'https://www.reddit.com/r/codex/comments/example'],
+        },
+    });
+
+    const group = h.document.getElementById('group');
+    const child = h.document.getElementById('child');
+    assert.equal(group.getAttribute('data-ub-google-filter-pending'), '1');
+    assert.equal(child.closest('[data-ub-google-filter-pending]'), group);
+    assert.equal(h.document.querySelectorAll('[data-ub-google-filter-pending]').length, 1);
+
+    const proxy = group.querySelector(':scope > [data-ub-google-source-proxy] a');
+    assert.ok(proxy, 'parent result should receive one proxy URL');
+    assert.equal(proxy.href, 'https://www.reddit.com/r/codex/');
+    assert.equal(group.querySelectorAll('[data-ub-google-source-proxy]').length, 1);
+
+    group.setAttribute('data-ub-result', '1');
+    await nextTask();
+    assert.equal(group.getAttribute('data-ub-google-filter-ready'), '1');
+    assert.equal(group.hasAttribute('data-ub-google-filter-pending'), false);
+    assert.equal(h.api.shieldedCount, 0);
+    h.close();
+});
 test('multi-result known container releases parent shield and arms nested result roots', () => {
     const gotoA = '/goto?url=opaque-a';
     const gotoB = '/goto?url=opaque-b';

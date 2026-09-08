@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.1.0
+// @version      13.1.1
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.1.0';
+    const VERSION = '13.1.1';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
     const NEWS_NETWORK_CONCURRENCY = 4;
@@ -709,14 +709,32 @@ ${pendingRoot} * {
         return best;
     }
 
-    function uniqueGotoCount(root) {
+    // Google organic sitelinks are commonly rendered as <h3><a ...></a></h3>,
+    // while the actual result anchor owns/wraps its heading. When that stronger
+    // signal exists, treat only those heading-owning anchors as independent
+    // results so one card is not split into separately delayed sitelinks.
+    function isPrimaryOpaqueLink(link) {
+        return Boolean(isElement(link) && link.querySelector(HEADING_SELECTOR));
+    }
+
+    function opaqueResultLinkCount(root) {
+        const anchors = [...root.querySelectorAll(OPAQUE_LINK_SELECTOR)];
+        const primaries = anchors.filter(isPrimaryOpaqueLink);
+        const candidates = primaries.length ? primaries : anchors;
         const keys = new Set();
-        for (const anchor of root.querySelectorAll(OPAQUE_LINK_SELECTOR)) {
+        for (const anchor of candidates) {
             const key = normalizeGoto(anchor.getAttribute('href') || anchor.href);
             if (key) keys.add(key);
             if (keys.size > 1) break;
         }
         return keys.size;
+    }
+
+    function shouldBridgeOpaqueLink(link) {
+        const known = link.closest(KNOWN_ROOT_SELECTOR);
+        if (!known) return true;
+        const primaries = [...known.querySelectorAll(OPAQUE_LINK_SELECTOR)].filter(isPrimaryOpaqueLink);
+        return !primaries.length || isPrimaryOpaqueLink(link);
     }
 
     function isPrimaryNestedLink(link) {
@@ -728,7 +746,7 @@ ${pendingRoot} * {
 
     function rootForOpaqueLink(link) {
         const known = link.closest(KNOWN_ROOT_SELECTOR);
-        if (known && uniqueGotoCount(known) > 1) {
+        if (known && opaqueResultLinkCount(known) > 1) {
             const nested = link.closest(NESTED_RESULT_SELECTOR);
             if (nested && nested !== known && known.contains(nested)) {
                 return nested;
@@ -950,7 +968,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
     function registerOpaqueLink(link) {
         if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return;
         const key = normalizeGoto(link.getAttribute('href') || link.href);
-        if (!key) return;
+        if (!key || !shouldBridgeOpaqueLink(link)) return;
 
         armFilterShieldForLink(link);
 
