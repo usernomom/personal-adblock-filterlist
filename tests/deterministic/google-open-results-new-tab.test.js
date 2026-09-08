@@ -21,7 +21,7 @@ function makeDom() {
 }
 
 test('Google new-tab userscript is valid and versioned', () => {
-    assert.match(source, /^\/\/ @version\s+3$/m);
+    assert.match(source, /^\/\/ @version\s+4$/m);
     assert.match(source, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/usernomom\/personal-adblock-filterlist\/main\/google_open_results_new_tab\.js$/m);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
 });
@@ -40,9 +40,9 @@ test('organic result uses an opener-linked new tab', () => {
     dom.window.close();
 });
 
-test('opaque Reddit result uses bridge destination and carries child marker', () => {
+test('opaque Reddit result keeps Google redirect even if bridge proxy path is malformed', () => {
     const dom = new JSDOM(
-        '<!doctype html><html><body><div id="root"><span hidden><a data-ub-google-source-proxy-anchor="default" href="https://www.reddit.com/r/codex/"></a></span><a id="result" href="/goto?url=opaque"><h3>Reddit</h3></a></div></body></html>',
+        '<!doctype html><html><body><div id="root"><span hidden><a data-ub-google-source-proxy-anchor="default" href="https://www.reddit.com/r/codex/:H/"></a></span><a id="result" href="/goto?url=opaque"><h3>Reddit</h3></a></div></body></html>',
         { url: 'https://www.google.com/search?q=codex+reddit', runScripts: 'outside-only' },
     );
     dom.window.eval(source);
@@ -50,8 +50,10 @@ test('opaque Reddit result uses bridge destination and carries child marker', ()
     anchor.dispatchEvent(new dom.window.FocusEvent('focusin', { bubbles: true, composed: true }));
 
     const url = new URL(anchor.href);
-    assert.equal(url.hostname, 'www.reddit.com');
-    assert.equal(url.pathname, '/r/codex/');
-    assert.equal(url.searchParams.get('__rbf_google_child'), '1');
+    assert.equal(url.hostname, 'www.google.com');
+    assert.equal(url.pathname, '/goto');
+    assert.equal(url.searchParams.get('url'), 'opaque');
+    assert.equal(url.hash, '#__rbf_google_child=1');
+    assert.equal(anchor.href.includes('/r/codex/:H/'), false);
     dom.window.close();
 });

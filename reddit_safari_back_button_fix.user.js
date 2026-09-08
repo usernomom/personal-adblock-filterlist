@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.4.2-macaque-clean
+// @version      1.4.3-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.4.2-macaque-clean';
+    const STATE_VERSION = '1.4.3-macaque-clean';
     const GOOGLE_CHILD_PARAM = '__rbf_google_child';
 
     const CONFIG = Object.freeze({
@@ -366,13 +366,30 @@
         ssSetString(KEYS.stateVersion, STATE_VERSION);
     }
 
-    // Google v3 marks only Reddit result child tabs. Persist that explicit
-    // provenance in sessionStorage, then strip the marker immediately.
+    // Google v4 carries provenance in the URL fragment so Google's opaque
+    // redirect remains untouched. Accept the v3 query marker too so already-open
+    // tabs survive the upgrade, then strip either form immediately.
     try {
         const markerUrl = parsedRedditUrl(location.href);
-        if (markerUrl && markerUrl.searchParams.get(GOOGLE_CHILD_PARAM) === '1') {
+        let markerSeen = false;
+        if (markerUrl) {
+            if (markerUrl.searchParams.get(GOOGLE_CHILD_PARAM) === '1') {
+                markerSeen = true;
+                markerUrl.searchParams.delete(GOOGLE_CHILD_PARAM);
+            }
+
+            const fragment = markerUrl.hash.startsWith('#') ? markerUrl.hash.slice(1) : markerUrl.hash;
+            const parts = fragment ? fragment.split('&').filter(Boolean) : [];
+            const marker = `${GOOGLE_CHILD_PARAM}=1`;
+            const kept = parts.filter(part => part !== marker);
+            if (kept.length !== parts.length) {
+                markerSeen = true;
+                markerUrl.hash = kept.length ? `#${kept.join('&')}` : '';
+            }
+        }
+
+        if (markerUrl && markerSeen) {
             ssSetString(KEYS.googleChild, '1');
-            markerUrl.searchParams.delete(GOOGLE_CHILD_PARAM);
             const markerCleaned = `${markerUrl.pathname}${markerUrl.search}${markerUrl.hash}`;
             history.replaceState(history.state, '', markerCleaned);
             log('google-child-recorded', { href: location.href, cleaned: markerCleaned });

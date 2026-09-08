@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Open Google Search result links in new tabs while preserving uBlacklist and archive.ph link handling.
 // @license      MIT
-// @version      3
+// @version      4
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
 // @match        https://*.google.com/search*
@@ -65,14 +65,43 @@
         return null;
     }
 
-    function markRedditChild(anchor) {
-        const direct = externalDestination(anchor.getAttribute('href') || anchor.href);
-        const destination = direct && isRedditHost(direct.hostname) ? direct : bridgedDestination(anchor);
-        if (!destination || !isRedditHost(destination.hostname)) return false;
+    function addRedditChildFragment(url) {
+        const marker = `${REDDIT_CHILD_MARKER}=1`;
+        const current = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash;
+        const parts = current ? current.split('&').filter(Boolean) : [];
+        if (!parts.includes(marker)) parts.push(marker);
+        url.hash = parts.join('&');
+    }
 
-        destination.searchParams.set(REDDIT_CHILD_MARKER, '1');
-        anchor.href = destination.href;
-        return true;
+    function markRedditChild(anchor) {
+        let original;
+        try {
+            original = new URL(anchor.getAttribute('href') || anchor.href, location.href);
+        } catch (_) {
+            return false;
+        }
+
+        const direct = externalDestination(original.href);
+        const classified = direct && isRedditHost(direct.hostname) ? direct : bridgedDestination(anchor);
+        if (!classified || !isRedditHost(classified.hostname)) return false;
+
+        // The uBlacklist bridge is only a classification hint. Its hidden proxy
+        // is not guaranteed to be a canonical navigation URL. Keep Google's own
+        // /goto or /url intact and carry provenance in the fragment, which
+        // survives the HTTP redirect without being sent to Reddit's server.
+        if (isGoogleHost(original.hostname) && (original.pathname === '/goto' || original.pathname === '/url')) {
+            addRedditChildFragment(original);
+            anchor.href = original.href;
+            return true;
+        }
+
+        if (direct && isRedditHost(direct.hostname)) {
+            addRedditChildFragment(direct);
+            anchor.href = direct.href;
+            return true;
+        }
+
+        return false;
     }
 
     function findAnchor(event) {
@@ -138,8 +167,8 @@
         rel.add('opener');
         anchor.setAttribute('rel', [...rel].join(' '));
 
-        // For Reddit results, use the bridge-resolved destination instead of
-        // Google's opaque /goto wrapper and carry an explicit child-tab marker.
+        // For Reddit results, carry an explicit child-tab marker without
+        // replacing Google's own redirect URL.
         markRedditChild(anchor);
 
         return true;
