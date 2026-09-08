@@ -95,7 +95,7 @@ test('canonical Reddit userscript packaging is installable and versioned', () =>
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.match(source, /^\/\/ @name\s+Reddit Safari Back Button Fix$/m);
     assert.match(source, /^\/\/ @namespace\s+local\.reddit\.safari\.backfix$/m);
-    assert.match(source, /^\/\/ @version\s+1\.3\.5-macaque-clean$/m);
+    assert.match(source, /^\/\/ @version\s+1\.3\.6-macaque-clean$/m);
 
     const raw = 'https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/reddit_safari_back_button_fix.user.js';
     assert.ok(source.includes(`// @downloadURL  ${raw}`));
@@ -176,7 +176,7 @@ test('a different fresh challenge target does not reuse a stale arm', () => {
         navigationType: 'navigate',
         historyLength: 4,
         stored: {
-            __reddit_backfix_state_version__: '1.3.5-macaque-clean',
+            __reddit_backfix_state_version__: '1.3.6-macaque-clean',
             __reddit_backfix_armed_target__: '/r/intelstock/new',
         },
     });
@@ -208,7 +208,7 @@ test('BFCache pageshow restores an armed challenge and escapes backward', () => 
             navigationType: 'navigate',
             historyLength: 6,
             stored: {
-                __reddit_backfix_state_version__: '1.3.5-macaque-clean',
+                __reddit_backfix_state_version__: '1.3.6-macaque-clean',
                 __reddit_backfix_armed_target__: '/r/intelstock/new',
             },
         },
@@ -266,15 +266,39 @@ test('ordinary back_forward with history longer than two is left alone', () => {
     closeHarness(h);
 });
 
-test('legacy normal-looking short-history back_forward escapes backward', () => {
+test('legacy normal-looking short-history back_forward escapes forward', () => {
     const h = makeDom('https://www.reddit.com/r/test/new/', {
         navigationType: 'back_forward',
         historyLength: 2,
     });
 
     assert.equal(h.calls.close, 1);
-    assert.equal(h.calls.back, 1);
-    assert.equal(h.calls.forward, 0);
+    assert.equal(h.calls.back, 0);
+    assert.equal(h.calls.forward, 1);
+    closeHarness(h);
+});
+
+test('exact observed Safari Back state uses forward, not back', () => {
+    const h = makeDom('https://www.reddit.com/r/intelstock/new/', {
+        navigationType: 'back_forward',
+        historyLength: 2,
+        stored: {
+            __reddit_backfix_state_version__: '1.3.6-macaque-clean',
+            __reddit_backfix_normal_reddit_seen__: '/r/intelstock/new/',
+            __reddit_backfix_pending_target__: '/r/intelstock/new',
+            __reddit_backfix_armed_target__: '',
+            __reddit_backfix_action_count__: 0,
+            __reddit_backfix_last_action_at__: 0,
+        },
+    });
+
+    const actionLog = h.calls.logs.find(args => args[1] === 'trap-action');
+    assert.ok(actionLog);
+    assert.equal(actionLog[2].reason, 'back_forward-short-history');
+    assert.equal(actionLog[2].fallbackDirection, 'forward');
+    assert.equal(h.calls.close, 1);
+    assert.equal(h.calls.back, 0);
+    assert.equal(h.calls.forward, 1);
     closeHarness(h);
 });
 
@@ -284,7 +308,7 @@ test('1200ms throttle prevents repeated trap actions', () => {
         historyLength: 2,
         now: 10_000,
         stored: {
-            __reddit_backfix_state_version__: '1.3.5-macaque-clean',
+            __reddit_backfix_state_version__: '1.3.6-macaque-clean',
             __reddit_backfix_action_count__: 1,
             __reddit_backfix_last_action_at__: 9_500,
         },
@@ -315,7 +339,7 @@ test('upgrade resets stale per-tab action and arm state', () => {
     assert.equal(h.dom.window.sessionStorage.getItem('__reddit_backfix_pending_target__'), '/r/test');
     assert.equal(
         h.dom.window.sessionStorage.getItem('__reddit_backfix_state_version__'),
-        '1.3.5-macaque-clean',
+        '1.3.6-macaque-clean',
     );
     closeHarness(h);
 });
@@ -325,7 +349,7 @@ test('four-action cap prevents an infinite escape loop', () => {
         navigationType: 'back_forward',
         historyLength: 2,
         stored: {
-            __reddit_backfix_state_version__: '1.3.5-macaque-clean',
+            __reddit_backfix_state_version__: '1.3.6-macaque-clean',
             __reddit_backfix_action_count__: 4,
             __reddit_backfix_last_action_at__: 0,
         },

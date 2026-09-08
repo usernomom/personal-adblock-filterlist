@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.3.5-macaque-clean
+// @version      1.3.6-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.3.5-macaque-clean';
+    const STATE_VERSION = '1.3.6-macaque-clean';
 
     const CONFIG = Object.freeze({
         minMsBetweenActions: 1200,
@@ -197,8 +197,9 @@
         }
 
         // A script-opened Reddit tab can close here. In a normal same-tab
-        // navigation Safari blocks close(), so move one more entry backward from
-        // the zombie challenge entry to the page the user actually came from.
+        // navigation Safari blocks close(), so use the direction selected for the
+        // specific trap shape. The observed two-entry clean-URL loop needs forward;
+        // challenge-bearing traversal traps still use back.
         setTimeout(() => {
             handleCloseBlocked(reason, fallbackDirection);
         }, CONFIG.closeFallbackDelayMs);
@@ -305,7 +306,11 @@
         }
 
         if (legacyShortHistoryTrap) {
-            actOnTrap('back_forward-short-history', 'back');
+            // This is the exact state observed after pressing Safari Back on iOS
+            // 26.6.1: a clean Reddit URL, navType=back_forward, history.length=2.
+            // In that two-entry loop the working July strategy advances forward;
+            // going backward leaves Safari at the beginning of the loop.
+            actOnTrap('back_forward-short-history', 'forward');
             return;
         }
 
