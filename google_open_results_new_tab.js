@@ -4,8 +4,9 @@
 // @author       nobody
 // @description  Open Google Search result links in new tabs while preserving uBlacklist and archive.ph link handling.
 // @license      MIT
-// @version      1
+// @version      2
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
+// @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
 // @match        https://*.google.fr/search*
@@ -75,7 +76,9 @@
                 .split(/\s+/)
                 .filter(Boolean)
         );
-        rel.add('noopener');
+        rel.delete('noopener');
+        rel.delete('noreferrer');
+        rel.add('opener');
         anchor.setAttribute('rel', [...rel].join(' '));
 
         return true;
