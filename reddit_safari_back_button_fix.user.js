@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Safari Back Button Fix
 // @namespace    local.reddit.safari.backfix
-// @version      1.4.0-macaque-clean
+// @version      1.4.1-macaque-clean
 // @description  Escape Reddit JavaScript-challenge history traps in Safari without breaking the initial challenge load.
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const TAG = '[reddit-safari-backfix]';
-    const STATE_VERSION = '1.4.0-macaque-clean';
+    const STATE_VERSION = '1.4.1-macaque-clean';
 
     const CONFIG = Object.freeze({
         minMsBetweenActions: 1200,
@@ -233,15 +233,31 @@
 
             nav.addEventListener('navigate', event => {
                 const destinationUrl = event.destination && typeof event.destination.url === 'string' ? event.destination.url : '';
-                const replaceChallengePush = event.navigationType === 'push' && event.cancelable && !event.userInitiated && !hasChallengeParams(location.href) && hasChallengeParams(destinationUrl) && targetKey(destinationUrl) !== '' && targetKey(destinationUrl) === targetKey(location.href);
+                let openerLinked = false;
+                try {
+                    openerLinked = window.opener != null;
+                } catch (_) {
+                    openerLinked = false;
+                }
 
-                if (replaceChallengePush) {
-                    log('challenge-push-replaced', { from: location.href, to: destinationUrl });
+                const closeOpenerChallengeTraverse =
+                    event.navigationType === 'traverse' &&
+                    openerLinked &&
+                    hasChallengeParams(location.href) &&
+                    destinationUrl !== '' &&
+                    !hasChallengeParams(destinationUrl) &&
+                    targetKey(destinationUrl) !== '' &&
+                    targetKey(destinationUrl) === targetKey(location.href);
+
+                if (closeOpenerChallengeTraverse) {
+                    log('challenge-back-traverse-close', {
+                        from: location.href,
+                        to: destinationUrl,
+                    });
                     try {
-                        event.preventDefault();
-                        location.replace(destinationUrl);
+                        window.close();
                     } catch (error) {
-                        log('challenge-push-replace-failed', { error: String(error), destinationUrl });
+                        log('challenge-back-traverse-close-failed', { error: String(error) });
                     }
                     return;
                 }
