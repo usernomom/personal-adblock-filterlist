@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node --test --test-reporter=spec tests/deterministic/*.test.js",
     "test:live": "node tests/live/google-smoke.mjs",
-    "serve:google-userscript": "node tests/live/serve-userscript.mjs"
+    "serve:google-userscript": "node tests/live/serve-userscript.mjs",
+    "serve:userscripts:lan": "node tests/live/serve-userscripts-lan.mjs"
   },
   "devDependencies": {
     "jsdom": "^30.0.1"

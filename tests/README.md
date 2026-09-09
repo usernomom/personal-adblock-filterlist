@@ -1,43 +1,84 @@
-# Google interface cleanup regression tests
+# Userscript regression and live testing
 
-The Google cleanup suite has two layers: deterministic jsdom fixtures for branch coverage and live Google smoke tests in the dedicated Opera Neon automation profile.
+The repository uses deterministic jsdom tests for stable behavior, targeted live browser smoke tests where DOM reality matters, and a LAN development server for rapid iPhone/Safari/Macaque iteration.
 
 ## Deterministic suite
 
-Install the test dependency once, then run the full deterministic suite:
+Install dependencies once, then run:
 
 ```powershell
 npm ci
 npm test
 ```
 
-The deterministic tests execute the canonical `google_interface_cleanup.user.js` and `google_news_ublacklist_bridge.user.js` userscripts in jsdom. They cover cleanup classifications, preservation invariants, reason accounting, repeated runs, async result roots, explicit vertical-page behavior, userscript packaging/version consistency, canonical-source integrity, JavaScript syntax, and the bridge's real-destination proxying for opaque Google `/goto` results. The bridge regression also asserts that ordinary results are not held behind any global anti-flash gate; uBlacklist may therefore briefly show a soon-to-be-blocked result while it classifies the injected proxy URL.
+The suite executes the canonical `.user.js` packages and checks syntax, metadata, packaging invariants, and behavior. For the two navigation scripts specifically:
 
-The deterministic suite also executes `google_open_results_new_tab.js` and `reddit_safari_back_button_fix.user.js`. It covers the observed Safari/Macaque Reddit challenge state, challenge-target pending/armed transitions, BFCache and `popstate` fallbacks, legacy standalone short-history escape behavior, throttling/action caps, challenge cleanup, and graceful Navigation API fallback. For Google-opened Reddit results, Google v6 creates a real Google `/search` return sentinel in the script-opened child, carries the real Google redirect as an encoded fragment target, and leaves the sentinel only after its Google document has loaded. Reddit 1.4.6 consumes the one-shot Google-child marker and converts only that child's non-user challenge `push` into `location.replace`, so Reddit no longer owns tab closing. Tests cover sentinel arming, BFCache and rebuilt-sentinel close paths, marker stripping, malformed bridge-proxy isolation, and the absence of the old Reddit-side Google-child close hooks. The uBlacklist bridge remains classification-only; its hidden proxy URL is never used for navigation.
+- `google_open_results_new_tab.user.js` keeps the original Google-result behavior: prepare recognized result links with `target="_blank"`, add `rel="noopener"`, ignore hidden uBlacklist proxy anchors, suppress Google's later ordinary-click handlers without preventing the browser's default anchor action, and leave archive.ph-owned clicks alone. `google_open_results_new_tab.js` is retained as a content-identical legacy copy.
+- `reddit_safari_back_button_fix.user.js` keeps the verified pre-September-8 behavior: ordinary Reddit navigation is untouched; only a top-level `back_forward` navigation with history length at most 2 is treated as the Safari trap; challenge parameters are scrubbed; the script tries `window.close()` first and falls back to `history.forward()` if the tab remains alive.
 
-Fixtures deliberately use stable structural/semantic signals instead of transient Google CSS class names. `tests/fixtures/columbus-data-kpid.html` reproduces the `data-kpid="vise:/m/01smm"` regression that prompted this suite.
+The published version numbers are intentionally higher than the previously published experimental versions so Macaque/Violentmonkey can update normally. Runtime behavior is the restored, user-verified baseline.
 
-## Live Google smoke suite
+## StopTheMadness compatibility note
 
-Prerequisites:
+As of the StopTheMadness update observed on 2026-09-08, its Google-side behavior interferes with Safari's native Google -> Reddit child-tab Back handling. For the verified iPhone workflow, disable StopTheMadness on Google. Disabling it only on Reddit is not sufficient. No StopTheMadness-specific workaround is built into these userscripts.
+
+## iOS / Macaque LAN development server
+
+For rapid iPhone iteration, do not push every experiment to GitHub. Start the working-tree server instead:
+
+```powershell
+npm run serve:userscripts:lan
+```
+
+It listens on port `8767` by default. From an iPhone on the same LAN, open a canonical development URL such as:
+
+```text
+http://<PC-LAN-IP>:8767/google_open_results_new_tab.user.js
+http://<PC-LAN-IP>:8767/reddit_safari_back_button_fix.user.js
+```
+
+The server also exposes the corresponding `.meta.js` URL for userscript-manager update checks. Responses use no-cache headers and support GET and HEAD.
+
+The important safety property is that the server rewrites `@downloadURL` and `@updateURL` only in the served response, using the request's host. The working-tree source stays pointed at the stable GitHub `.user.js` URL, so a LAN development URL cannot accidentally be committed or published.
+
+For iPhone-only failures that need telemetry, temporarily instrument the development script to POST newline-oriented JSON/text to:
+
+```text
+http://<PC-LAN-IP>:8767/__userscript_log
+```
+
+The legacy `POST /__rbf_log` endpoint is also accepted. On Windows the default logs are:
+
+```text
+%TEMP%\userscript-live.log
+%TEMP%\userscript-http.log
+```
+
+If a userscript uses `GM.xmlHttpRequest`/`GM.xmlhttpRequest` for LAN logging, grant/connect the LAN host only in the development instrumentation and remove that instrumentation before publishing. When the user reports a test result, read the live-log tail directly from the PC rather than asking them to paste logs.
+
+Environment overrides are available as `USERSCRIPT_DEV_HOST`, `USERSCRIPT_DEV_PORT`, `USERSCRIPT_LIVE_LOG`, and `USERSCRIPT_HTTP_LOG`.
+
+GitHub remains the canonical persisted source. Before publishing, run the deterministic suite, verify stable GitHub metadata, and commit only the proven implementation.
+
+## Live Google cleanup smoke suite
+
+The Google interface-cleanup suite also has a dedicated live Neon test path. Prerequisites:
 
 - Dedicated Opera Neon automation profile running with DevTools on `127.0.0.1:9223`.
 - Violentmonkey enabled in that profile with **Allow User Scripts** enabled.
-- The local working-tree `google_interface_cleanup.user.js` installed in Violentmonkey through the normal userscript install flow.
+- The local working-tree `google_interface_cleanup.user.js` installed through the normal userscript install flow.
 
-For an uncommitted cleanup-userscript change, serve the local install target:
+For an uncommitted cleanup-userscript change:
 
 ```powershell
 npm run serve:google-userscript
 ```
 
-Then open this URL in the dedicated Neon profile and accept the normal Violentmonkey install/update prompt:
+Then install/update from:
 
 ```text
 http://127.0.0.1:8766/google_interface_cleanup.user.js
 ```
-
-This is the development install path. Do not inject the source manually into a Google page and count that as a live pass.
 
 Run the live cleanup suite with:
 
@@ -45,16 +86,4 @@ Run the live cleanup suite with:
 npm run test:live
 ```
 
-The live runner creates one temporary Neon tab, runs seven fresh Google navigations, and closes only that tab. It tests:
-
-- Columbus, Ohio knowledge/entity content under an iPhone/Safari UA, including the exact `data-kpid="vise:/m/01smm"` invariant.
-- Toronto weather/entity content under the mobile UA.
-- A live People Also Ask module hidden as `question-accordion`.
-- Live video/refinement junk, including an unwanted vertical and query-refinement removal.
-- A standalone YouTube result hidden on the normal All tab as `youtube-result`.
-- A YouTube result remaining visible on the explicit Videos tab (`udm=7`), with no cleanup-hidden elements on that route.
-- A normal desktop web result that must remain visible.
-
-Every live audit checks the smallest relevant DOM element using computed style and bounding rectangles. The runner also requires the cleanup userscript's live version marker to match the local working-tree `@version`, so a stale Violentmonkey install fails instead of producing a false pass.
-
-The live cleanup suite intentionally does not run in GitHub Actions because it depends on the local authenticated/dedicated Neon profile and current Google markup.
+The runner creates only its temporary test tab, exercises fresh Google navigations, verifies the cleanup userscript version against the working tree, and restores tab state during cleanup. It intentionally does not run in GitHub Actions because it depends on the local dedicated Neon profile and current Google markup.
