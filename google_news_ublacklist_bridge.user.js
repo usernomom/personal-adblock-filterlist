@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.1.3
+// @version      13.1.4
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.1.3';
+    const VERSION = '13.1.4';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
     const NEWS_NETWORK_CONCURRENCY = 4;
@@ -718,11 +718,21 @@
 
     function scheduleNetworkFallback(link, key) {
         const known = link.closest(KNOWN_ROOT_SELECTOR);
-        const isNewsCard = Boolean(known?.matches(NEWS_CARD_SELECTOR));
-        const isVisualDigestVideo = Boolean(known?.matches(VISUAL_DIGEST_VIDEO_SELECTOR));
+        if (!known) return;
+        const isNewsCard = known.matches(NEWS_CARD_SELECTOR);
+        const isVisualDigestVideo = known.matches(VISUAL_DIGEST_VIDEO_SELECTOR);
         const isSingleResultCard = isNewsCard || isVisualDigestVideo;
-        if (!isSingleResultCard && !isPrimaryNestedLink(link) && !link.closest(NESTED_RESULT_SELECTOR)) return;
-        if (!known || (!isSingleResultCard && uniqueGotoCount(known) <= 1 && !link.closest(NESTED_RESULT_SELECTOR))) return;
+        const nested = link.closest(NESTED_RESULT_SELECTOR);
+        const gotoCount = uniqueGotoCount(known);
+
+        // Google's mobile All tab now emits some ordinary single-result cards
+        // with only an opaque /goto URL and no usable W_jd mapping. A known
+        // result root containing exactly one opaque destination is safe to
+        // resolve directly. Multi-result modules keep the stricter nested-link
+        // guard so one fallback cannot be misapplied to a whole grouped result.
+        if (!gotoCount) return;
+        if (!isSingleResultCard && gotoCount > 1 && !isPrimaryNestedLink(link) && !nested) return;
+
 
         if (IS_NEWS_TAB && isNewsCard) {
             enqueueNewsNetworkFallback(key);
