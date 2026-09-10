@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove unwanted Google result modules and standalone YouTube results using structural signals instead of UI titles.
 // @license      MIT
-// @version      140.0.6
+// @version      140.0.7
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -15,7 +15,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.6';
+    const VERSION = '140.0.7';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const stats = {
@@ -170,6 +170,25 @@
         return (node?.innerText || '').replace(/\s+/g, ' ').trim();
     }
 
+    const SOCIAL_FOLLOWER_COUNT_RE = /^\d[\d.,]*\s*(?:[KMB]|thousand|million|billion)?\+?\s+(?:followers?|abonnés?)$/i;
+
+    function isExplicitlyRequestedSocialProvider(anchor) {
+        const provider = visibleText(anchor).split('·', 1)[0].trim().toLowerCase();
+        if (!/^[a-z0-9][a-z0-9._-]{2,30}$/i.test(provider)) return false;
+        const query = new URL(location.href).searchParams.get('q') || '';
+        const queryTokens = query.toLowerCase().split(/[^a-z0-9._-]+/).filter(Boolean);
+        return queryTokens.includes(provider);
+    }
+
+    function hasSocialFollowerMetric(root) {
+        if (hasKnowledgeSemantics(root)) return false;
+        return [...root.querySelectorAll('[role="text"]')].some(node => {
+            if (!SOCIAL_FOLLOWER_COUNT_RE.test(visibleText(node))) return false;
+            const anchor = node.closest('a[href]');
+            return Boolean(anchor && !isExplicitlyRequestedSocialProvider(anchor));
+        });
+    }
+
     function hideGenericSections(root) {
         const rootText = visibleText(root);
         for (const section of root.querySelectorAll('g-section-with-header')) {
@@ -201,6 +220,11 @@
         }
 
         if (root.querySelector('[data-attrid*="social media presence"]')) {
+            hide(root, 'social-profiles');
+            return;
+        }
+
+        if (hasSocialFollowerMetric(root)) {
             hide(root, 'social-profiles');
             return;
         }
