@@ -47,7 +47,7 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.1\.4$/m);
+    assert.match(source, /^\/\/ @version\s+13\.1\.5$/m);
 });
 
 test('ordinary results are never held behind the removed anti-flash shield', () => {
@@ -108,6 +108,67 @@ test('standalone mobile-style result resolves one opaque goto via network fallba
     assert.equal(proxy.href, target);
     assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
     assert.equal(h.api.resolveGoto(goto), target);
+    h.close();
+});
+
+test('direct mobile-style subreddit result with unsupported anchor class gets exact-path proxy', () => {
+    const target = 'https://www.reddit.com/r/breakingbad/';
+    const h = createHarness({
+        html:
+            '<div id="rso"><div class="MjjYud">' +
+            '<div id="reddit" class="Ww4FFb vt6azd">' +
+            '<a class="UBFage" href="https://www.reddit.com/">Reddit</a>' +
+            '<a class="zReHs" href="' + target + '">' +
+            'Reddit · r/breakingbad 3M+ followers r/breakingbad</a>' +
+            '</div></div></div>',
+    });
+
+    const root = h.document.getElementById('reddit');
+    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy="direct"] a');
+    assert.ok(proxy, 'unsupported direct Google anchor should receive a uBlacklist-readable proxy');
+    assert.equal(proxy.href, target);
+    assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
+    h.close();
+});
+
+test('Google /url wrapper with unsupported anchor class gets exact-path proxy', () => {
+    const target = 'https://www.reddit.com/r/betterCallSaul/';
+    const wrapped = '/url?q=' + encodeURIComponent(target);
+    const h = createHarness({
+        html:
+            '<div id="result" class="Ww4FFb vt6azd">' +
+            '<a class="zReHs" href="' + wrapped + '">Reddit · r/betterCallSaul</a>' +
+            '</div>',
+    });
+
+    const proxy = h.document.querySelector('#result > [data-ub-google-source-proxy="direct"] a');
+    assert.ok(proxy);
+    assert.equal(proxy.href, target);
+    h.close();
+});
+
+test('uBlacklist-native direct URL does not receive a redundant proxy', () => {
+    const h = createHarness({
+        html:
+            '<div id="result" class="Ww4FFb vt6azd">' +
+            '<a class="UBFage" href="https://example.com/article"><h3>Example</h3></a>' +
+            '</div>',
+    });
+
+    assert.equal(h.document.querySelector('[data-ub-google-source-proxy]'), null);
+    h.close();
+});
+
+test('mixed-domain direct result root is not collapsed into one proxy destination', () => {
+    const h = createHarness({
+        html:
+            '<div id="group" class="Ww4FFb vt6azd">' +
+            '<a class="zReHs" href="https://www.reddit.com/r/breakingbad/">Reddit</a>' +
+            '<a class="zReHs" href="https://www.instagram.com/breakingbad/">Instagram</a>' +
+            '</div>',
+    });
+
+    assert.equal(h.document.querySelector('[data-ub-google-source-proxy]'), null);
     h.close();
 });
 

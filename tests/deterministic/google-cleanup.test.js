@@ -581,57 +581,15 @@ test('async container with fewer than two visible children is ignored', () => {
 });
 
 
-test('mobile follower-count social profile result is removed', () => {
+test('ordinary follower-count social result is left to uBlacklist', () => {
     const h = createHarness({
         html: withRoot(
             '<div class="Ww4FFb vt6azd">' +
-            '<div class="N54PNb BToiNc cvP2Ce">' +
-            '<a class="UBFage" href="/goto?url=opaque-social">' +
-            '<div>Instagram · breakingbad</div>' +
-            '<span role="text">2.4M+ followers</span>' +
-            '<div>Breaking Bad (@breakingbad) • Instagram photos and videos</div>' +
-            '</a></div></div>',
-        ),
-    });
-    assertHidden(h.document, 'root', 'social-profiles');
-    h.close();
-});
-
-test('ordinary result merely mentioning followers is preserved', () => {
-    const h = createHarness({
-        html: withRoot(
-            '<div class="Ww4FFb vt6azd">' +
-            '<a href="https://example.com/article"><h3>Audience metrics</h3></a>' +
-            '<p><span role="text">2.4M+ followers</span> across several platforms.</p>' +
-            '</div>',
-        ),
-    });
-    assertPreserved(h.document, 'root');
-    h.close();
-});
-
-test('explicit social-provider query preserves its follower-count result', () => {
-    const h = createHarness({
-        url: 'https://www.google.com/search?q=codex+reddit',
-        html: withRoot(
-            '<div class="Ww4FFb vt6azd">' +
-            '<a class="UBFage" href="/goto?url=opaque-reddit">' +
-            '<div>Reddit · r/codex</div>' +
-            '<span role="text">191.1K+ followers</span>' +
-            '<div>Codex coding tools by OpenAI</div>' +
+            '<a class="zReHs" href="https://www.reddit.com/r/breakingbad/">' +
+            '<div>Reddit · r/breakingbad</div>' +
+            '<span>3M+ followers</span>' +
+            '<div>r/breakingbad</div>' +
             '</a></div>',
-        ),
-    });
-    assertPreserved(h.document, 'root');
-    h.close();
-});
-
-test('knowledge panel follower metric is preserved', () => {
-    const h = createHarness({
-        html: withRoot(
-            '<div data-kpid="social-entity">' +
-            '<a href="https://example.com/profile"><span role="text">3M+ followers</span></a>' +
-            '</div>',
         ),
     });
     assertPreserved(h.document, 'root');

@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.1.4
+// @version      13.1.5
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.1.4';
+    const VERSION = '13.1.5';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
     const NEWS_NETWORK_CONCURRENCY = 4;
@@ -34,6 +34,8 @@
     const VISUAL_DIGEST_VIDEO_SELECTOR = '[data-attrid="VisualDigestVideoResult"]';
     const KNOWN_ROOT_SELECTOR = `.vt6azd, .Ww4FFb, .sHEJob, ${NEWS_CARD_SELECTOR}, ${VISUAL_DIGEST_VIDEO_SELECTOR}, .eejeod`;
     const OPAQUE_LINK_SELECTOR = 'a[href*="/goto?"]';
+    const DIRECT_OR_WRAPPED_LINK_SELECTOR = 'a[href^="http://"], a[href^="https://"], a[href^="//"], a[href*="/url?"]';
+    const UBLACKLIST_NATIVE_URL_SELECTOR = '.UBFage, a[role="presentation"]';
     const HEADING_SELECTOR = '[role="heading"][aria-level="3"], h3, .GkAmnd';
     const NESTED_RESULT_SELECTOR = '.xYkm8c';
     const COLLAPSIBLE_SLOT_SELECTOR = '.Rb7Fnd, .dRzkFf';
@@ -574,6 +576,50 @@
         return known || semanticResultRoot(link);
     }
 
+    function rootForDirectLink(link) {
+        return link.closest(KNOWN_ROOT_SELECTOR) || semanticResultRoot(link);
+    }
+
+    function nativeReadableURL(root) {
+        if (!isElement(root)) return '';
+        for (const anchor of root.querySelectorAll(UBLACKLIST_NATIVE_URL_SELECTOR)) {
+            if (anchor.closest('[data-ub-google-source-proxy]')) continue;
+            const source = externalURL(anchor.getAttribute('href') || anchor.href);
+            if (source) return source;
+        }
+        return '';
+    }
+
+    function directExternalTargets(root) {
+        if (!isElement(root)) return [];
+        return [...root.querySelectorAll(DIRECT_OR_WRAPPED_LINK_SELECTOR)]
+            .filter((anchor) => !anchor.closest('[data-ub-google-source-proxy]'))
+            .map((anchor) => externalURL(anchor.getAttribute('href') || anchor.href))
+            .filter(Boolean);
+    }
+
+    function registerDirectLink(link) {
+        if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return;
+        if (link.matches(UBLACKLIST_NATIVE_URL_SELECTOR)) return;
+
+        const source = externalURL(link.getAttribute('href') || link.href);
+        if (!source) return;
+
+        const root = rootForDirectLink(link);
+        if (!root || root.querySelector(PROXY_WRAPPER_SELECTOR)) return;
+
+        const targets = directExternalTargets(root);
+        const hosts = new Set(targets.map(hostnameOf).filter(Boolean));
+        if (hosts.size !== 1) return;
+
+        const best = pickBestURL(targets);
+        if (!best) return;
+        const native = nativeReadableURL(root);
+        if (native && !betterURL(best, native)) return;
+
+        addProxyOnce(root, best, 'direct');
+    }
+
     function parseLocationHeader(headers) {
         const match = String(headers || '').match(/^location:\s*(.+)$/im);
         return match ? match[1].trim() : '';
@@ -813,11 +859,14 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         if (!isElement(root) || root.closest('[data-ub-google-source-proxy]')) return;
         if (root.matches(OPAQUE_LINK_SELECTOR)) registerOpaqueLink(root);
         root.querySelectorAll(OPAQUE_LINK_SELECTOR).forEach(registerOpaqueLink);
+        if (root.matches(DIRECT_OR_WRAPPED_LINK_SELECTOR)) registerDirectLink(root);
+        root.querySelectorAll(DIRECT_OR_WRAPPED_LINK_SELECTOR).forEach(registerDirectLink);
     }
 
     function scanInitialDocument() {
         scanEmbeddedData(document);
         document.querySelectorAll(OPAQUE_LINK_SELECTOR).forEach(registerOpaqueLink);
+        document.querySelectorAll(DIRECT_OR_WRAPPED_LINK_SELECTOR).forEach(registerDirectLink);
         document.documentElement?.setAttribute('data-ub-google-bridge-version', VERSION);
     }
 
