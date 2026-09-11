@@ -223,19 +223,37 @@ try {
     allowed.id = '__autoplay_guard_allowed__';
     allowed.__probeAllowedPauses = 0;
     allowed.pause = () => { allowed.__probeAllowedPauses += 1; };
+    const wrapper = document.createElement('div');
+    wrapper.id = '__autoplay_guard_media_scope__';
     const button = document.createElement('button');
     button.id = '__autoplay_guard_probe_button__';
     button.__probeClicks = 0;
     button.textContent = 'play probe';
-    Object.assign(button.style, {
-      position: 'fixed', left: '10px', top: '10px', width: '100px', height: '40px', zIndex: '2147483647'
+    Object.assign(wrapper.style, {
+      position: 'fixed', left: '10px', top: '10px', width: '120px', height: '50px', zIndex: '2147483647'
     });
     button.addEventListener('click', () => {
       button.__probeClicks += 1;
       allowed.dispatchEvent(new Event('play'));
     });
-    document.body.append(button, allowed);
+    wrapper.append(button, allowed);
+    document.body.appendChild(wrapper);
+
+    const rogue = document.createElement('video');
+    rogue.id = '__autoplay_guard_rogue__';
+    rogue.__probePauses = 0;
+    rogue.pause = () => { rogue.__probePauses += 1; };
+    const unrelated = document.createElement('button');
+    unrelated.id = '__autoplay_guard_unrelated__';
+    unrelated.textContent = 'unrelated click';
+    Object.assign(unrelated.style, {
+      position: 'fixed', left: '10px', top: '70px', width: '120px', height: '40px', zIndex: '2147483647'
+    });
+    unrelated.addEventListener('click', () => rogue.dispatchEvent(new Event('play')));
+    document.body.append(unrelated, rogue);
+
     const r = button.getBoundingClientRect();
+    const u = unrelated.getBoundingClientRect();
     return {
       pageVideosBefore,
       autoplayAttributeRemoved: !unsolicited.hasAttribute('autoplay'),
@@ -243,6 +261,8 @@ try {
       unsolicitedPauses,
       buttonX: r.left + r.width / 2,
       buttonY: r.top + r.height / 2,
+      unrelatedX: u.left + u.width / 2,
+      unrelatedY: u.top + u.height / 2,
     };
   })()`);
   if (!autoplayProbe.autoplayAttributeRemoved || !autoplayProbe.autoplayPropertyDisabled || autoplayProbe.unsolicitedPauses < 1) {
@@ -258,22 +278,35 @@ try {
     type: 'mouseReleased', x: autoplayProbe.buttonX, y: autoplayProbe.buttonY, button: 'left', clickCount: 1,
   });
   await new Promise(resolve => setTimeout(resolve, 50));
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: autoplayProbe.unrelatedX, y: autoplayProbe.unrelatedY, button: 'left', clickCount: 1,
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: autoplayProbe.unrelatedX, y: autoplayProbe.unrelatedY, button: 'left', clickCount: 1,
+  });
+  await new Promise(resolve => setTimeout(resolve, 50));
   const trustedPlaybackProbe = await evaluate(client, `(() => {
     const button = document.getElementById('__autoplay_guard_probe_button__');
     const allowed = document.getElementById('__autoplay_guard_allowed__');
+    const rogue = document.getElementById('__autoplay_guard_rogue__');
     const result = {
       clicks: button?.__probeClicks ?? null,
       allowedPauses: allowed?.__probeAllowedPauses ?? null,
+      roguePauses: rogue?.__probePauses ?? null,
     };
-    button?.remove();
-    allowed?.remove();
+    document.getElementById('__autoplay_guard_media_scope__')?.remove();
+    document.getElementById('__autoplay_guard_unrelated__')?.remove();
+    rogue?.remove();
     document.getElementById('__autoplay_guard_unsolicited__')?.remove();
     return result;
   })()`);
   if (trustedPlaybackProbe.clicks !== 1 || trustedPlaybackProbe.allowedPauses !== 0) {
-    fail('Trusted click should permit immediate video playback', trustedPlaybackProbe);
+    fail('Trusted click inside a media scope should permit that video', trustedPlaybackProbe);
   }
-  console.log('PASS mobile autoplay guard blocks unsolicited playback without blocking trusted-click playback');
+  if (!(trustedPlaybackProbe.roguePauses >= 1)) {
+    fail('Unrelated trusted click must not globally unlock video playback', trustedPlaybackProbe);
+  }
+  console.log('PASS mobile autoplay guard scopes playback permission to the interacted media card');
 
   const paa = await runCase(
     client,

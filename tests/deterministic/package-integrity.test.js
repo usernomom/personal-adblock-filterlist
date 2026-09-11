@@ -65,3 +65,10 @@ test('autoplay guard starts before page scripts can create media', () => {
     const source = read(canonicalPath);
     assert.ok(source.includes('// @run-at       document-start'));
 });
+
+test('autoplay permission is media-scoped rather than a global click grace period', () => {
+    const source = read(canonicalPath);
+    assert.ok(source.includes('manuallyAllowedVideos'));
+    assert.equal(source.includes('navigator.userActivation'), false);
+    assert.equal(source.includes('mediaAllowedUntil'), false);
+});

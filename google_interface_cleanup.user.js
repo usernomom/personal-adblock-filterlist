@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove unwanted Google result modules, standalone YouTube results, and unsolicited video autoplay.
 // @license      MIT
-// @version      140.0.10
+// @version      140.0.11
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -15,7 +15,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.10';
+    const VERSION = '140.0.11';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const stats = {
@@ -23,16 +23,33 @@
         hidden: 0,
         reasons: {},
     };
-    const MEDIA_CLICK_GRACE_MS = 1500;
-    let mediaAllowedUntil = -Infinity;
+    const manuallyAllowedVideos = new WeakSet();
+    const instrumentedVideos = new WeakSet();
+
+    function mediaScopeForInteraction(target) {
+        if (!(target instanceof Element)) return null;
+        if (target.tagName === 'VIDEO') return target;
+
+        let node = target;
+        while (node && node !== document.body && node !== document.documentElement) {
+            const videos = node.querySelectorAll?.('video');
+            if (videos?.length && videos.length <= 3) return node;
+            if (node.matches?.('#rso, #botstuff, #bres')) break;
+            node = node.parentElement;
+        }
+        return null;
+    }
 
     function noteMediaIntent(event) {
         if (!event.isTrusted) return;
-        mediaAllowedUntil = performance.now() + MEDIA_CLICK_GRACE_MS;
-    }
+        const scope = mediaScopeForInteraction(event.target);
+        if (!scope) return;
 
-    function mediaPlaybackAllowed() {
-        return performance.now() <= mediaAllowedUntil;
+        if (scope.tagName === 'VIDEO') {
+            manuallyAllowedVideos.add(scope);
+            return;
+        }
+        for (const video of scope.querySelectorAll('video')) manuallyAllowedVideos.add(video);
     }
 
     function disableVideoAutoplay(video) {
@@ -41,13 +58,8 @@
         if (video.hasAttribute('autoplay')) video.removeAttribute('autoplay');
     }
 
-    function blockUnauthorizedVideoPlayback(event) {
-        const video = event.target;
-        if (!video || video.tagName !== 'VIDEO') return;
-
-        disableVideoAutoplay(video);
-        if (navigator.userActivation?.isActive || mediaPlaybackAllowed()) return;
-
+    function pauseUnauthorizedVideo(video) {
+        if (!video || video.tagName !== 'VIDEO' || manuallyAllowedVideos.has(video)) return;
         try {
             video.pause();
         } catch (_) {
@@ -55,28 +67,44 @@
         }
     }
 
+    function blockUnauthorizedVideoPlayback(event) {
+        const video = event.target;
+        if (!video || video.tagName !== 'VIDEO') return;
+        disableVideoAutoplay(video);
+        pauseUnauthorizedVideo(video);
+    }
+
+    function revokeManualPlayback(event) {
+        const video = event.target;
+        if (video?.tagName === 'VIDEO') manuallyAllowedVideos.delete(video);
+    }
+
+    function instrumentVideo(video) {
+        if (!video || video.tagName !== 'VIDEO' || instrumentedVideos.has(video)) return;
+        instrumentedVideos.add(video);
+        video.addEventListener('play', blockUnauthorizedVideoPlayback, true);
+        video.addEventListener('playing', blockUnauthorizedVideoPlayback, true);
+        video.addEventListener('timeupdate', blockUnauthorizedVideoPlayback, true);
+        video.addEventListener('pause', revokeManualPlayback, true);
+        video.addEventListener('ended', revokeManualPlayback, true);
+        video.addEventListener('emptied', revokeManualPlayback, true);
+    }
+
+    function sanitizeVideo(video) {
+        if (!video || video.tagName !== 'VIDEO') return;
+        instrumentVideo(video);
+        disableVideoAutoplay(video);
+        if (!video.paused) pauseUnauthorizedVideo(video);
+    }
+
     function sanitizeVideoTree(node) {
         if (!(node instanceof Element)) return;
-        if (node.tagName === 'VIDEO') {
-            disableVideoAutoplay(node);
-            if (!mediaPlaybackAllowed() && !node.paused) {
-                try {
-                    node.pause();
-                } catch (_) {
-                    // Keep scanning the rest of the tree.
-                }
-            }
-        }
-        for (const video of node.querySelectorAll('video')) {
-            disableVideoAutoplay(video);
-            if (!mediaPlaybackAllowed() && !video.paused) {
-                try {
-                    video.pause();
-                } catch (_) {
-                    // Keep scanning the rest of the tree.
-                }
-            }
-        }
+        if (node.tagName === 'VIDEO') sanitizeVideo(node);
+        for (const video of node.querySelectorAll('video')) sanitizeVideo(video);
+    }
+
+    function enforceVideoAutoplayGuard() {
+        for (const video of document.querySelectorAll('video')) sanitizeVideo(video);
     }
 
     function startVideoAutoplayGuard() {
@@ -85,7 +113,7 @@
         const observer = new MutationObserver(mutations => {
             for (const mutation of mutations) {
                 if (mutation.type === 'attributes') {
-                    disableVideoAutoplay(mutation.target);
+                    sanitizeVideo(mutation.target);
                     continue;
                 }
                 for (const node of mutation.addedNodes) sanitizeVideoTree(node);
@@ -105,6 +133,7 @@
     }, true);
     document.addEventListener('play', blockUnauthorizedVideoPlayback, true);
     document.addEventListener('playing', blockUnauthorizedVideoPlayback, true);
+    document.addEventListener('timeupdate', blockUnauthorizedVideoPlayback, true);
     startVideoAutoplayGuard();
 
     const hiddenStyle = document.createElement('style');
@@ -425,6 +454,8 @@
     }
 
     function cleanup() {
+        enforceVideoAutoplayGuard();
+
         if (isExplicitVerticalPage()) {
             restoreCleanupHides();
             removeSearchSuggestions();

@@ -616,7 +616,7 @@ test('unsolicited video play events are immediately paused', () => {
     let pauses = 0;
     video.pause = () => { pauses += 1; };
     video.dispatchEvent(new h.window.Event('play'));
-    assert.equal(pauses, 1);
+    assert.ok(pauses >= 1);
     h.close();
 });
 
