@@ -595,3 +595,38 @@ test('ordinary follower-count social result is left to uBlacklist', () => {
     assertPreserved(h.document, 'root');
     h.close();
 });
+
+
+test('video autoplay attributes are stripped on script startup', () => {
+    const h = createHarness({
+        html: '<video id="preview" autoplay muted playsinline></video>',
+    });
+    const video = h.document.getElementById('preview');
+    assert.ok(video);
+    assert.equal(video.hasAttribute('autoplay'), false);
+    assert.equal(video.autoplay, false);
+    h.close();
+});
+
+test('unsolicited video play events are immediately paused', () => {
+    const h = createHarness({
+        html: '<video id="preview" muted playsinline></video>',
+    });
+    const video = h.document.getElementById('preview');
+    let pauses = 0;
+    video.pause = () => { pauses += 1; };
+    video.dispatchEvent(new h.window.Event('play'));
+    assert.equal(pauses, 1);
+    h.close();
+});
+
+test('video autoplay added later is stripped by the mutation guard', async () => {
+    const h = createHarness();
+    const video = h.document.createElement('video');
+    video.autoplay = true;
+    h.document.body.appendChild(video);
+    await Promise.resolve();
+    assert.equal(video.hasAttribute('autoplay'), false);
+    assert.equal(video.autoplay, false);
+    h.close();
+});

@@ -59,3 +59,9 @@ test('metadata version matches runtime and live-install version markers', () => 
 test('canonical .user.js parses as valid JavaScript', () => {
     assert.doesNotThrow(() => new vm.Script(read(canonicalPath), { filename: canonicalPath }));
 });
+
+
+test('autoplay guard starts before page scripts can create media', () => {
+    const source = read(canonicalPath);
+    assert.ok(source.includes('// @run-at       document-start'));
+});

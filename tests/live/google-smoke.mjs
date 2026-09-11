@@ -199,6 +199,82 @@ try {
   );
   await assertInstalledVersion();
 
+  await navigate(client, 'https://www.google.com/search?q=Grok+4.6');
+  await assertInstalledVersion();
+  const autoplayProbe = await evaluate(client, `(async () => {
+    const pageVideosBefore = Array.from(document.querySelectorAll('video')).map(video => ({
+      paused: video.paused,
+      autoplay: video.autoplay,
+      autoplayAttribute: video.hasAttribute('autoplay'),
+    }));
+
+    const unsolicited = document.createElement('video');
+    unsolicited.id = '__autoplay_guard_unsolicited__';
+    unsolicited.autoplay = true;
+    unsolicited.muted = true;
+    unsolicited.setAttribute('autoplay', '');
+    let unsolicitedPauses = 0;
+    unsolicited.pause = () => { unsolicitedPauses += 1; };
+    document.body.appendChild(unsolicited);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    unsolicited.dispatchEvent(new Event('play'));
+
+    const allowed = document.createElement('video');
+    allowed.id = '__autoplay_guard_allowed__';
+    allowed.__probeAllowedPauses = 0;
+    allowed.pause = () => { allowed.__probeAllowedPauses += 1; };
+    const button = document.createElement('button');
+    button.id = '__autoplay_guard_probe_button__';
+    button.__probeClicks = 0;
+    button.textContent = 'play probe';
+    Object.assign(button.style, {
+      position: 'fixed', left: '10px', top: '10px', width: '100px', height: '40px', zIndex: '2147483647'
+    });
+    button.addEventListener('click', () => {
+      button.__probeClicks += 1;
+      allowed.dispatchEvent(new Event('play'));
+    });
+    document.body.append(button, allowed);
+    const r = button.getBoundingClientRect();
+    return {
+      pageVideosBefore,
+      autoplayAttributeRemoved: !unsolicited.hasAttribute('autoplay'),
+      autoplayPropertyDisabled: unsolicited.autoplay === false,
+      unsolicitedPauses,
+      buttonX: r.left + r.width / 2,
+      buttonY: r.top + r.height / 2,
+    };
+  })()`);
+  if (!autoplayProbe.autoplayAttributeRemoved || !autoplayProbe.autoplayPropertyDisabled || autoplayProbe.unsolicitedPauses < 1) {
+    fail('Autoplay guard did not block unsolicited video playback', autoplayProbe);
+  }
+  if (autoplayProbe.pageVideosBefore.some(video => !video.paused || video.autoplay || video.autoplayAttribute)) {
+    fail('Google page contained an autoplaying video after the guard had time to run', autoplayProbe.pageVideosBefore);
+  }
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: autoplayProbe.buttonX, y: autoplayProbe.buttonY, button: 'left', clickCount: 1,
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: autoplayProbe.buttonX, y: autoplayProbe.buttonY, button: 'left', clickCount: 1,
+  });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const trustedPlaybackProbe = await evaluate(client, `(() => {
+    const button = document.getElementById('__autoplay_guard_probe_button__');
+    const allowed = document.getElementById('__autoplay_guard_allowed__');
+    const result = {
+      clicks: button?.__probeClicks ?? null,
+      allowedPauses: allowed?.__probeAllowedPauses ?? null,
+    };
+    button?.remove();
+    allowed?.remove();
+    document.getElementById('__autoplay_guard_unsolicited__')?.remove();
+    return result;
+  })()`);
+  if (trustedPlaybackProbe.clicks !== 1 || trustedPlaybackProbe.allowedPauses !== 0) {
+    fail('Trusted click should permit immediate video playback', trustedPlaybackProbe);
+  }
+  console.log('PASS mobile autoplay guard blocks unsolicited playback without blocking trusted-click playback');
+
   const paa = await runCase(
     client,
     'People Also Ask removal',
@@ -289,10 +365,12 @@ try {
   );
   await assertInstalledVersion();
 
-  console.log(`\nLive Google smoke: 7/7 passed against userscript ${expectedVersion}`);
+  console.log(`\nLive Google smoke: 8/8 passed against userscript ${expectedVersion}`);
   console.log(JSON.stringify({
     columbus,
     toronto,
+    autoplayProbe,
+    trustedPlaybackProbe,
     paa,
     junk,
     youtubeAll,

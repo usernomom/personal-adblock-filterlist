@@ -1,21 +1,21 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @description  Remove unwanted Google result modules and standalone YouTube results using structural signals instead of UI titles.
+// @description  Remove unwanted Google result modules, standalone YouTube results, and unsolicited video autoplay.
 // @license      MIT
-// @version      140.0.8
+// @version      140.0.10
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
 // @match        https://*.google.ca/search*
 // @match        https://*.google.fr/search*
 // @match        https://*.google.co.uk/search*
-// @run-at       document-end
+// @run-at       document-start
 // ==/UserScript==
 
 (() => {
     'use strict';
 
-    const VERSION = '140.0.8';
+    const VERSION = '140.0.10';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const stats = {
@@ -23,12 +23,102 @@
         hidden: 0,
         reasons: {},
     };
+    const MEDIA_CLICK_GRACE_MS = 1500;
+    let mediaAllowedUntil = -Infinity;
+
+    function noteMediaIntent(event) {
+        if (!event.isTrusted) return;
+        mediaAllowedUntil = performance.now() + MEDIA_CLICK_GRACE_MS;
+    }
+
+    function mediaPlaybackAllowed() {
+        return performance.now() <= mediaAllowedUntil;
+    }
+
+    function disableVideoAutoplay(video) {
+        if (!video || video.tagName !== 'VIDEO') return;
+        if (video.autoplay) video.autoplay = false;
+        if (video.hasAttribute('autoplay')) video.removeAttribute('autoplay');
+    }
+
+    function blockUnauthorizedVideoPlayback(event) {
+        const video = event.target;
+        if (!video || video.tagName !== 'VIDEO') return;
+
+        disableVideoAutoplay(video);
+        if (navigator.userActivation?.isActive || mediaPlaybackAllowed()) return;
+
+        try {
+            video.pause();
+        } catch (_) {
+            // A hostile/custom media implementation should not break cleanup.
+        }
+    }
+
+    function sanitizeVideoTree(node) {
+        if (!(node instanceof Element)) return;
+        if (node.tagName === 'VIDEO') {
+            disableVideoAutoplay(node);
+            if (!mediaPlaybackAllowed() && !node.paused) {
+                try {
+                    node.pause();
+                } catch (_) {
+                    // Keep scanning the rest of the tree.
+                }
+            }
+        }
+        for (const video of node.querySelectorAll('video')) {
+            disableVideoAutoplay(video);
+            if (!mediaPlaybackAllowed() && !video.paused) {
+                try {
+                    video.pause();
+                } catch (_) {
+                    // Keep scanning the rest of the tree.
+                }
+            }
+        }
+    }
+
+    function startVideoAutoplayGuard() {
+        if (document.documentElement) sanitizeVideoTree(document.documentElement);
+
+        const observer = new MutationObserver(mutations => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'attributes') {
+                    disableVideoAutoplay(mutation.target);
+                    continue;
+                }
+                for (const node of mutation.addedNodes) sanitizeVideoTree(node);
+            }
+        });
+        observer.observe(document, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ['autoplay'],
+        });
+    }
+
+    document.addEventListener('click', noteMediaIntent, true);
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') noteMediaIntent(event);
+    }, true);
+    document.addEventListener('play', blockUnauthorizedVideoPlayback, true);
+    document.addEventListener('playing', blockUnauthorizedVideoPlayback, true);
+    startVideoAutoplayGuard();
 
     const hiddenStyle = document.createElement('style');
     hiddenStyle.id = 'google-interface-cleanup-style';
     hiddenStyle.dataset.googleCleanupVersion = VERSION;
     hiddenStyle.textContent = '[data-google-cleanup-hidden] { display: none !important; }';
-    (document.head || document.documentElement).appendChild(hiddenStyle);
+    const styleParent = document.head || document.documentElement;
+    if (styleParent) {
+        styleParent.appendChild(hiddenStyle);
+    } else {
+        document.addEventListener('DOMContentLoaded', () => {
+            (document.head || document.documentElement)?.appendChild(hiddenStyle);
+        }, { once: true });
+    }
 
     function hide(node, reason) {
         if (!node) return false;
