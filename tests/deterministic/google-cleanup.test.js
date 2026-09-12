@@ -266,6 +266,17 @@ for (const [label, url] of [
     });
 }
 
+test('YouTube Music result is preserved instead of being treated as a standalone YouTube video', () => {
+    const h = createHarness({
+        html: withRoot(youtubeLink(
+            'https://music.youtube.com/playlist?list=spatial-audio',
+            'YouTube Music · SpatialAudio',
+        )),
+    });
+    assertPreserved(h.document, 'root');
+    h.close();
+});
+
 for (const [label, path] of [
     ['Google /url?url= wrapper', '/url?url='],
     ['Google /url?q= wrapper', '/url?q='],

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @description  Remove unwanted Google result modules, standalone YouTube results, and unsolicited video autoplay.
+// @description  Remove unwanted Google result modules, standalone YouTube video results, and unsolicited video autoplay.
 // @license      MIT
-// @version      140.0.11
+// @version      140.0.12
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -15,7 +15,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.11';
+    const VERSION = '140.0.12';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const stats = {
@@ -177,12 +177,13 @@
             hostname.includes('.google.');
     }
 
-    function isYouTubeHost(hostname) {
+    function isYouTubeVideoHost(hostname) {
         return hostname === 'youtube.com' ||
-            hostname.endsWith('.youtube.com') ||
+            hostname === 'www.youtube.com' ||
+            hostname === 'm.youtube.com' ||
             hostname === 'youtu.be' ||
             hostname === 'youtube-nocookie.com' ||
-            hostname.endsWith('.youtube-nocookie.com');
+            hostname === 'www.youtube-nocookie.com';
     }
 
     function linksFor(root) {
@@ -212,7 +213,7 @@
         const destinations = linksFor(root)
             .map(resolveExternalDestination)
             .filter(url => /^https?:$/.test(url.protocol) && !isGoogleHost(url.hostname));
-        return destinations.length > 0 && destinations.every(url => isYouTubeHost(url.hostname));
+        return destinations.length > 0 && destinations.every(url => isYouTubeVideoHost(url.hostname));
     }
 
     function hasNewsRoute(root) {
