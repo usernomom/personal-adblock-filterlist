@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google interface cleanup
-// @description  Remove unwanted Google result modules, standalone YouTube video results, and unsolicited video autoplay.
+// @description  Remove unwanted Google result modules and unsolicited video autoplay.
 // @license      MIT
-// @version      140.0.12
+// @version      140.0.13
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -15,7 +15,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.12';
+    const VERSION = '140.0.13';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const stats = {
@@ -23,6 +23,7 @@
         hidden: 0,
         reasons: {},
     };
+    // Ordinary destination-domain filtering belongs to uBlacklist + the bridge, not this script.
     const manuallyAllowedVideos = new WeakSet();
     const instrumentedVideos = new WeakSet();
 
@@ -177,43 +178,10 @@
             hostname.includes('.google.');
     }
 
-    function isYouTubeVideoHost(hostname) {
-        return hostname === 'youtube.com' ||
-            hostname === 'www.youtube.com' ||
-            hostname === 'm.youtube.com' ||
-            hostname === 'youtu.be' ||
-            hostname === 'youtube-nocookie.com' ||
-            hostname === 'www.youtube-nocookie.com';
-    }
-
     function linksFor(root) {
         return [...root.querySelectorAll('a[href]')]
             .map(parseURL)
             .filter(Boolean);
-    }
-
-    function resolveExternalDestination(url) {
-        if (!isGoogleHost(url.hostname)) return url;
-        if (url.pathname !== '/url' && url.pathname !== '/goto') return url;
-
-        for (const key of ['url', 'q']) {
-            const rawTarget = url.searchParams.get(key);
-            if (!rawTarget) continue;
-            try {
-                const target = new URL(rawTarget, location.href);
-                if (/^https?:$/.test(target.protocol)) return target;
-            } catch (_) {
-                // Opaque Google redirect tokens cannot be resolved client-side.
-            }
-        }
-        return url;
-    }
-
-    function hasOnlyYouTubeExternalDestinations(root) {
-        const destinations = linksFor(root)
-            .map(resolveExternalDestination)
-            .filter(url => /^https?:$/.test(url.protocol) && !isGoogleHost(url.hostname));
-        return destinations.length > 0 && destinations.every(url => isYouTubeVideoHost(url.hostname));
     }
 
     function hasNewsRoute(root) {
@@ -366,14 +334,6 @@
                 hide(root, 'unwanted-vertical');
                 return;
             }
-        }
-
-        if (!realNews &&
-            !hasForumRoute(root) &&
-            !hasKnowledgeSemantics(root) &&
-            hasOnlyYouTubeExternalDestinations(root)) {
-            hide(root, 'youtube-result');
-            return;
         }
 
         if (!realNews &&

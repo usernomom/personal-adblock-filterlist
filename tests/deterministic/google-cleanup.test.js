@@ -252,54 +252,44 @@ test('non-image unwanted vertical is removed', () => {
 
 for (const [label, url] of [
     ['youtube.com', 'https://www.youtube.com/watch?v=test-video'],
-    ['YouTube subdomain', 'https://m.youtube.com/watch?v=test-video'],
+    ['YouTube mobile host', 'https://m.youtube.com/watch?v=test-video'],
     ['youtu.be', 'https://youtu.be/test-video'],
     ['youtube-nocookie.com', 'https://www.youtube-nocookie.com/embed/test-video'],
+    ['YouTube Music', 'https://music.youtube.com/playlist?list=spatial-audio'],
 ]) {
-    test(`standalone ${label} result is removed from the All tab`, () => {
+    test(`ordinary ${label} result is preserved for uBlacklist policy`, () => {
         const h = createHarness({
             html: withRoot(youtubeLink(url)),
         });
-        assertHidden(h.document, 'root', 'youtube-result');
-        assert.equal(h.api.stats.reasons['youtube-result'], 1);
+        assertPreserved(h.document, 'root');
+        assert.equal(h.api.stats.reasons['youtube-result'], undefined);
         h.close();
     });
 }
-
-test('YouTube Music result is preserved instead of being treated as a standalone YouTube video', () => {
-    const h = createHarness({
-        html: withRoot(youtubeLink(
-            'https://music.youtube.com/playlist?list=spatial-audio',
-            'YouTube Music · SpatialAudio',
-        )),
-    });
-    assertPreserved(h.document, 'root');
-    h.close();
-});
 
 for (const [label, path] of [
     ['Google /url?url= wrapper', '/url?url='],
     ['Google /url?q= wrapper', '/url?q='],
     ['Google /goto?url= wrapper', '/goto?url='],
 ]) {
-    test(`${label} to YouTube is removed from the All tab`, () => {
+    test(`${label} to YouTube is preserved for the bridge and uBlacklist`, () => {
         const target = encodeURIComponent('https://www.youtube.com/watch?v=test-video');
         const h = createHarness({
             html: withRoot(`<a href="${path}${target}">Wrapped YouTube result</a>`),
         });
-        assertHidden(h.document, 'root', 'youtube-result');
+        assertPreserved(h.document, 'root');
         h.close();
     });
 }
 
-test('realistic YouTube result with an opaque Google tracking link is removed', () => {
+test('realistic YouTube result with an opaque Google tracking link is preserved for the bridge', () => {
     const h = createHarness({
         html: withRoot(
             youtubeLink('https://www.youtube.com/watch?v=Ddu89kmaeTk', 'YouTube · Vacuum Wars') +
             '<a href="/goto?url=CAESYwOpaqueGoogleToken">tracking</a>',
         ),
     });
-    assertHidden(h.document, 'root', 'youtube-result');
+    assertPreserved(h.document, 'root');
     h.close();
 });
 
@@ -531,13 +521,12 @@ test('reason accounting is exact across mixed cleanup branches', () => {
     });
     assert.deepEqual(JSON.parse(JSON.stringify(h.api.stats)), {
         scans: 1,
-        hidden: 6,
+        hidden: 5,
         reasons: {
             'recipe-cluster': 1,
             'social-profiles': 1,
             products: 1,
             'query-refinement': 1,
-            'youtube-result': 1,
             'visual-digest': 1,
         },
     });

@@ -2,7 +2,7 @@
 ! Title: Personal AdGuard Filter List
 ! Description: Personal cosmetic, scriptlet, and network filters organized by website.
 ! Homepage: https://github.com/usernomom/personal-adblock-filterlist
-! Version: 2026.09.04.5
+! Version: 2026.09.11.1
 ! Expires: 1 day
 
 ! Walmart.ca
@@ -56,6 +56,7 @@ walmart.ca#?#section:has(:contains(Official Brand Partner))
 walmart.ca#?#[data-testid="ip-p13n-carousel"]:upward(1)
 
 ! Google
+! Ordinary destination-domain filtering belongs to uBlacklist + the Google bridge; do not duplicate site blocklists here.
 google.*#?#div[role="navigation"] div[role="listitem"]:has(> a:has(span:contains(Short videos)))
 google.*#?#div[aria-label="Refinement"]
 google.*#?##fbar
@@ -69,7 +70,7 @@ google.*#?#product-viewer-group
 google.*#?#div[data-has-close]
 google.*#?#div[data-initq]
 google.*#?#.MjjYud:has(div:contains(Find related products & services))
-google.*#?#.MjjYud:has(a:is([href*="youtube.com"]):is([role="presentation"]))
+
 google.*#?##appbar
 
 ! X / Twitter

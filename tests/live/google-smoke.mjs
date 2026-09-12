@@ -351,16 +351,34 @@ try {
 
   const youtubeAll = await runCase(
     client,
-    'YouTube standalone result removal on All',
-    'https://www.google.com/search?q=roborock+qrevo+edge+2+review',
-    recordExpression(`Array.from(document.querySelectorAll('[data-google-cleanup-hidden="youtube-result"]')).find(root =>
-      Array.from(root.querySelectorAll('a[href]')).some(a => {
-        try {
-          const host = new URL(a.href, location.href).hostname;
-          return host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be';
-        } catch { return false; }
-      }))`),
-    result => assertCleanupHidden(result, 'youtube-result', 'Standalone YouTube result on All'),
+    'YouTube Music delegated to bridge/uBlacklist on All',
+    'https://www.google.com/search?q=youtube+music+spatial+audio',
+    `(() => {
+      const source = Array.from(document.querySelectorAll('a[href]')).find(a => {
+        try { return new URL(a.href, location.href).hostname === 'music.youtube.com'; }
+        catch { return false; }
+      });
+      if (!source) return null;
+      const root = source.closest('[data-ub-google-bridge-root="1"], .Ww4FFb, .MjjYud, div.g');
+      if (!root) return null;
+      const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
+      return {
+        source: source.href,
+        proxy: proxy?.href || null,
+        cleanupReason: root.getAttribute('data-google-cleanup-hidden'),
+        bridgeRoot: root.getAttribute('data-ub-google-bridge-root'),
+        uBlacklistProcessed: root.getAttribute('data-ub-result')
+      };
+    })()`,
+    result => {
+      if (!result) fail('YouTube Music result was not found');
+      if (result.cleanupReason) fail('Google Cleanup must not domain-filter YouTube Music', result);
+      if (result.bridgeRoot !== '1') fail('Bridge did not claim the YouTube Music result root', result);
+      if (!result.proxy || new URL(result.proxy).hostname !== 'music.youtube.com') {
+        fail('Bridge did not expose the exact YouTube Music destination to uBlacklist', result);
+      }
+      if (result.uBlacklistProcessed !== '1') fail('uBlacklist did not process the bridged result root', result);
+    },
   );
   await assertInstalledVersion();
 

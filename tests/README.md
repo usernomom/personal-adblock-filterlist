@@ -11,8 +11,9 @@ npm ci
 npm test
 ```
 
-The suite executes the canonical `.user.js` packages and checks syntax, metadata, packaging invariants, and behavior. `google_interface_cleanup.user.js` also starts at `document-start`, strips `autoplay` from current and dynamically inserted videos, directly instruments media events, periodically re-enforces the paused state, and permits playback only when the trusted interaction occurred inside the same media scope. Unrelated taps and scrolling do not globally unlock video playback. For the two navigation scripts specifically:
+The suite executes the canonical `.user.js` packages and checks syntax, metadata, packaging invariants, and behavior. `google_interface_cleanup.user.js` also starts at `document-start`, strips `autoplay` from current and dynamically inserted videos, directly instruments media events, periodically re-enforces the paused state, and permits playback only when the trusted interaction occurred inside the same media scope. Unrelated taps and scrolling do not globally unlock video playback. For the related Google/navigation userscripts:
 
+- `google_news_ublacklist_bridge.user.js` exposes the exact external destination for Google result shapes that uBlacklist cannot classify directly; it does not decide which domains are blocked.
 - `google_open_results_new_tab.user.js` keeps the original Google-result behavior: prepare recognized result links with `target="_blank"`, add `rel="noopener"`, ignore hidden uBlacklist proxy anchors, suppress Google's later ordinary-click handlers without preventing the browser's default anchor action, and leave archive.ph-owned clicks alone. `google_open_results_new_tab.js` is retained as a content-identical legacy copy.
 - `reddit_safari_back_button_fix.user.js` keeps the verified pre-September-8 behavior: ordinary Reddit navigation is untouched; only a top-level `back_forward` navigation with history length at most 2 is treated as the Safari trap; challenge parameters are scrubbed; the script tries `window.close()` first and falls back to `history.forward()` if the tab remains alive.
 
@@ -66,6 +67,7 @@ The Google interface-cleanup suite also has a dedicated live Neon test path. Pre
 
 - Dedicated Opera Neon automation profile running with DevTools on `127.0.0.1:9223`.
 - Violentmonkey enabled in that profile with **Allow User Scripts** enabled.
+- uBlacklist enabled, with `google_news_ublacklist_bridge.user.js` installed so the live delegation check can verify bridge exposure and uBlacklist processing.
 - The local working-tree `google_interface_cleanup.user.js` installed through the normal userscript install flow.
 
 For an uncommitted cleanup-userscript change:
@@ -86,4 +88,4 @@ Run the live cleanup suite with:
 npm run test:live
 ```
 
-The runner creates only its temporary test tab, exercises fresh Google navigations, verifies the cleanup userscript version against the working tree, and restores tab state during cleanup. It intentionally does not run in GitHub Actions because it depends on the local dedicated Neon profile and current Google markup.
+The runner creates only its temporary test tab, exercises fresh Google navigations, verifies the cleanup userscript version against the working tree, and restores tab state during cleanup. Its YouTube Music regression verifies ownership boundaries: Google Cleanup must not domain-filter the result, the bridge must expose the exact `music.youtube.com` destination, and uBlacklist must process the bridged result root; whether that destination is ultimately blocked remains uBlacklist policy. It intentionally does not run in GitHub Actions because it depends on the local dedicated Neon profile and current Google markup.

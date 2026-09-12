@@ -195,3 +195,41 @@ test('ordinary multi-result root without nested result semantics does not fan ou
     );
     h.close();
 });
+
+
+test('YouTube result is exposed to uBlacklist through an exact bridge proxy', () => {
+    const target = 'https://www.youtube.com/watch?v=Ddu89kmaeTk';
+    const h = createHarness({
+        html:
+            '<div id="rso"><div class="MjjYud">' +
+            '<div id="youtube" class="Ww4FFb vt6azd">' +
+            '<a class="zReHs" href="' + target + '">YouTube · Vacuum Wars</a>' +
+            '</div></div></div>',
+    });
+
+    const root = h.document.getElementById('youtube');
+    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy="direct"] a');
+    assert.ok(proxy, 'YouTube result should receive a uBlacklist-readable exact-destination proxy');
+    assert.equal(proxy.href, target);
+    assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
+    h.close();
+});
+
+test('YouTube Music keeps its exact host when exposed to uBlacklist', () => {
+    const target = 'https://music.youtube.com/playlist?list=spatial-audio';
+    const h = createHarness({
+        html:
+            '<div id="rso"><div class="MjjYud">' +
+            '<div id="youtube-music" class="Ww4FFb vt6azd">' +
+            '<a class="zReHs" href="' + target + '">YouTube Music · SpatialAudio</a>' +
+            '</div></div></div>',
+    });
+
+    const root = h.document.getElementById('youtube-music');
+    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy="direct"] a');
+    assert.ok(proxy, 'YouTube Music should receive a uBlacklist-readable exact-destination proxy');
+    assert.equal(proxy.href, target);
+    assert.equal(new URL(proxy.href).hostname, 'music.youtube.com');
+    assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
+    h.close();
+});
