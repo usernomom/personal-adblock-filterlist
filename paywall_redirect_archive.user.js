@@ -3,8 +3,9 @@
 // @namespace    https://github.com/usernomom/personal-adblock-filterlist
 // @author       nobody
 // @description  Opens supported article links through archive.ph without interfering with uBlacklist
-// @version      9
-// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/paywall_redirect_archive.js
+// @version      10
+// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/paywall_redirect_archive.user.js
+// @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/paywall_redirect_archive.user.js
 // @match        http://*/*
 // @match        https://*/*
 // @exclude      https://archive.ph/*

@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      86
+// @version      87
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
 // @match        https://sameday.costco.ca/*
-// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.js
+// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.user.js
+// @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/instacart_ad_remover.user.js
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==

@@ -2,8 +2,9 @@
 // @name         Walmart.ca — Sold by Walmart only
 // @description  Limits listings to Walmart-sold items and streamlines Walmart.ca checkout.
 // @license      MIT
-// @version      5
-// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/walmart_sold_by_walmart.js
+// @version      6
+// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/walmart_sold_by_walmart.user.js
+// @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/walmart_sold_by_walmart.user.js
 // @match        https://www.walmart.ca/*
 // @run-at       document-start
 // @grant        none

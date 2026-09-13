@@ -72,3 +72,11 @@ test('autoplay permission is media-scoped rather than a global click grace perio
     assert.equal(source.includes('navigator.userActivation'), false);
     assert.equal(source.includes('mediaAllowedUntil'), false);
 });
+
+
+test('all root userscripts use the .user.js suffix', () => {
+    const offenders = fs.readdirSync(repoRoot)
+        .filter((name) => name.endsWith('.js') && !name.endsWith('.user.js'))
+        .filter((name) => read(path.join(repoRoot, name)).startsWith('// ==UserScript=='));
+    assert.deepEqual(offenders, []);
+});

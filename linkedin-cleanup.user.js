@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Clean Up Linkedin Posts
 // @namespace    https://thevgergroup.com/
-// @version      1.2
+// @version      1.3
 // @description  Remove posts containing "Suggested" from the feed
 // @author       Patrick O'Leary
 // @match        https://www.linkedin.com/*
 // @grant        none
-// @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/clean-up-feed.js
-// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/clean-up-feed.js
+// @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/linkedin-cleanup.user.js
+// @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/linkedin-cleanup.user.js
 // ==/UserScript==
 
 const HIDE = /^(?:Vorgeschlagen|Suggested|Anzeige)/;

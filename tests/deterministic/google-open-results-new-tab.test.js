@@ -9,7 +9,7 @@ const { JSDOM } = require('jsdom');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const scriptPath = path.join(repoRoot, 'google_open_results_new_tab.user.js');
-const legacyPath = path.join(repoRoot, 'google_open_results_new_tab.js');
+
 const source = fs.readFileSync(scriptPath, 'utf8');
 
 function makeDom(html) {
@@ -29,7 +29,7 @@ test('Google new-tab userscript packaging is stable and canonical', () => {
     const raw = 'https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.user.js';
     assert.ok(source.includes(`// @downloadURL  ${raw}`));
     assert.ok(source.includes(`// @updateURL    ${raw}`));
-    assert.equal(fs.readFileSync(legacyPath, 'utf8'), source);
+
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
 });
 
