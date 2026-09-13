@@ -47,7 +47,7 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.1\.6$/m);
+    assert.match(source, /^\/\/ @version\s+13\.1\.7$/m);
 });
 
 test('ordinary results are never held behind the removed anti-flash shield', () => {
@@ -108,6 +108,83 @@ test('standalone mobile-style result resolves one opaque goto via network fallba
     assert.equal(proxy.href, target);
     assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
     assert.equal(h.api.resolveGoto(goto), target);
+    h.close();
+});
+
+test('opaque fallback follows redirects normally and accepts onloadend responseURL', async () => {
+    const goto = '/goto?url=opaque-worldnews';
+    const target = 'https://www.reddit.com/r/worldnews/comments/test/post/';
+    const requests = [];
+    const h = createHarness({
+        html:
+            '<div id="worldnews" class="Ww4FFb vt6azd">' +
+            `<a class="UBFage" href="${goto}">Reddit · r/worldnews</a>` +
+            '</div>',
+        gmRequest(details) {
+            requests.push(details);
+            setTimeout(() => details.onloadend({ responseURL: target, status: 200 }), 0);
+            return { abort() {} };
+        },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 180));
+
+    const proxy = h.document.querySelector('#worldnews > [data-ub-google-source-proxy] a');
+    assert.ok(proxy);
+    assert.equal(proxy.href, target);
+    assert.equal(requests.length, 1);
+    assert.equal('redirect' in requests[0], false, 'portable fallback must not request manual redirects');
+    h.close();
+});
+
+test('ordinary opaque fallback retries up to five total attempts', async () => {
+    const goto = '/goto?url=opaque-retry';
+    const target = 'https://www.reddit.com/r/worldnews/comments/retry/post/';
+    let attempts = 0;
+    const h = createHarness({
+        html:
+            '<div id="retry" class="Ww4FFb vt6azd">' +
+            `<a class="UBFage" href="${goto}">Reddit · r/worldnews</a>` +
+            '</div>',
+        gmRequest(details) {
+            attempts += 1;
+            const currentAttempt = attempts;
+            setTimeout(() => {
+                if (currentAttempt < 5) details.onerror({});
+                else details.onloadend({ responseURL: target, status: 200 });
+            }, 0);
+            return { abort() {} };
+        },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 950));
+
+    const proxy = h.document.querySelector('#retry > [data-ub-google-source-proxy] a');
+    assert.ok(proxy, 'fifth bounded attempt should still recover the result');
+    assert.equal(proxy.href, target);
+    assert.equal(attempts, 5);
+    h.close();
+});
+
+test('Violentmonkey response hash artifact is stripped from bridge proxy', async () => {
+    const goto = '/goto?url=opaque-vmxhr';
+    const clean = 'https://www.reddit.com/r/worldnews/comments/hash/post/';
+    const h = createHarness({
+        html:
+            '<div id="vmxhr" class="Ww4FFb vt6azd">' +
+            `<a class="UBFage" href="${goto}">Reddit · r/worldnews</a>` +
+            '</div>',
+        gmRequest(details) {
+            setTimeout(() => details.onload({ finalUrl: `${clean}#VMxhrAbCdEf`, status: 200 }), 0);
+            return { abort() {} };
+        },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 180));
+
+    const proxy = h.document.querySelector('#vmxhr > [data-ub-google-source-proxy] a');
+    assert.ok(proxy);
+    assert.equal(proxy.href, clean);
     h.close();
 });
 

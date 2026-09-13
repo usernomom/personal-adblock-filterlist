@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.1.6
+// @version      13.1.7
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,13 +22,16 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.1.6';
+    const VERSION = '13.1.7';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
     const NEWS_NETWORK_CONCURRENCY = 4;
     const NEWS_NETWORK_RETRIES = 2;
     const NEWS_NETWORK_RETRY_DELAY_MS = 100;
     const NEWS_NETWORK_TIMEOUT_MS = 1500;
+    const ORDINARY_NETWORK_RETRIES = 4;
+    const ORDINARY_NETWORK_RETRY_DELAY_MS = 150;
+    const ORDINARY_NETWORK_TIMEOUT_MS = 2500;
     const NEWS_PENDING_ATTRIBUTE = 'data-ub-google-news-pending';
     const NEWS_CARD_SELECTOR = '[data-news-cluster-id]';
     const VISUAL_DIGEST_VIDEO_SELECTOR = '[data-attrid="VisualDigestVideoResult"]';
@@ -661,12 +664,25 @@
         }
     }
 
+    function cleanResolvedTarget(raw) {
+        const target = externalURL(raw);
+        if (!target) return '';
+        try {
+            const url = new URL(target);
+            if (/^#VMxhr/i.test(url.hash)) url.hash = '';
+            return url.href;
+        } catch (_) {
+            return target;
+        }
+    }
+
     function requestGotoTarget(url, timeout = 5000) {
         return new Promise((resolve) => {
             let settled = false;
-            const finish = (response) => {
-                if (settled) return;
-                settled = true;
+            let loadTimer = 0;
+            let latestResponse = null;
+
+            const targetFromResponse = (response) => {
                 const headerTarget = parseLocationHeader(response?.responseHeaders);
                 const finalTarget =
                     response?.finalUrl ||
@@ -678,18 +694,45 @@
                     response?.responseText ||
                     (typeof response?.response === 'string' ? response.response : '')
                 );
-                resolve(
-                    externalURL(headerTarget) ||
-                    externalURL(finalTarget) ||
-                    externalURL(bodyTarget) ||
+                return (
+                    cleanResolvedTarget(headerTarget) ||
+                    cleanResolvedTarget(finalTarget) ||
+                    cleanResolvedTarget(bodyTarget) ||
                     ''
                 );
             };
-            const fail = () => {
+
+            const settle = (target) => {
                 if (settled) return;
                 settled = true;
-                resolve('');
+                if (loadTimer) clearTimeout(loadTimer);
+                resolve(target || '');
             };
+
+            const onload = (response) => {
+                latestResponse = response;
+                const target = targetFromResponse(response);
+                if (target) {
+                    settle(target);
+                    return;
+                }
+                if (loadTimer) clearTimeout(loadTimer);
+                loadTimer = setTimeout(() => {
+                    settle(targetFromResponse(latestResponse));
+                }, 50);
+            };
+
+            const onloadend = (response) => {
+                latestResponse = response || latestResponse;
+                settle(targetFromResponse(latestResponse));
+            };
+
+            const fail = () => settle('');
+
+            // Let the userscript manager follow redirects normally. Safari/iOS
+            // managers consistently expose the final destination through a
+            // response URL, while nonstandard manual-redirect handling varies
+            // between managers and can stall or fail.
             const control = gmRequest({
                 method: 'GET',
                 url,
@@ -697,8 +740,8 @@
                 nocache: true,
                 timeout,
                 responseType: 'text',
-                redirect: 'manual',
-                onload: finish,
+                onload,
+                onloadend,
                 onerror: fail,
                 ontimeout: fail,
                 onabort: fail,
@@ -719,6 +762,9 @@
 
         const promise = (async () => {
             for (let attempt = 0; attempt <= retries; attempt += 1) {
+                const alreadyMapped = gotoMap.get(key);
+                if (alreadyMapped) return alreadyMapped;
+
                 const target = await requestGotoTarget(url, timeout);
                 if (target) {
                     maybeSetGoto(key, target);
@@ -792,7 +838,11 @@
 
         setTimeout(() => {
             if (!gotoMap.has(key) && link.isConnected) {
-                resolveGotoViaNetwork(key);
+                resolveGotoViaNetwork(key, {
+                    retries: ORDINARY_NETWORK_RETRIES,
+                    retryDelayMs: ORDINARY_NETWORK_RETRY_DELAY_MS,
+                    timeout: ORDINARY_NETWORK_TIMEOUT_MS,
+                });
             }
         }, 120);
     }
