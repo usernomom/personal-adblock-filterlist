@@ -47,7 +47,7 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.1\.5$/m);
+    assert.match(source, /^\/\/ @version\s+13\.1\.6$/m);
 });
 
 test('ordinary results are never held behind the removed anti-flash shield', () => {
@@ -128,6 +128,55 @@ test('direct mobile-style subreddit result with unsupported anchor class gets ex
     assert.ok(proxy, 'unsupported direct Google anchor should receive a uBlacklist-readable proxy');
     assert.equal(proxy.href, target);
     assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
+    h.close();
+});
+
+test('late href mutation on an unsupported Google anchor is bridged immediately', async () => {
+    const target = 'https://www.quora.com/What-is-kombucha';
+    const h = createHarness({
+        html:
+            '<div id="result" class="Ww4FFb vt6azd">' +
+            '<a id="late-link" class="zReHs">Quora · What is kombucha?</a>' +
+            '</div>',
+    });
+
+    const link = h.document.getElementById('late-link');
+    link.setAttribute('href', target);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const root = h.document.getElementById('result');
+    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy="direct"] a');
+    assert.ok(proxy, 'href mutation should trigger the bridge without waiting for unrelated DOM changes');
+    assert.equal(proxy.href, target);
+    assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
+    h.close();
+});
+
+test('late href mutation in a mixed-domain discussion module bridges only the nested result', async () => {
+    const target = 'https://www.quora.com/What-is-kombucha';
+    const h = createHarness({
+        html:
+            '<div id="discussion" class="Ww4FFb vt6azd">' +
+            '<div id="reddit-item" class="xYkm8c">' +
+            '<a class="zReHs" href="https://www.reddit.com/r/Kombucha/">Reddit</a>' +
+            '</div>' +
+            '<div id="quora-item" class="xYkm8c">' +
+            '<a id="quora-link" class="zReHs">Quora · What is kombucha?</a>' +
+            '</div>' +
+            '</div>',
+    });
+
+    const link = h.document.getElementById('quora-link');
+    link.setAttribute('href', target);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const group = h.document.getElementById('discussion');
+    const item = h.document.getElementById('quora-item');
+    const proxy = item.querySelector(':scope > [data-ub-google-source-proxy="direct"] a');
+    assert.ok(proxy, 'nested discussion result should get its own proxy after href mutation');
+    assert.equal(proxy.href, target);
+    assert.equal(item.getAttribute('data-ub-google-bridge-root'), '1');
+    assert.equal(group.querySelector(':scope > [data-ub-google-source-proxy]'), null);
     h.close();
 });
 

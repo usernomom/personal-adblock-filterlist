@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.1.5
+// @version      13.1.6
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.1.5';
+    const VERSION = '13.1.6';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
     const NEWS_NETWORK_CONCURRENCY = 4;
@@ -577,7 +577,12 @@
     }
 
     function rootForDirectLink(link) {
-        return link.closest(KNOWN_ROOT_SELECTOR) || semanticResultRoot(link);
+        const known = link.closest(KNOWN_ROOT_SELECTOR);
+        const nested = link.closest(NESTED_RESULT_SELECTOR);
+        if (nested && nested !== known && (!known || known.contains(nested))) {
+            return nested;
+        }
+        return known || semanticResultRoot(link);
     }
 
     function nativeReadableURL(root) {
@@ -897,6 +902,13 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         const observer = new MutationObserver((records) => {
             stats.observerCallbacks += 1;
             for (const record of records) {
+                if (record.type === 'attributes') {
+                    const target = record.target;
+                    if (isElement(target) && !target.closest('[data-ub-google-source-proxy]')) {
+                        bridgeSubtree(target);
+                    }
+                    continue;
+                }
                 for (const node of record.addedNodes) {
                     stats.observedAddedNodes += 1;
                     if (node.nodeType === Node.COMMENT_NODE) {
@@ -916,6 +928,8 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
 
         observer.observe(document.documentElement, {
             childList: true,
+            attributes: true,
+            attributeFilter: ['href'],
             subtree: true,
         });
 

@@ -13,7 +13,7 @@ npm test
 
 The suite executes the canonical `.user.js` packages and checks syntax, metadata, packaging invariants, and behavior. `google_interface_cleanup.user.js` also starts at `document-start`, strips `autoplay` from current and dynamically inserted videos, directly instruments media events, periodically re-enforces the paused state, and permits playback only when the trusted interaction occurred inside the same media scope. Unrelated taps and scrolling do not globally unlock video playback. For the related Google/navigation userscripts:
 
-- `google_news_ublacklist_bridge.user.js` exposes the exact external destination for Google result shapes that uBlacklist cannot classify directly; it does not decide which domains are blocked.
+- `google_news_ublacklist_bridge.user.js` exposes the exact external destination for Google result shapes that uBlacklist cannot classify directly, including links whose `href` is assigned after insertion; it does not decide which domains are blocked.
 - `google_open_results_new_tab.user.js` keeps the original Google-result behavior: prepare recognized result links with `target="_blank"`, add `rel="noopener"`, ignore hidden uBlacklist proxy anchors, suppress Google's later ordinary-click handlers without preventing the browser's default anchor action, and leave archive.ph-owned clicks alone.
 - `reddit_safari_back_button_fix.user.js` keeps the verified pre-September-8 behavior: ordinary Reddit navigation is untouched; only a top-level `back_forward` navigation with history length at most 2 is treated as the Safari trap; challenge parameters are scrubbed; the script tries `window.close()` first and falls back to `history.forward()` if the tab remains alive.
 
