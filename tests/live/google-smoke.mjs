@@ -119,6 +119,100 @@ function assertCleanupHidden(record, reason, label) {
   }
 }
 
+const FIREWALL_AUDIT_INIT = `(() => {
+  const selector = '.vt6azd, .Ww4FFb, .xYkm8c, .sHEJob, [data-news-cluster-id], [data-attrid="VisualDigestVideoResult"], .eejeod';
+  const ids = new WeakMap();
+  const lastStates = new WeakMap();
+  const events = [];
+  let nextId = 1;
+  let frame = 0;
+
+  const isVisible = el => {
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    return style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      style.opacity !== '0' &&
+      rect.width > 0 &&
+      rect.height > 0;
+  };
+
+  const sample = timestamp => {
+    frame += 1;
+    for (const el of document.querySelectorAll(selector)) {
+      let id = ids.get(el);
+      if (!id) {
+        id = nextId++;
+        ids.set(el, id);
+      }
+      const record = {
+        id,
+        frame,
+        timestamp,
+        visible: isVisible(el),
+        result: el.getAttribute('data-ub-result'),
+        block: el.getAttribute('data-ub-block'),
+        bridgeRoot: el.getAttribute('data-ub-google-bridge-root'),
+        href: el.querySelector(':scope > [data-ub-google-source-proxy] a')?.href ||
+          el.querySelector('a[href]')?.href || '',
+        text: (el.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 120),
+      };
+      const key = [record.visible, record.result, record.block, record.bridgeRoot, record.href].join('|');
+      if (lastStates.get(el) !== key) {
+        lastStates.set(el, key);
+        events.push(record);
+        if (events.length > 5000) events.splice(0, events.length - 5000);
+      }
+    }
+    requestAnimationFrame(sample);
+  };
+
+  window.__UB_FIREWALL_AUDIT__ = { events, get frame() { return frame; } };
+  requestAnimationFrame(sample);
+})();`;
+
+function summarizeFirewallAudit(events) {
+  const byId = new Map();
+  for (const event of events || []) {
+    const history = byId.get(event.id) || [];
+    history.push(event);
+    byId.set(event.id, history);
+  }
+
+  const blocked = [];
+  const allowed = [];
+  for (const [id, history] of byId) {
+    const blockEvent = history.find(event => event.block === '1');
+    if (blockEvent) {
+      blocked.push({
+        id,
+        href: blockEvent.href,
+        text: blockEvent.text,
+        blockFrame: blockEvent.frame,
+        visibleEvents: history.filter(event => event.visible),
+        history,
+      });
+      continue;
+    }
+
+    const classified = history.find(event => event.result === '1' && event.block !== '1');
+    if (!classified) continue;
+    const visible = history.find(event => event.visible && event.frame >= classified.frame);
+    if (visible) {
+      allowed.push({
+        id,
+        href: visible.href || classified.href,
+        text: visible.text || classified.text,
+        classifiedFrame: classified.frame,
+        visibleFrame: visible.frame,
+        deltaFrames: visible.frame - classified.frame,
+        history,
+      });
+    }
+  }
+  return { blocked, allowed };
+}
+
 const recordExpression = elementExpression => `(() => {
   const el = ${elementExpression};
   if (!el) return null;
@@ -151,8 +245,17 @@ const scriptSource = await (await import('node:fs/promises')).readFile(
 const versionMatch = scriptSource.match(/^\/\/ @version\s+(.+)$/m);
 if (!versionMatch) fail('Local userscript has no @version metadata');
 const expectedVersion = versionMatch[1].trim();
+const bridgeSource = await (await import('node:fs/promises')).readFile(
+  new URL('../../google_news_ublacklist_bridge.user.js', import.meta.url),
+  'utf8',
+);
+const bridgeVersionMatch = bridgeSource.match(/^\/\/ @version\s+(.+)$/m);
+if (!bridgeVersionMatch) fail('Local bridge userscript has no @version metadata');
+const expectedBridgeVersion = bridgeVersionMatch[1].trim();
 
 let target;
+let temporaryLinkedInRuleAdded = false;
+let cleanupTemporaryLinkedInBlock = null;
 let client;
 try {
   target = await fetchJson(`${DEBUG_HOST}/json/new?about:blank`, { method: 'PUT' });
@@ -161,11 +264,138 @@ try {
   await client.send('Page.enable');
   await client.send('Runtime.enable');
   await client.send('Network.enable');
+  await client.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: FIREWALL_AUDIT_INIT,
+  });
 
   const desktopUa = await evaluate(client, 'navigator.userAgent');
   if (!desktopUa) fail('Could not read Neon user agent');
 
   await emulate(client, { userAgent: MOBILE_UA, viewport: MOBILE_VIEWPORT });
+
+  const assertBridgeInstalledVersion = async () => {
+    const state = await evaluate(
+      client,
+      `({
+        bridge: document.documentElement.getAttribute('data-ub-google-bridge-version'),
+        firewall: document.querySelector('[data-ub-google-result-firewall-style]')
+          ?.getAttribute('data-ub-google-result-firewall-style') || null
+      })`,
+    );
+    if (state.bridge !== expectedBridgeVersion || state.firewall !== expectedBridgeVersion) {
+      fail(
+        `Live bridge/firewall versions ${JSON.stringify(state)} do not match local working tree ${expectedBridgeVersion}. Reinstall the local google_news_ublacklist_bridge.user.js through Violentmonkey before running live smoke tests.`,
+      );
+    }
+  };
+
+  const linkedInQuery = 'https://www.google.com/search?q=LinkedIn+senior+software+engineer';
+
+  const addTemporaryLinkedInBlock = async () => {
+    await navigate(client, linkedInQuery);
+    await assertBridgeInstalledVersion();
+    await waitFor(
+      client,
+      `Array.from(document.querySelectorAll('[data-ub-result]')).some(root => {
+        const a = root.querySelector('a[href^="http"]');
+        try { return a && new URL(a.href).hostname.endsWith('linkedin.com'); }
+        catch { return false; }
+      })`,
+      'a LinkedIn result that uBlacklist has classified',
+    );
+
+    const opened = await evaluate(client, `(() => {
+      const root = Array.from(document.querySelectorAll('[data-ub-result]')).find(candidate => {
+        const a = candidate.querySelector('a[href^="http"]');
+        try { return a && new URL(a.href).hostname.endsWith('linkedin.com'); }
+        catch { return false; }
+      });
+      const button = root?.querySelector('.ub-button')?.shadowRoot?.querySelector('button');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!opened) fail('Could not open uBlacklist block dialog for the temporary LinkedIn rule');
+
+    await waitFor(
+      client,
+      `Array.from(document.querySelectorAll('*')).some(el =>
+        el.shadowRoot && /Block this site/.test(el.shadowRoot.textContent || '')
+      )`,
+      'uBlacklist block dialog',
+    );
+
+    const blocked = await evaluate(client, `(() => {
+      const host = Array.from(document.querySelectorAll('*')).find(el =>
+        el.shadowRoot && /Block this site/.test(el.shadowRoot.textContent || '')
+      );
+      const button = host?.shadowRoot
+        ? Array.from(host.shadowRoot.querySelectorAll('button')).find(
+            b => (b.innerText || b.textContent || '').trim() === 'Block'
+          )
+        : null;
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!blocked) fail('Could not confirm uBlacklist temporary LinkedIn block');
+    temporaryLinkedInRuleAdded = true;
+
+    await waitFor(
+      client,
+      `document.querySelectorAll('[data-ub-block]').length > 0`,
+      'uBlacklist temporary LinkedIn block to become active',
+    );
+  };
+
+  cleanupTemporaryLinkedInBlock = async () => {
+    if (!temporaryLinkedInRuleAdded) return;
+    await navigate(client, linkedInQuery);
+    await waitFor(
+      client,
+      `document.querySelector('[data-ub-block]') !== null`,
+      'temporary LinkedIn blocked result for cleanup',
+    );
+
+    const opened = await evaluate(client, `(() => {
+      const root = document.querySelector('[data-ub-block]');
+      const button = root?.querySelector('.ub-button')?.shadowRoot?.querySelector('button');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!opened) fail('Could not open uBlacklist unblock dialog for temporary LinkedIn rule');
+
+    await waitFor(
+      client,
+      `Array.from(document.querySelectorAll('*')).some(el =>
+        el.shadowRoot && /Unblock this site/.test(el.shadowRoot.textContent || '')
+      )`,
+      'uBlacklist unblock dialog',
+    );
+
+    const unblocked = await evaluate(client, `(() => {
+      const host = Array.from(document.querySelectorAll('*')).find(el =>
+        el.shadowRoot && /Unblock this site/.test(el.shadowRoot.textContent || '')
+      );
+      const button = host?.shadowRoot
+        ? Array.from(host.shadowRoot.querySelectorAll('button')).find(
+            b => (b.innerText || b.textContent || '').trim() === 'Unblock'
+          )
+        : null;
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!unblocked) fail('Could not confirm removal of uBlacklist temporary LinkedIn rule');
+
+    await waitFor(
+      client,
+      `document.querySelectorAll('[data-ub-block]').length === 0`,
+      'temporary LinkedIn rule removal',
+    );
+    temporaryLinkedInRuleAdded = false;
+  };
 
   const assertInstalledVersion = async () => {
     const liveVersion = await evaluate(
@@ -181,6 +411,7 @@ try {
 
   await navigate(client, 'https://www.google.com/search?q=Columbus+Ohio');
   await assertInstalledVersion();
+  await assertBridgeInstalledVersion();
   const columbus = await evaluate(
     client,
     recordExpression(`Array.from(document.querySelectorAll('[data-kpid]')).find(el =>
@@ -416,7 +647,89 @@ try {
   );
   await assertInstalledVersion();
 
-  console.log(`\nLive Google smoke: 8/8 passed against userscript ${expectedVersion}`);
+  await addTemporaryLinkedInBlock();
+  await navigate(client, linkedInQuery);
+  await assertInstalledVersion();
+  await assertBridgeInstalledVersion();
+  await waitFor(
+    client,
+    `window.__UB_FIREWALL_AUDIT__?.events?.some(event => event.block === '1')`,
+    'uBlacklist to classify at least one live blocked result',
+  );
+  const firewallEvents = await evaluate(
+    client,
+    `window.__UB_FIREWALL_AUDIT__?.events || []`,
+  );
+  const firewallAudit = summarizeFirewallAudit(firewallEvents);
+  if (!firewallAudit.blocked.length) {
+    fail('Live firewall audit found no blocked roots to evaluate', firewallEvents.slice(-30));
+  }
+  const blockedLeaks = firewallAudit.blocked.filter(entry => entry.visibleEvents.length > 0);
+  if (blockedLeaks.length) {
+    fail('Blocked Google results had one or more visible animation frames', blockedLeaks);
+  }
+  if (!firewallAudit.allowed.length) {
+    fail('Live firewall audit found no independently classified visible allowed result', firewallEvents.slice(-30));
+  }
+  const slowAllowed = firewallAudit.allowed.filter(entry => entry.deltaFrames > 1);
+  if (slowAllowed.length) {
+    fail('Allowed Google result was released more than one animation frame after uBlacklist classification', slowAllowed);
+  }
+  console.log('PASS blocked Google results record zero visible frames and allowed results release within one frame');
+
+  const isolationProbe = await evaluate(client, `(async () => {
+    const host = document.createElement('div');
+    host.id = '__ub_firewall_isolation_probe__';
+    host.innerHTML =
+      '<div id="__ub_pending_probe__" class="xYkm8c">pending</div>' +
+      '<div id="__ub_allowed_probe__" class="xYkm8c" data-ub-result="1">allowed</div>';
+    document.body.appendChild(host);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const pending = host.querySelector('#__ub_pending_probe__');
+    const allowed = host.querySelector('#__ub_allowed_probe__');
+    const result = {
+      pendingDisplay: getComputedStyle(pending).display,
+      allowedDisplay: getComputedStyle(allowed).display,
+    };
+    host.remove();
+    return result;
+  })()`);
+  if (isolationProbe.pendingDisplay !== 'none' || isolationProbe.allowedDisplay === 'none') {
+    fail('One unresolved protected result delayed or exposed an independent sibling', isolationProbe);
+  }
+  console.log('PASS unresolved-result firewall isolation');
+
+  await cleanupTemporaryLinkedInBlock();
+  console.log('PASS temporary uBlacklist timing rule restored');
+
+  await navigate(client, 'https://www.google.com/search?q=cats&udm=2');
+  await assertInstalledVersion();
+  await assertBridgeInstalledVersion();
+  const imagesProbe = await evaluate(client, `(() => {
+    const style = document.querySelector('[data-ub-google-result-firewall-style]');
+    const roots = Array.from(document.querySelectorAll('.ivg-i, .DyfMyc'));
+    const visible = roots.filter(el => {
+      const s = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0' &&
+        r.width > 0 && r.height > 0;
+    });
+    return {
+      firewallText: style?.textContent || '',
+      rootCount: roots.length,
+      visibleCount: visible.length,
+      now: performance.now(),
+    };
+  })()`);
+  if (imagesProbe.firewallText.trim() !== '') {
+    fail('Explicit Images navigation unexpectedly retained ordinary-result firewall selectors', imagesProbe);
+  }
+  if (!(imagesProbe.rootCount > 0 && imagesProbe.visibleCount > 0)) {
+    fail('Explicit Images navigation did not render visible image results', imagesProbe);
+  }
+  console.log('PASS explicit Images navigation is outside the result firewall');
+
+  console.log(`\nLive Google smoke passed against cleanup ${expectedVersion} and bridge ${expectedBridgeVersion}`);
   console.log(JSON.stringify({
     columbus,
     toronto,
@@ -427,8 +740,19 @@ try {
     youtubeAll,
     youtubeVideos,
     webResult,
+    firewallAudit,
+    isolationProbe,
+    imagesProbe,
   }, null, 2));
 } finally {
+  if (client && temporaryLinkedInRuleAdded && cleanupTemporaryLinkedInBlock) {
+    try {
+      await cleanupTemporaryLinkedInBlock();
+      console.log('PASS temporary uBlacklist timing rule restored during cleanup');
+    } catch (error) {
+      console.error(`WARN could not restore temporary uBlacklist timing rule: ${error.message}`);
+    }
+  }
   if (client) client.close();
   if (target?.id) {
     try {
