@@ -9,16 +9,29 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 const scriptPath = path.join(repoRoot, 'google_news_ublacklist_bridge.user.js');
 const source = fs.readFileSync(scriptPath, 'utf8');
 
-function createHarness({ html, wjd = {}, gmRequest = () => null }) {
+function createHarness({
+    html,
+    wjd = {},
+    gmRequest = () => null,
+    url = 'https://www.google.com/search?q=bridge-regression',
+    userAgent = '',
+}) {
     const dom = new JSDOM(
         `<!doctype html><html><head></head><body>${html}</body></html>`,
         {
-            url: 'https://www.google.com/search?q=bridge-regression',
+            url,
             runScripts: 'outside-only',
             pretendToBeVisual: true,
         },
     );
     const { window } = dom;
+
+    if (userAgent) {
+        Object.defineProperty(window.navigator, 'userAgent', {
+            configurable: true,
+            value: userAgent,
+        });
+    }
 
     Object.defineProperty(window.HTMLElement.prototype, 'innerText', {
         configurable: true,
@@ -47,10 +60,10 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.1\.7$/m);
+    assert.match(source, /^\/\/ @version\s+13\.1\.8$/m);
 });
 
-test('ordinary results are never held behind the removed anti-flash shield', () => {
+test('protected ordinary result is quarantined until uBlacklist classifies it', () => {
     const goto = '/goto?url=opaque-yahoo';
     const target = 'https://finance.yahoo.com/article';
     const h = createHarness({
@@ -63,20 +76,109 @@ test('ordinary results are never held behind the removed anti-flash shield', () 
     const root = h.document.getElementById('result');
     const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
 
-    assert.equal(h.document.querySelector('[data-ub-google-filter-shield-style]'), null);
-    assert.equal(root.hasAttribute('data-ub-google-filter-pending'), false);
-    assert.equal(root.hasAttribute('data-ub-google-filter-ready'), false);
-    assert.notEqual(h.window.getComputedStyle(root).display, 'none');
+    assert.equal(h.window.getComputedStyle(root).display, 'none');
     assert.ok(proxy, 'bridge should still add the real-destination proxy for uBlacklist');
     assert.equal(proxy.href, target);
     assert.equal(h.api.resolveGoto(goto), target);
+
+    root.setAttribute('data-ub-result', '1');
+    assert.notEqual(h.window.getComputedStyle(root).display, 'none');
+
+    root.setAttribute('data-ub-block', '1');
+    assert.equal(h.window.getComputedStyle(root).display, 'none');
+
+    root.removeAttribute('data-ub-block');
+    root.removeAttribute('data-ub-result');
+    assert.equal(h.window.getComputedStyle(root).display, 'none');
     h.close();
 });
 
-test('anti-flash gating code is absent from the bridge', () => {
-    assert.equal(source.includes('data-ub-google-filter-pending'), false);
-    assert.equal(source.includes('installFilterShieldStyle'), false);
-    assert.equal(source.includes('FILTER_CLASSIFICATION_FAIL_OPEN_MS'), false);
+test('one unresolved result does not delay an independently classified sibling', () => {
+    const h = createHarness({
+        html:
+            '<div id="rso">' +
+            '<div id="pending" class="Ww4FFb"><a class="UBFage" href="https://blocked.example/"><h3>Pending</h3></a></div>' +
+            '<div id="allowed" class="Ww4FFb" data-ub-result="1"><a class="UBFage" href="https://allowed.example/"><h3>Allowed</h3></a></div>' +
+            '</div>',
+    });
+
+    assert.notEqual(h.window.getComputedStyle(h.document.getElementById('rso')).display, 'none');
+    assert.equal(h.window.getComputedStyle(h.document.getElementById('pending')).display, 'none');
+    assert.notEqual(h.window.getComputedStyle(h.document.getElementById('allowed')).display, 'none');
+    h.close();
+});
+
+test('mixed-domain module quarantines nested results independently instead of gating the parent', () => {
+    const h = createHarness({
+        html:
+            '<div id="group" class="Ww4FFb">' +
+            '<div id="reddit-item" class="xYkm8c"><a class="zReHs" href="https://www.reddit.com/r/Kombucha/">Reddit</a></div>' +
+            '<div id="quora-item" class="xYkm8c"><a class="zReHs" href="https://www.quora.com/What-is-kombucha">Quora</a></div>' +
+            '</div>',
+    });
+
+    const group = h.document.getElementById('group');
+    const reddit = h.document.getElementById('reddit-item');
+    const quora = h.document.getElementById('quora-item');
+
+    assert.notEqual(h.window.getComputedStyle(group).display, 'none');
+    assert.equal(h.window.getComputedStyle(reddit).display, 'none');
+    assert.equal(h.window.getComputedStyle(quora).display, 'none');
+
+    reddit.setAttribute('data-ub-result', '1');
+    assert.notEqual(h.window.getComputedStyle(reddit).display, 'none');
+    assert.equal(h.window.getComputedStyle(quora).display, 'none');
+    h.close();
+});
+
+test('desktop g-blk knowledge result is not quarantined by the ordinary-result firewall', () => {
+    const h = createHarness({
+        html:
+            '<div id="knowledge" class="vt6azd g-blk" data-kpid="vise:/m/01smm">' +
+            '<div>Columbus, Ohio</div><a href="/search?q=Columbus+Ohio">Columbus Ohio</a></div>',
+    });
+
+    assert.notEqual(h.window.getComputedStyle(h.document.getElementById('knowledge')).display, 'none');
+    h.close();
+});
+
+test('mobile ordinary result uses the mobile uBlacklist root contract', () => {
+    const h = createHarness({
+        html:
+            '<div id="mobile-result" class="vt6azd g-blk">' +
+            '<a class="UBFage" href="https://example.com/mobile"><h3>Mobile result</h3></a></div>',
+        userAgent:
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 ' +
+            '(KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1',
+    });
+
+    assert.equal(h.window.getComputedStyle(h.document.getElementById('mobile-result')).display, 'none');
+    h.close();
+});
+
+test('explicit Images page result roots are not quarantined by the ordinary-result firewall', () => {
+    const h = createHarness({
+        html:
+            '<div id="desktop-image" class="ivg-i"><a class="EZAeBe" href="https://images.example/a">A</a></div>' +
+            '<div id="mobile-image" class="DyfMyc"><a href="https://images.example/b">B</a></div>',
+        url: 'https://www.google.com/search?q=cats&udm=2',
+    });
+
+    assert.notEqual(h.window.getComputedStyle(h.document.getElementById('desktop-image')).display, 'none');
+    assert.notEqual(h.window.getComputedStyle(h.document.getElementById('mobile-image')).display, 'none');
+    h.close();
+});
+
+test('unclassified protected result has no fail-open timer', async () => {
+    const h = createHarness({
+        html:
+            '<div id="result" class="Ww4FFb">' +
+            '<a class="UBFage" href="https://example.com/still-pending"><h3>Still pending</h3></a></div>',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(h.window.getComputedStyle(h.document.getElementById('result')).display, 'none');
+    h.close();
 });
 
 

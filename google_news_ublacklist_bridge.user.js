@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.1.7
+// @version      13.1.8
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,9 +22,14 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.1.7';
+    const VERSION = '13.1.8';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
-    const IS_NEWS_TAB = new URLSearchParams(location.search).get('tbm') === 'nws';
+    const SEARCH_PARAMS = new URLSearchParams(location.search);
+    const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
+    const IS_IMAGES_TAB =
+        ['2', 'imgs'].includes(SEARCH_PARAMS.get('udm')) ||
+        SEARCH_PARAMS.get('tbm') === 'isch';
+    const IS_MOBILE_LAYOUT = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
     const NEWS_NETWORK_CONCURRENCY = 4;
     const NEWS_NETWORK_RETRIES = 2;
     const NEWS_NETWORK_RETRY_DELAY_MS = 100;
@@ -847,6 +852,34 @@
         }, 120);
     }
 
+    function firewallRootSelector() {
+        if (IS_IMAGES_TAB) return '';
+        const ordinary = IS_MOBILE_LAYOUT
+            ? '.vt6azd:not(:has(.xYkm8c)), .Ww4FFb:not(:has(.xYkm8c))'
+            : '.vt6azd:not(.g-blk):not(:has(.xYkm8c)), .Ww4FFb:not(:has(.xYkm8c))';
+        return [
+            ordinary,
+            NESTED_RESULT_SELECTOR,
+            '.sHEJob',
+            NEWS_CARD_SELECTOR,
+            VISUAL_DIGEST_VIDEO_SELECTOR,
+            '.eejeod',
+        ].join(', ');
+    }
+
+    function installResultFirewallStyle() {
+        if (document.querySelector('[data-ub-google-result-firewall-style]')) return;
+        const roots = firewallRootSelector();
+        const style = document.createElement('style');
+        style.setAttribute('data-ub-google-result-firewall-style', VERSION);
+        style.textContent = roots ? `
+:is(${roots}):not([data-ub-result]),
+:is(${roots})[data-ub-block] {
+    display: none !important;
+}` : '';
+        (document.head || document.documentElement).appendChild(style);
+    }
+
     function installNewsPendingStyle() {
         if (!IS_NEWS_TAB || document.querySelector('[data-ub-google-news-pending-style]')) return;
         const style = document.createElement('style');
@@ -934,6 +967,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         }
     }
     function start() {
+        installResultFirewallStyle();
         window.addEventListener(WJD_EVENT, (event) => {
             try {
                 const detail = typeof event.detail === 'string' ? JSON.parse(event.detail) : event.detail;
