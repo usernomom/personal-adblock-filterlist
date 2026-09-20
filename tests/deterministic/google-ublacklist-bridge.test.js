@@ -60,7 +60,7 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.1\.8$/m);
+    assert.match(source, /^\/\/ @version\s+13\.1\.9$/m);
 });
 
 test('protected ordinary result is quarantined until uBlacklist classifies it', () => {
@@ -181,6 +181,56 @@ test('unclassified protected result has no fail-open timer', async () => {
     h.close();
 });
 
+test('dynamic opaque result stays quarantined after provisional uBlacklist classification until bridge resolution', async () => {
+    const goto = '/goto?url=opaque-more-results';
+    const target = 'https://www.linkedin.com/in/example/';
+    const requests = [];
+    let resolveRequest = null;
+    const h = createHarness({
+        html: '<div id="rso"></div>',
+        gmRequest(details) {
+            requests.push(details.url);
+            resolveRequest = () => details.onload({ finalUrl: target, status: 200 });
+            return { abort() {} };
+        },
+    });
+
+    const root = h.document.createElement('div');
+    root.id = 'late-result';
+    root.className = 'Ww4FFb vt6azd';
+    root.innerHTML = `<a class="UBFage" href="${goto}"><h3>Late opaque result</h3></a>`;
+    h.document.getElementById('rso').appendChild(root);
+
+    await new Promise((resolve) => h.window.requestAnimationFrame(resolve));
+    root.setAttribute('data-ub-result', '1');
+
+    assert.equal(
+        h.window.getComputedStyle(root).display,
+        'none',
+        'provisional uBlacklist processing must not release an opaque result before its real destination is bridged',
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0], `https://www.google.com${goto}`);
+    assert.equal(typeof resolveRequest, 'function');
+
+    resolveRequest();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) =>
+        h.window.requestAnimationFrame(() => h.window.requestAnimationFrame(resolve)),
+    );
+
+    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
+    assert.ok(proxy);
+    assert.equal(proxy.href, target);
+    assert.notEqual(
+        h.window.getComputedStyle(root).display,
+        'none',
+        'allowed result should release after the bridge has resolved its destination',
+    );
+    h.close();
+});
 
 test('standalone mobile-style result resolves one opaque goto via network fallback', async () => {
     const goto = '/goto?url=opaque-instagram';

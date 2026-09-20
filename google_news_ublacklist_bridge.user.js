@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.1.8
+// @version      13.1.9
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.1.8';
+    const VERSION = '13.1.9';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const SEARCH_PARAMS = new URLSearchParams(location.search);
     const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
@@ -49,6 +49,7 @@
     const COLLAPSIBLE_SLOT_SELECTOR = '.Rb7Fnd, .dRzkFf';
     const PROXY_WRAPPER_SELECTOR = ':scope > [data-ub-google-source-proxy]';
     const BRIDGE_ROOT_ATTRIBUTE = 'data-ub-google-bridge-root';
+    const BRIDGE_PENDING_ATTRIBUTE = 'data-ub-google-bridge-pending';
 
     const gotoMap = new Map();
     const pendingByGoto = new Map();
@@ -820,7 +821,7 @@
 
     function scheduleNetworkFallback(link, key) {
         const known = link.closest(KNOWN_ROOT_SELECTOR);
-        if (!known) return;
+        if (!known) return false;
         const isNewsCard = known.matches(NEWS_CARD_SELECTOR);
         const isVisualDigestVideo = known.matches(VISUAL_DIGEST_VIDEO_SELECTOR);
         const isSingleResultCard = isNewsCard || isVisualDigestVideo;
@@ -832,13 +833,13 @@
         // result root containing exactly one opaque destination is safe to
         // resolve directly. Multi-result modules keep the stricter nested-link
         // guard so one fallback cannot be misapplied to a whole grouped result.
-        if (!gotoCount) return;
-        if (!isSingleResultCard && gotoCount > 1 && !isPrimaryNestedLink(link) && !nested) return;
+        if (!gotoCount) return false;
+        if (!isSingleResultCard && gotoCount > 1 && !isPrimaryNestedLink(link) && !nested) return false;
 
 
         if (IS_NEWS_TAB && isNewsCard) {
             enqueueNewsNetworkFallback(key);
-            return;
+            return true;
         }
 
         setTimeout(() => {
@@ -850,6 +851,7 @@
                 });
             }
         }, 120);
+        return true;
     }
 
     function firewallRootSelector() {
@@ -873,6 +875,7 @@
         const style = document.createElement('style');
         style.setAttribute('data-ub-google-result-firewall-style', VERSION);
         style.textContent = roots ? `
+[${BRIDGE_PENDING_ATTRIBUTE}],
 :is(${roots}):not([data-ub-result]),
 :is(${roots})[data-ub-block] {
     display: none !important;
@@ -895,6 +898,13 @@
         });
     }
 
+    function releaseBridgePending(root) {
+        if (!isElement(root) || !root.hasAttribute(BRIDGE_PENDING_ATTRIBUTE)) return;
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => root.removeAttribute(BRIDGE_PENDING_ATTRIBUTE));
+        });
+    }
+
     function installGapCollapseStyle() {
         if (document.querySelector('[data-ub-google-gap-style]')) return;
         const style = document.createElement('style');
@@ -914,7 +924,9 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             ? 'news'
             : (root.matches(VISUAL_DIGEST_VIDEO_SELECTOR) ? 'visual-digest-video' : 'default');
         const added = addProxyOnce(root, sourceURL, kind);
-        if (kind === 'news' && (added || root.querySelector(PROXY_WRAPPER_SELECTOR))) {
+        const hasProxy = Boolean(added || root.querySelector(PROXY_WRAPPER_SELECTOR));
+        if (hasProxy) releaseBridgePending(root);
+        if (kind === 'news' && hasProxy) {
             releaseNewsPending(root);
         }
         return added;
@@ -940,7 +952,10 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             pendingByGoto.set(key, links);
         }
         links.add(link);
-        scheduleNetworkFallback(link, key);
+        if (scheduleNetworkFallback(link, key)) {
+            const root = rootForOpaqueLink(link);
+            if (root) root.setAttribute(BRIDGE_PENDING_ATTRIBUTE, '1');
+        }
     }
 
     function bridgeSubtree(root) {

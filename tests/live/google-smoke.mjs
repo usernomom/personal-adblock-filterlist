@@ -633,6 +633,79 @@ try {
   }
   await assertInstalledVersion();
 
+  await addTemporaryLinkedInBlock();
+  const moreLinkedInQuery =
+    'https://www.google.com/search?q=site%3Alinkedin.com%2Fin+senior+software+engineer';
+  await navigate(client, moreLinkedInQuery);
+  await assertInstalledVersion();
+  await assertBridgeInstalledVersion();
+  await waitFor(
+    client,
+    `Array.from(document.querySelectorAll('button,a,div[role="button"]')).some(el =>
+      /more search results/i.test((el.innerText || el.textContent || '').trim())
+    )`,
+    'mobile More search results control',
+  );
+  const moreClickFrame = await evaluate(
+    client,
+    `window.__UB_FIREWALL_AUDIT__?.frame || 0`,
+  );
+  const clickedMore = await evaluate(client, `(() => {
+    const control = Array.from(document.querySelectorAll('button,a,div[role="button"]'))
+      .find(el => /more search results/i.test((el.innerText || el.textContent || '').trim()));
+    if (!control) return false;
+    control.click();
+    return true;
+  })()`);
+  if (!clickedMore) fail('Could not click mobile More search results control');
+
+  await waitFor(
+    client,
+    `(() => {
+      const grouped = new Map();
+      for (const event of window.__UB_FIREWALL_AUDIT__?.events || []) {
+        const history = grouped.get(event.id) || [];
+        history.push(event);
+        grouped.set(event.id, history);
+      }
+      return Array.from(grouped.values()).some(history =>
+        history[0]?.frame > ${moreClickFrame} &&
+        history.some(event => event.block === '1')
+      );
+    })()`,
+    'a dynamically appended blocked result after More search results',
+  );
+  const moreFirewallEvents = await evaluate(
+    client,
+    `window.__UB_FIREWALL_AUDIT__?.events || []`,
+  );
+  const dynamicHistories = new Map();
+  for (const event of moreFirewallEvents) {
+    const history = dynamicHistories.get(event.id) || [];
+    history.push(event);
+    dynamicHistories.set(event.id, history);
+  }
+  const dynamicBlockedResults = Array.from(dynamicHistories.entries())
+    .filter(([, history]) =>
+      history[0]?.frame > moreClickFrame &&
+      history.some(event => event.block === '1')
+    )
+    .map(([id, history]) => ({
+      id,
+      history,
+      visibleEvents: history.filter(event => event.visible),
+    }));
+  if (!dynamicBlockedResults.length) {
+    fail('More search results produced no dynamically appended blocked roots to audit');
+  }
+  const dynamicBlockedLeaks = dynamicBlockedResults.filter(
+    entry => entry.visibleEvents.length > 0,
+  );
+  if (dynamicBlockedLeaks.length) {
+    fail('More search results exposed blocked roots before final uBlacklist judgment', dynamicBlockedLeaks);
+  }
+  console.log('PASS mobile More search results keeps dynamically loaded blocked results at zero visible frames');
+
   await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   const webResult = await runCase(
     client,
@@ -647,7 +720,6 @@ try {
   );
   await assertInstalledVersion();
 
-  await addTemporaryLinkedInBlock();
   await navigate(client, linkedInQuery);
   await assertInstalledVersion();
   await assertBridgeInstalledVersion();
