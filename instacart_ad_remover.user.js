@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      87
+// @version      88
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
@@ -276,12 +276,43 @@
     );
   }
 
+  function searchResultProductLists(region) {
+    const children = [...region.children];
+    const resultsHeadingIndex = children.findIndex((child) => {
+      const heading = child.querySelector('h1, h2');
+      return heading &&
+        normalizeText(heading.textContent).startsWith('resultsfor');
+    });
+
+    if (resultsHeadingIndex < 0) {
+      return [...region.querySelectorAll('ul')].filter(isProductList);
+    }
+
+    const lists = [];
+
+    for (const child of children.slice(resultsHeadingIndex + 1)) {
+      const sectionHeading = [...child.querySelectorAll('h1, h2')]
+        .find((heading) => !heading.closest('[data-item-card="true"], [aria-label="Product"]'));
+
+      if (sectionHeading) break;
+
+      const childLists = [
+        ...(child.matches?.('ul') ? [child] : []),
+        ...child.querySelectorAll('ul')
+      ].filter(isProductList);
+
+      lists.push(...childLists);
+    }
+
+    return lists;
+  }
+
   function compactSearchResults(root = document) {
     const resultRegions = [...root.querySelectorAll('[role="region"][aria-label]')]
       .filter((region) => normalizeText(region.getAttribute('aria-label')).startsWith('resultsfor'));
 
     for (const region of resultRegions) {
-      const lists = [...region.querySelectorAll('ul')].filter(isProductList);
+      const lists = searchResultProductLists(region);
       if (!lists.length) continue;
 
       const primaryList = lists[0];
