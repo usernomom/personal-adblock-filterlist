@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.1.9
+// @version      13.2.0
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.1.9';
+    const VERSION = '13.2.0';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const SEARCH_PARAMS = new URLSearchParams(location.search);
     const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
@@ -30,6 +30,12 @@
         ['2', 'imgs'].includes(SEARCH_PARAMS.get('udm')) ||
         SEARCH_PARAMS.get('tbm') === 'isch';
     const IS_MOBILE_LAYOUT = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    // Mirrors uBlacklist's built-in Google "Web" SERPINFO excludeRegex. The
+    // firewall may only quarantine roots that some active uBlacklist rule
+    // actually classifies on the current tab, or they can never be released.
+    const IS_WEB_TAB = !/[?&](udm=(?!14|web(&|$))|tbm=(?!&|$))/.test(location.search);
+    const IS_FORUMS_TAB = /[?&]udm=(18|forums)(&|$)/.test(location.search);
+    const IS_VIDEOS_TAB = /[?&]udm=(7|vids)(&|$)/.test(location.search);
     const NEWS_NETWORK_CONCURRENCY = 4;
     const NEWS_NETWORK_RETRIES = 2;
     const NEWS_NETWORK_RETRY_DELAY_MS = 100;
@@ -856,6 +862,15 @@
 
     function firewallRootSelector() {
         if (IS_IMAGES_TAB) return '';
+        // Each branch lists only roots that uBlacklist's built-in SERPINFO
+        // (or ublacklist_serpinfo.yml) classifies on that tab. Other tabs get
+        // no firewall: an unclassifiable root would otherwise stay hidden forever.
+        if (IS_NEWS_TAB) return NEWS_CARD_SELECTOR;
+        if (IS_VIDEOS_TAB) return IS_MOBILE_LAYOUT ? '.Ww4FFb' : '.vt6azd';
+        if (IS_FORUMS_TAB) {
+            return IS_MOBILE_LAYOUT ? '.vt6azd, .Ww4FFb' : '.vt6azd:not(.g-blk), .Ww4FFb';
+        }
+        if (!IS_WEB_TAB) return '';
         const ordinary = IS_MOBILE_LAYOUT
             ? '.vt6azd:not(:has(.xYkm8c)), .Ww4FFb:not(:has(.xYkm8c))'
             : '.vt6azd:not(.g-blk):not(:has(.xYkm8c)), .Ww4FFb:not(:has(.xYkm8c))';
@@ -877,9 +892,12 @@
         style.textContent = roots ? `
 [${BRIDGE_PENDING_ATTRIBUTE}],
 :is(${roots}):not([data-ub-result]),
-:is(${roots})[data-ub-block] {
+[data-ub-hide-blocked-results] :is(${roots})[data-ub-block] {
     display: none !important;
-}` : '';
+}` : (IS_IMAGES_TAB ? '' : `
+[${BRIDGE_PENDING_ATTRIBUTE}] {
+    display: none !important;
+}`);
         (document.head || document.documentElement).appendChild(style);
     }
 

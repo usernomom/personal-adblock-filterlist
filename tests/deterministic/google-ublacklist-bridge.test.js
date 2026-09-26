@@ -60,7 +60,7 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.1\.9$/m);
+    assert.match(source, /^\/\/ @version\s+13\.2\.0$/m);
 });
 
 test('protected ordinary result is quarantined until uBlacklist classifies it', () => {
@@ -81,6 +81,7 @@ test('protected ordinary result is quarantined until uBlacklist classifies it', 
     assert.equal(proxy.href, target);
     assert.equal(h.api.resolveGoto(goto), target);
 
+    h.document.documentElement.setAttribute('data-ub-hide-blocked-results', '1');
     root.setAttribute('data-ub-result', '1');
     assert.notEqual(h.window.getComputedStyle(root).display, 'none');
 
@@ -166,6 +167,62 @@ test('explicit Images page result roots are not quarantined by the ordinary-resu
 
     assert.notEqual(h.window.getComputedStyle(h.document.getElementById('desktop-image')).display, 'none');
     assert.notEqual(h.window.getComputedStyle(h.document.getElementById('mobile-image')).display, 'none');
+    h.close();
+});
+
+test('uBlacklist show-blocked toggle reveals classified blocked results', () => {
+    const h = createHarness({
+        html:
+            '<div id="blocked" class="Ww4FFb" data-ub-result="1" data-ub-block="1">' +
+            '<a class="UBFage" href="https://blocked.example/"><h3>Blocked</h3></a></div>' +
+            '<div id="pending" class="Ww4FFb">' +
+            '<a class="UBFage" href="https://pending.example/"><h3>Pending</h3></a></div>',
+    });
+    const html = h.document.documentElement;
+    const blocked = h.document.getElementById('blocked');
+    const pending = h.document.getElementById('pending');
+
+    html.setAttribute('data-ub-hide-blocked-results', '1');
+    assert.equal(h.window.getComputedStyle(blocked).display, 'none');
+
+    html.removeAttribute('data-ub-hide-blocked-results');
+    assert.notEqual(h.window.getComputedStyle(blocked).display, 'none');
+    assert.equal(h.window.getComputedStyle(pending).display, 'none', 'unclassified results stay quarantined');
+
+    html.setAttribute('data-ub-hide-blocked-results', '1');
+    assert.equal(h.window.getComputedStyle(blocked).display, 'none');
+    h.close();
+});
+
+test('mobile News tab quarantines only news cards, not their unclassified Ww4FFb wrappers', () => {
+    const h = createHarness({
+        html:
+            '<div id="tools" class="Ww4FFb vt6azd"><a href="/search?q=x&tbm=nws&tbs=qdr:h">Past hour</a></div>' +
+            '<div id="wrapper" class="Ww4FFb vt6azd">' +
+            '<div id="card" data-news-cluster-id="1">' +
+            '<a href="https://news.example/story"><div role="heading" aria-level="3">Story</div></a></div></div>',
+        url: 'https://www.google.com/search?q=intel+14a&tbm=nws',
+        userAgent:
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 ' +
+            '(KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1',
+    });
+    const card = h.document.getElementById('card');
+
+    assert.notEqual(h.window.getComputedStyle(h.document.getElementById('tools')).display, 'none');
+    assert.notEqual(h.window.getComputedStyle(h.document.getElementById('wrapper')).display, 'none');
+    assert.equal(h.window.getComputedStyle(card).display, 'none');
+
+    card.setAttribute('data-ub-result', '1');
+    assert.notEqual(h.window.getComputedStyle(card).display, 'none');
+    h.close();
+});
+
+test('tabs without a uBlacklist result rule are not quarantined', () => {
+    const h = createHarness({
+        html: '<div id="shop" class="Ww4FFb vt6azd"><a href="https://shop.example/item">Item</a></div>',
+        url: 'https://www.google.com/search?q=boots&udm=28',
+    });
+    assert.notEqual(h.window.getComputedStyle(h.document.getElementById('shop')).display, 'none');
     h.close();
 });
 
