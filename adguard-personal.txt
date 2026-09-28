@@ -2,7 +2,7 @@
 ! Title: Personal AdGuard Filter List
 ! Description: Personal cosmetic, scriptlet, and network filters organized by website.
 ! Homepage: https://github.com/usernomom/personal-adblock-filterlist
-! Version: 2026.09.28.1
+! Version: 2026.09.28.2
 ! Expires: 1 day
 
 ! Walmart.ca
@@ -111,7 +111,9 @@ nautica.com###pre-header-banner > div.content-asset > div.blue-header-banner.ver
 
 ! Costco Canada
 costco.ca###onetrust-consent-sdk
-! Transcend consent-manager fallback: hide the "Cookie Preferences Error" drawer and release its scroll lock.
+! Costco consent manager (Transcend): its root renders the cookie banner and, when transcend-cdn.com is DNS-blocked, the "Cookie Preferences Error" banner.
+costco.ca###costco-consent-manager
+! Site fallback when the consent-manager script itself is blocked: footer "Cookie Preferences" opens an error drawer on body; hide it and release its scroll lock.
 costco.ca##body > .MuiDrawer-root:not(.MuiModal-hidden):has(> [role="dialog"] [data-testid="drawer-body"] > #critical-message:only-child)
 costco.ca#$#body:has(> .MuiDrawer-root:not(.MuiModal-hidden) [data-testid="drawer-body"] > #critical-message:only-child) { overflow: auto !important; padding-right: 0 !important; }
 
