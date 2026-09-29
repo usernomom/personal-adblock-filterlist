@@ -60,7 +60,7 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.2\.0$/m);
+    assert.match(source, /^\/\/ @version\s+13\.2\.8$/m);
 });
 
 test('protected ordinary result is quarantined until uBlacklist classifies it', () => {
@@ -106,6 +106,35 @@ test('one unresolved result does not delay an independently classified sibling',
     assert.notEqual(h.window.getComputedStyle(h.document.getElementById('rso')).display, 'none');
     assert.equal(h.window.getComputedStyle(h.document.getElementById('pending')).display, 'none');
     assert.notEqual(h.window.getComputedStyle(h.document.getElementById('allowed')).display, 'none');
+    h.close();
+});
+
+test('gap collapse does not hide an allowed sibling inside a shared mobile slot', () => {
+    const goto = '/goto?url=opaque-massimo-shared-slot';
+    const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
+    const h = createHarness({
+        html:
+            '<div id="slot" class="Rb7Fnd">' +
+            '<div id="massimo" class="Ww4FFb vt6azd">' +
+            `<a href="${goto}"><h3>Massimo Dutti</h3></a></div>` +
+            '<div id="blocked" class="Ww4FFb vt6azd" data-ub-result="1" data-ub-block="1">' +
+            '<a class="UBFage" href="https://blocked.example/"><h3>Blocked sibling</h3></a></div>' +
+            '</div>',
+        wjd: mapping(goto, target),
+        userAgent:
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 ' +
+            '(KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1',
+    });
+
+    const html = h.document.documentElement;
+    const slot = h.document.getElementById('slot');
+    html.setAttribute('data-ub-hide-blocked-results', '1');
+
+    assert.notEqual(
+        h.window.getComputedStyle(slot).display,
+        'none',
+        'a blocked sibling must not collapse the shared slot containing an allowed bridged result',
+    );
     h.close();
 });
 
@@ -157,6 +186,34 @@ test('mobile ordinary result uses the mobile uBlacklist root contract', () => {
     h.close();
 });
 
+
+test('mobile bridge-managed opaque result does not remain hidden when uBlacklist misses classification', async () => {
+    const goto = '/goto?url=opaque-massimo-mobile-race';
+    const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
+    const h = createHarness({
+        html:
+            '<div id="massimo" class="Ww4FFb vt6azd">' +
+            `<a href="${goto}"><h3>Massimo Dutti</h3></a></div>`,
+        wjd: mapping(goto, target),
+        userAgent:
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 ' +
+            '(KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1',
+    });
+
+    const root = h.document.getElementById('massimo');
+    await new Promise((resolve) =>
+        h.window.requestAnimationFrame(() => h.window.requestAnimationFrame(resolve)),
+    );
+
+    assert.ok(root.querySelector(':scope > [data-ub-google-source-proxy] a'));
+    assert.equal(root.hasAttribute('data-ub-result'), false);
+    assert.notEqual(
+        h.window.getComputedStyle(root).display,
+        'none',
+        'a resolved bridge root must fail open instead of disappearing forever if uBlacklist misses classification',
+    );
+    h.close();
+});
 test('explicit Images page result roots are not quarantined by the ordinary-result firewall', () => {
     const h = createHarness({
         html:
@@ -289,6 +346,55 @@ test('dynamic opaque result stays quarantined after provisional uBlacklist class
     h.close();
 });
 
+
+test('mobile opaque result uses its displayed destination URL before network fallback', async () => {
+    const goto = '/goto?url=opaque-massimo-displayed-url';
+    let attempts = 0;
+    const h = createHarness({
+        html:
+            '<div id="massimo-displayed" class="Ww4FFb vt6azd">' +
+            `<a class="UBFage" href="${goto}"><span>Massimo Dutti</span><span>https://www.massimodutti.com</span><h3>Men\'s Leather Jackets</h3></a>` +
+            '</div>',
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit Mobile',
+        gmRequest() {
+            attempts += 1;
+            return { abort() {} };
+        },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    const root = h.document.getElementById('massimo-displayed');
+    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
+    assert.ok(proxy, 'visible result URL should bridge the result without waiting for /goto resolution');
+    assert.equal(proxy.href, 'https://www.massimodutti.com/');
+    assert.equal(h.api.resolveGoto(goto), 'https://www.massimodutti.com/');
+    assert.equal(attempts, 0, 'network fallback should not run when the displayed destination is available');
+    h.close();
+});
+
+
+test('opaque result does not mistake a snippet URL for the displayed destination', async () => {
+    const goto = '/goto?url=opaque-reddit-snippet-url';
+    const h = createHarness({
+        html:
+            '<div id="reddit-snippet" class="Ww4FFb vt6azd">' +
+            `<a class="UBFage" href="${goto}"><h3>Reddit</h3><span>Discussion mentions https://www.massimodutti.com in the comments</span></a>` +
+            '</div>',
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit Mobile',
+        gmRequest() {
+            return { abort() {} };
+        },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    const root = h.document.getElementById('reddit-snippet');
+    assert.equal(root.querySelector(':scope > [data-ub-google-source-proxy] a'), null);
+    assert.equal(h.api.resolveGoto(goto), '');
+    h.close();
+});
+
 test('standalone mobile-style result resolves one opaque goto via network fallback', async () => {
     const goto = '/goto?url=opaque-instagram';
     const target = 'https://www.instagram.com/breakingbad/';
@@ -343,6 +449,125 @@ test('opaque fallback follows redirects normally and accepts onloadend responseU
     assert.equal(proxy.href, target);
     assert.equal(requests.length, 1);
     assert.equal('redirect' in requests[0], false, 'portable fallback must not request manual redirects');
+    h.close();
+});
+
+test('opaque fallback prefers the final response URL over an intermediate Location header', async () => {
+    const goto = '/goto?url=opaque-massimo';
+    const intermediate = 'https://intermediate.example/redirect';
+    const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
+    const h = createHarness({
+        html:
+            '<div id="massimo" class="Ww4FFb vt6azd">' +
+            `<a class="UBFage" href="${goto}">Massimo Dutti · Leather jacket</a>` +
+            '</div>',
+        gmRequest(details) {
+            setTimeout(() => details.onloadend({
+                responseHeaders: `Location: ${intermediate}\r\nContent-Type: text/html`,
+                responseURL: target,
+                finalUrl: target,
+                status: 200,
+            }), 0);
+            return { abort() {} };
+        },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 180));
+
+    const proxy = h.document.querySelector('#massimo > [data-ub-google-source-proxy] a');
+    assert.ok(proxy);
+    assert.equal(proxy.href, target);
+    assert.equal(h.api.resolveGoto(goto), target);
+    h.close();
+});
+
+test('opaque fallback waits for the final callback when onload only exposes an intermediate redirect', async () => {
+    const goto = '/goto?url=opaque-massimo-callback-order';
+    const intermediate = 'https://intermediate.example/redirect';
+    const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
+    const h = createHarness({
+        html:
+            '<div id="massimo-callback" class="Ww4FFb vt6azd">' +
+            `<a class="UBFage" href="${goto}">Massimo Dutti · Leather jacket</a>` +
+            '</div>',
+        gmRequest(details) {
+            setTimeout(() => {
+                details.onload({
+                    responseHeaders: `Location: ${intermediate}`,
+                    status: 302,
+                });
+                setTimeout(() => details.onloadend({
+                    responseURL: target,
+                    finalUrl: target,
+                    status: 200,
+                }), 5);
+            }, 0);
+            return { abort() {} };
+        },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 180));
+
+    const proxy = h.document.querySelector('#massimo-callback > [data-ub-google-source-proxy] a');
+    assert.ok(proxy);
+    assert.equal(proxy.href, target);
+    assert.equal(h.api.resolveGoto(goto), target);
+    h.close();
+});
+
+
+test('opaque fallback still resolves a result when Google replaces the original link before the delayed request', async () => {
+    const goto = '/goto?url=opaque-massimo-detached-link';
+    const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
+    let attempts = 0;
+    const h = createHarness({
+        html:
+            '<div id="massimo-detached" class="Ww4FFb vt6azd">' +
+            `<a id="massimo-detached-link" class="UBFage" href="${goto}">Massimo Dutti · Leather jacket</a>` +
+            '</div>',
+        gmRequest(details) {
+            attempts += 1;
+            setTimeout(() => details.onloadend({ responseURL: target, finalUrl: target, status: 200 }), 0);
+            return { abort() {} };
+        },
+    });
+
+    const root = h.document.getElementById('massimo-detached');
+    h.document.getElementById('massimo-detached-link').remove();
+
+    await new Promise((resolve) => setTimeout(resolve, 180));
+
+    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
+    assert.equal(attempts, 1, 'network fallback must not depend on the original anchor staying connected');
+    assert.ok(proxy, 'the still-connected result root should receive the resolved proxy');
+    assert.equal(proxy.href, target);
+
+    h.close();
+});
+
+
+test('metadata mapping still resolves a result after Google replaces the original opaque link', async () => {
+    const goto = '/goto?url=opaque-massimo-detached-metadata';
+    const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
+    const h = createHarness({
+        html:
+            '<div id="massimo-detached-metadata" class="Ww4FFb vt6azd">' +
+            `<a id="massimo-detached-metadata-link" class="UBFage" href="${goto}">Massimo Dutti · Leather jacket</a>` +
+            '</div>',
+    });
+
+    const root = h.document.getElementById('massimo-detached-metadata');
+    h.document.getElementById('massimo-detached-metadata-link').remove();
+
+    h.window.dispatchEvent(new h.window.CustomEvent('__UB_GOOGLE_WJD_UPDATE__', {
+        detail: JSON.stringify(mapping(goto, target)),
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
+    assert.ok(proxy, 'the still-connected result root should receive metadata resolution after anchor replacement');
+    assert.equal(proxy.href, target);
+
     h.close();
 });
 

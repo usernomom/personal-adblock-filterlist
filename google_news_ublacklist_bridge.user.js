@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.2.0
+// @version      13.2.8
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -22,7 +22,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.2.0';
+    const VERSION = '13.2.8';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const SEARCH_PARAMS = new URLSearchParams(location.search);
     const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
@@ -56,9 +56,9 @@
     const PROXY_WRAPPER_SELECTOR = ':scope > [data-ub-google-source-proxy]';
     const BRIDGE_ROOT_ATTRIBUTE = 'data-ub-google-bridge-root';
     const BRIDGE_PENDING_ATTRIBUTE = 'data-ub-google-bridge-pending';
-
     const gotoMap = new Map();
     const pendingByGoto = new Map();
+    const pendingRootByLink = new WeakMap();
     const networkFallbacks = new Map();
     const newsNetworkQueue = [];
     const queuedNewsGotoKeys = new Set();
@@ -211,6 +211,7 @@
         const current = gotoMap.get(key);
         if (!current || betterURL(target, current)) {
             gotoMap.set(key, target);
+
             flushPendingForGoto(key, target);
             return true;
         }
@@ -222,7 +223,9 @@
         if (!links) return;
         pendingByGoto.delete(key);
         for (const link of links) {
-            if (link?.isConnected) bridgeResolvedLink(link, sourceURL);
+            const root = pendingRootByLink.get(link);
+            if (root?.isConnected) bridgeResolvedRoot(root, sourceURL);
+            else if (link?.isConnected) bridgeResolvedLink(link, sourceURL);
         }
     }
 
@@ -610,6 +613,36 @@
         return '';
     }
 
+
+    function displayedResultURL(link, root) {
+        const seen = new Set();
+        const candidates = [];
+        const addText = (value) => {
+            const text = String(value || '').replace(/\s+/g, ' ').trim();
+            if (text && !seen.has(text)) {
+                seen.add(text);
+                candidates.push(text);
+            }
+        };
+
+        for (const scope of [link, root]) {
+            if (!isElement(scope)) continue;
+            scope.querySelectorAll('cite, span, div').forEach((node) => {
+                const text = String(node.textContent || '').trim();
+                if (/^https?:\/\//i.test(text)) addText(text);
+            });
+
+        }
+
+        for (const text of candidates) {
+            const match = text.match(/https?:\/\/[^\s<>"'…]+/i);
+            if (!match) continue;
+            const source = externalURL(match[0].replace(/[),.;:]+$/g, ''));
+            if (source) return source;
+        }
+        return '';
+    }
+
     function directExternalTargets(root) {
         if (!isElement(root)) return [];
         return [...root.querySelectorAll(DIRECT_OR_WRAPPED_LINK_SELECTOR)]
@@ -694,7 +727,7 @@
             let loadTimer = 0;
             let latestResponse = null;
 
-            const targetFromResponse = (response) => {
+            const targetFromResponse = (response, allowRedirectFallback = true) => {
                 const headerTarget = parseLocationHeader(response?.responseHeaders);
                 const finalTarget =
                     response?.finalUrl ||
@@ -707,9 +740,9 @@
                     (typeof response?.response === 'string' ? response.response : '')
                 );
                 return (
-                    cleanResolvedTarget(headerTarget) ||
                     cleanResolvedTarget(finalTarget) ||
-                    cleanResolvedTarget(bodyTarget) ||
+                    (allowRedirectFallback ? cleanResolvedTarget(headerTarget) : '') ||
+                    (allowRedirectFallback ? cleanResolvedTarget(bodyTarget) : '') ||
                     ''
                 );
             };
@@ -723,7 +756,8 @@
 
             const onload = (response) => {
                 latestResponse = response;
-                const target = targetFromResponse(response);
+
+                const target = targetFromResponse(response, false);
                 if (target) {
                     settle(target);
                     return;
@@ -736,6 +770,7 @@
 
             const onloadend = (response) => {
                 latestResponse = response || latestResponse;
+
                 settle(targetFromResponse(latestResponse));
             };
 
@@ -848,14 +883,20 @@
             return true;
         }
 
+        const bridgeRoot = rootForOpaqueLink(link);
         setTimeout(() => {
-            if (!gotoMap.has(key) && link.isConnected) {
-                resolveGotoViaNetwork(key, {
-                    retries: ORDINARY_NETWORK_RETRIES,
-                    retryDelayMs: ORDINARY_NETWORK_RETRY_DELAY_MS,
-                    timeout: ORDINARY_NETWORK_TIMEOUT_MS,
-                });
+            const mapped = gotoMap.get(key);
+            if (mapped) {
+                if (bridgeRoot?.isConnected) bridgeResolvedRoot(bridgeRoot, mapped);
+                return;
             }
+            resolveGotoViaNetwork(key, {
+                retries: ORDINARY_NETWORK_RETRIES,
+                retryDelayMs: ORDINARY_NETWORK_RETRY_DELAY_MS,
+                timeout: ORDINARY_NETWORK_TIMEOUT_MS,
+            }).then((target) => {
+                if (target && bridgeRoot?.isConnected) bridgeResolvedRoot(bridgeRoot, target);
+            });
         }, 120);
         return true;
     }
@@ -891,7 +932,7 @@
         style.setAttribute('data-ub-google-result-firewall-style', VERSION);
         style.textContent = roots ? `
 [${BRIDGE_PENDING_ATTRIBUTE}],
-:is(${roots}):not([data-ub-result]),
+${IS_MOBILE_LAYOUT && IS_WEB_TAB ? `:is(${roots}):not([data-ub-result]):not([${BRIDGE_ROOT_ATTRIBUTE}])` : `:is(${roots}):not([data-ub-result])`},
 [data-ub-hide-blocked-results] :is(${roots})[data-ub-block] {
     display: none !important;
 }` : (IS_IMAGES_TAB ? '' : `
@@ -928,26 +969,34 @@
         const style = document.createElement('style');
         style.setAttribute('data-ub-google-gap-style', VERSION);
         style.textContent = `
-html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-ub-block]:not([data-ub-preserve-space])) {
+html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-ub-block]:not([data-ub-preserve-space])):not(:has([data-ub-result]:not([data-ub-block]))):not(:has([${BRIDGE_ROOT_ATTRIBUTE}]:not([data-ub-block]))) {
     display: none !important;
 }`;
         (document.head || document.documentElement).appendChild(style);
+    }
+
+    function bridgeResolvedRoot(root, sourceURL) {
+        if (!isElement(root)) return false;
+        const kind = root.matches(NEWS_CARD_SELECTOR)
+            ? 'news'
+            : (root.matches(VISUAL_DIGEST_VIDEO_SELECTOR) ? 'visual-digest-video' : 'default');
+        const added = addProxyOnce(root, sourceURL, kind);
+        const hasProxy = Boolean(added || root.querySelector(PROXY_WRAPPER_SELECTOR));
+
+
+
+        if (hasProxy) releaseBridgePending(root);
+        if (kind === 'news' && hasProxy) {
+            releaseNewsPending(root);
+        }
+        return added;
     }
 
     function bridgeResolvedLink(link, sourceURL) {
         if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return false;
         const root = rootForOpaqueLink(link);
         if (!root) return false;
-        const kind = root.matches(NEWS_CARD_SELECTOR)
-            ? 'news'
-            : (root.matches(VISUAL_DIGEST_VIDEO_SELECTOR) ? 'visual-digest-video' : 'default');
-        const added = addProxyOnce(root, sourceURL, kind);
-        const hasProxy = Boolean(added || root.querySelector(PROXY_WRAPPER_SELECTOR));
-        if (hasProxy) releaseBridgePending(root);
-        if (kind === 'news' && hasProxy) {
-            releaseNewsPending(root);
-        }
-        return added;
+        return bridgeResolvedRoot(root, sourceURL);
     }
 
     function registerOpaqueLink(link) {
@@ -969,9 +1018,17 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             links = new Set();
             pendingByGoto.set(key, links);
         }
+        const bridgeRoot = rootForOpaqueLink(link);
         links.add(link);
-        if (scheduleNetworkFallback(link, key)) {
-            const root = rootForOpaqueLink(link);
+        if (bridgeRoot) pendingRootByLink.set(link, bridgeRoot);
+
+        const displayed = displayedResultURL(link, bridgeRoot);
+        if (displayed) {
+            maybeSetGoto(key, displayed);
+            return;
+        }
+        if (scheduleNetworkFallback(link, key) && bridgeRoot) {
+            const root = bridgeRoot;
             if (root) root.setAttribute(BRIDGE_PENDING_ATTRIBUTE, '1');
         }
     }
@@ -994,12 +1051,14 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
     function prunePendingLinks() {
         for (const [key, links] of pendingByGoto) {
             for (const link of links) {
-                if (!link.isConnected) links.delete(link);
+                const root = pendingRootByLink.get(link);
+                if (!link.isConnected && !root?.isConnected) links.delete(link);
             }
             if (!links.size) pendingByGoto.delete(key);
         }
     }
     function start() {
+
         installResultFirewallStyle();
         window.addEventListener(WJD_EVENT, (event) => {
             try {
