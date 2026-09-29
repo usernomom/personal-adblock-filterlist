@@ -1,0 +1,945 @@
+{
+  "observedOn": "2026-09-29",
+  "productionHead": "0025667fc2a827abe16c821ceef20073e9d0e8a6",
+  "device": {
+    "name": "Corp-iPhone-KLG9WQ643K",
+    "udid": "00008150-001A030A2E46401C",
+    "model": "iPhone18,3",
+    "productVersion": "27.0",
+    "buildVersion": "24A437",
+    "lastLanIp": "192.168.2.82"
+  },
+  "rootCause": {
+    "transport": "paired mobdev2/TcpLockdownClient",
+    "service": "com.apple.webinspector",
+    "observedPort": 61665,
+    "enableServiceSSL": true,
+    "tcpConnected": true,
+    "tlsVersion": "TLSv1.2",
+    "disconnectedBeforeFirstWebInspectorResponse": true,
+    "passiveNoRpcControlAlsoDisconnected": true,
+    "requiredHeartbeatService": "com.apple.mobile.heartbeat",
+    "heartbeatRequest": "Marco",
+    "heartbeatReply": "Polo",
+    "nativeUsbmuxNetworkRequired": false
+  },
+  "checks": {
+    "javascript": {
+      "pass": 125,
+      "fail": 0
+    },
+    "python": {
+      "pass": 21,
+      "fail": 0
+    },
+    "gitDiffCheck": true,
+    "finalSyntaxJsonReadback": true
+  },
+  "latestPhysicalRecovery": {
+    "runId": "wireless-1790721707-97a3f4",
+    "pass": true,
+    "elapsedMs": 107,
+    "bridgeVersion": "13.2.8",
+    "massimoCount": 5,
+    "massimoAllowedAndVisible": true,
+    "amazonBlockedAndHidden": true,
+    "externalNetworkAttempts": [],
+    "googleRequestsMade": 0
+  },
+  "intentionalFailure": {
+    "runId": "wireless-1790720973-e62362",
+    "pass": false,
+    "error": "Fixture HTTP 404",
+    "exitCode": 5
+  },
+  "ownedServer": {
+    "port": 8768,
+    "physicalPassRunId": "wireless-1790720989-55fbce",
+    "terminatedAfterRun": true,
+    "existing8767ServerPreserved": true
+  },
+  "idleRecovery": {
+    "bonjourScansSeconds": [
+      10,
+      15
+    ],
+    "deviceCount": 0,
+    "lastIpLockdownTcpTimedOut": true,
+    "wakeUnlockFollowedByPhysicalPass": true,
+    "remoteWakeVerified": false,
+    "betweenRunHeartbeatProbe": {
+      "jobId": "fb89be9e-40e8-4c4b-a44c-cddf52d294ff",
+      "holdSeconds": 420.9,
+      "beatsAtReplayLaunch": 40,
+      "beatsAtCallback": 41,
+      "totalSeconds": 434.1,
+      "exitCode": 0,
+      "physicalRun": {
+        "state": "PASS",
+        "runId": "wireless-1790722330-e9eb68",
+        "result": {
+          "page": "http://192.168.2.224:8767/__ios/replay-demo?run=wireless-1790722330-e9eb68&fixture=massimo-live-iphone17-2026-09-29",
+          "runId": "wireless-1790722330-e9eb68",
+          "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+          "elapsedMs": 139,
+          "bridgeVersion": "13.2.8",
+          "uBlacklist": {
+            "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+            "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+            "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+          },
+          "capturedFixture": "massimo-live-iphone17-2026-09-29",
+          "massimo": [
+            {
+              "proxyUrl": "https://www.massimodutti.com/",
+              "proxyHost": "www.massimodutti.com",
+              "dataUbResult": "1",
+              "dataUbBlock": null,
+              "pending": null,
+              "visible": true
+            },
+            {
+              "proxyUrl": "https://www.massimodutti.com/",
+              "proxyHost": "www.massimodutti.com",
+              "dataUbResult": "1",
+              "dataUbBlock": null,
+              "pending": null,
+              "visible": true
+            },
+            {
+              "proxyUrl": "https://www.massimodutti.com/",
+              "proxyHost": "www.massimodutti.com",
+              "dataUbResult": "1",
+              "dataUbBlock": null,
+              "pending": null,
+              "visible": true
+            },
+            {
+              "proxyUrl": "https://www.massimodutti.com/",
+              "proxyHost": "www.massimodutti.com",
+              "dataUbResult": "1",
+              "dataUbBlock": null,
+              "pending": null,
+              "visible": true
+            },
+            {
+              "proxyUrl": "https://www.massimodutti.com/",
+              "proxyHost": "www.massimodutti.com",
+              "dataUbResult": "1",
+              "dataUbBlock": null,
+              "pending": null,
+              "visible": true
+            }
+          ],
+          "amazonControl": {
+            "proxyUrl": "https://www.amazon.com/",
+            "proxyHost": "www.amazon.com",
+            "dataUbResult": "1",
+            "dataUbBlock": "1",
+            "visible": false
+          },
+          "externalNetworkAttempts": [],
+          "googleRequestsMade": 0,
+          "pass": true
+        }
+      },
+      "notifications": [
+        {
+          "state": "NOTIFICATION",
+          "elapsedSeconds": 373.3,
+          "message": {
+            "Command": "RelayNotification",
+            "Name": "com.apple.springboard.hasBlankedScreen"
+          }
+        },
+        {
+          "state": "NOTIFICATION",
+          "elapsedSeconds": 373.4,
+          "message": {
+            "Command": "RelayNotification",
+            "Name": "com.apple.springboard.lockcomplete"
+          }
+        },
+        {
+          "state": "NOTIFICATION",
+          "elapsedSeconds": 373.4,
+          "message": {
+            "Command": "RelayNotification",
+            "Name": "com.apple.springboard.lockstate"
+          }
+        },
+        {
+          "state": "NOTIFICATION",
+          "elapsedSeconds": 374,
+          "message": {
+            "Command": "RelayNotification",
+            "Name": "com.apple.springboard.hasBlankedScreen"
+          }
+        },
+        {
+          "state": "NOTIFICATION",
+          "elapsedSeconds": 375.4,
+          "message": {
+            "Command": "RelayNotification",
+            "Name": "com.apple.springboard.lockstate"
+          }
+        }
+      ],
+      "continuousLockDuringReplayProven": false,
+      "notificationProxyAlsoConnected": true,
+      "permanentKeeperInstalled": false,
+      "cleanupCompleted": true,
+      "keeperHealthyAtCallbackChecked": false,
+      "executedProbeSource": "import asyncio,contextlib,importlib.util,json,time\nfrom pathlib import Path\nfrom pymobiledevice3.cli.cli_common import get_mobdev2_devices\nfrom pymobiledevice3.services.notification_proxy import NotificationProxyService\nROOT=Path(r\"G:\\GitHub\\personal-adblock-filterlist\")\nUDID=\"00008150-001A030A2E46401C\"\nspec=importlib.util.spec_from_file_location(\"replay\",ROOT/\"tests/ios/ios-wireless-replay.py\")\nreplay=importlib.util.module_from_spec(spec)\nspec.loader.exec_module(replay)\nstarted=time.monotonic()\ndef report(state,**details):\n    print(json.dumps(dict(state=state,elapsedSeconds=round(time.monotonic()-started,1),**details)),flush=True)\nasync def main():\n    clients=await asyncio.wait_for(get_mobdev2_devices(udid=UDID),10)\n    if not clients:\n        report(\"NO_DEVICE\")\n        return 3\n    ld=clients[0]\n    heartbeat=None\n    proxy=None\n    tasks=[]\n    beats=0\n    notices=[]\n    try:\n        heartbeat=await ld.start_lockdown_service(\"com.apple.mobile.heartbeat\")\n        async def one():\n            nonlocal beats\n            message=await asyncio.wait_for(heartbeat.recv_plist(),25)\n            if message.get(\"Command\")!=\"Marco\":\n                raise RuntimeError(str(message))\n            await heartbeat.send_plist({\"Command\":\"Polo\"})\n            beats+=1\n        await one()\n        report(\"HOLD_STARTED\",beats=beats,durationSeconds=420)\n        async def keepalive():\n            while True:\n                await one()\n        hbtask=asyncio.create_task(keepalive())\n        tasks.append(hbtask)\n        try:\n            proxy=NotificationProxyService(ld)\n            await asyncio.wait_for(proxy.connect(),8)\n            for name in (\"com.apple.springboard.lockcomplete\",\"com.apple.springboard.lockstate\",\"com.apple.springboard.hasBlankedScreen\"):\n                await proxy.notify_register_dispatch(name)\n            async def observe():\n                async for message in proxy.receive_notification():\n                    notices.append(message)\n                    report(\"NOTIFICATION\",message=message)\n            tasks.append(asyncio.create_task(observe()))\n            report(\"NOTIFICATION_OBSERVER_STARTED\")\n        except Exception as error:\n            report(\"NOTIFICATION_OBSERVER_UNAVAILABLE\",error=str(error))\n        for minute in range(1,8):\n            await asyncio.sleep(60)\n            if hbtask.done():\n                await hbtask\n            report(\"HOLD_PROGRESS\",minutes=minute,beats=beats,notificationCount=len(notices))\n        report(\"REPLAY_STARTING_WITH_KEEPER_CONNECTED\",beats=beats)\n        code,out,err=await asyncio.to_thread(replay.run_cmd,[__import__(\"sys\").executable,str(ROOT/\"tests/ios/ios-wireless-replay.py\"),\"run\",\"--udid\",UDID],timeout=120,cwd=ROOT)\n        report(\"REPLAY_FINISHED\",exitCode=code,beats=beats,stdout=out[-9000:],stderr=err[-1500:],notifications=notices)\n        return code\n    finally:\n        for task in tasks:\n            task.cancel()\n            with contextlib.suppress(asyncio.CancelledError,Exception):\n                await asyncio.wait_for(task,5)\n        for service in (proxy,heartbeat,ld):\n            if service is not None:\n                await replay.close_service(service)\n        report(\"PROBE_CLEANED_UP\")\ntry:\n    result=asyncio.run(main())\nexcept Exception as error:\n    report(\"PROBE_FAILED\",error=f\"{type(error).__name__}: {error}\")\n    result=4\nraise SystemExit(result)\n",
+      "twoHeartbeatSessionsCoexistProven": false,
+      "interpretationCorrection": "Physical PASS was genuine, but keeper health was unchecked. Later monitored tests showed second client terminates old heartbeat; corrected implementation reuses one checked-in client."
+    }
+  },
+  "gitHarnessCommitted": false,
+  "rawPhysicalCallbacks": [
+    {
+      "pass": false,
+      "runId": "wireless-1790720973-e62362",
+      "error": "Fixture HTTP 404",
+      "stack": "@http://192.168.2.224:8768/__ios/replay-demo:59:33",
+      "googleRequestsMade": 0,
+      "externalNetworkAttempts": []
+    },
+    {
+      "page": "http://192.168.2.224:8768/__ios/replay-demo?run=wireless-1790720989-55fbce&fixture=massimo-live-iphone17-2026-09-29",
+      "runId": "wireless-1790720989-55fbce",
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+      "elapsedMs": 105,
+      "bridgeVersion": "13.2.8",
+      "uBlacklist": {
+        "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+        "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+        "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+      },
+      "capturedFixture": "massimo-live-iphone17-2026-09-29",
+      "massimo": [
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        }
+      ],
+      "amazonControl": {
+        "proxyUrl": "https://www.amazon.com/",
+        "proxyHost": "www.amazon.com",
+        "dataUbResult": "1",
+        "dataUbBlock": "1",
+        "visible": false
+      },
+      "externalNetworkAttempts": [],
+      "googleRequestsMade": 0,
+      "pass": true
+    },
+    {
+      "page": "http://192.168.2.224:8767/__ios/replay-demo?run=wireless-1790721707-97a3f4&fixture=massimo-live-iphone17-2026-09-29",
+      "runId": "wireless-1790721707-97a3f4",
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+      "elapsedMs": 107,
+      "bridgeVersion": "13.2.8",
+      "uBlacklist": {
+        "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+        "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+        "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+      },
+      "capturedFixture": "massimo-live-iphone17-2026-09-29",
+      "massimo": [
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        }
+      ],
+      "amazonControl": {
+        "proxyUrl": "https://www.amazon.com/",
+        "proxyHost": "www.amazon.com",
+        "dataUbResult": "1",
+        "dataUbBlock": "1",
+        "visible": false
+      },
+      "externalNetworkAttempts": [],
+      "googleRequestsMade": 0,
+      "pass": true
+    },
+    {
+      "page": "http://192.168.2.224:8767/__ios/replay-demo?run=wireless-1790722330-e9eb68&fixture=massimo-live-iphone17-2026-09-29",
+      "runId": "wireless-1790722330-e9eb68",
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+      "elapsedMs": 139,
+      "bridgeVersion": "13.2.8",
+      "uBlacklist": {
+        "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+        "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+        "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+      },
+      "capturedFixture": "massimo-live-iphone17-2026-09-29",
+      "massimo": [
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        }
+      ],
+      "amazonControl": {
+        "proxyUrl": "https://www.amazon.com/",
+        "proxyHost": "www.amazon.com",
+        "dataUbResult": "1",
+        "dataUbBlock": "1",
+        "visible": false
+      },
+      "externalNetworkAttempts": [],
+      "googleRequestsMade": 0,
+      "pass": true
+    },
+    {
+      "page": "http://192.168.2.224:8767/__ios/replay-demo?run=idle-1790723773-60425e&fixture=massimo-live-iphone17-2026-09-29",
+      "runId": "idle-1790723773-60425e",
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+      "elapsedMs": 151,
+      "bridgeVersion": "13.2.8",
+      "uBlacklist": {
+        "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+        "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+        "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+      },
+      "capturedFixture": "massimo-live-iphone17-2026-09-29",
+      "massimo": [
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        }
+      ],
+      "amazonControl": {
+        "proxyUrl": "https://www.amazon.com/",
+        "proxyHost": "www.amazon.com",
+        "dataUbResult": "1",
+        "dataUbBlock": "1",
+        "visible": false
+      },
+      "externalNetworkAttempts": [],
+      "googleRequestsMade": 0,
+      "pass": true
+    },
+    {
+      "page": "http://192.168.2.224:8767/__ios/replay-demo?run=watch-1790723986-23a018&fixture=massimo-live-iphone17-2026-09-29",
+      "runId": "watch-1790723986-23a018",
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+      "elapsedMs": 142,
+      "bridgeVersion": "13.2.8",
+      "uBlacklist": {
+        "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+        "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+        "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+      },
+      "capturedFixture": "massimo-live-iphone17-2026-09-29",
+      "massimo": [
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        }
+      ],
+      "amazonControl": {
+        "proxyUrl": "https://www.amazon.com/",
+        "proxyHost": "www.amazon.com",
+        "dataUbResult": "1",
+        "dataUbBlock": "1",
+        "visible": false
+      },
+      "externalNetworkAttempts": [],
+      "googleRequestsMade": 0,
+      "pass": true
+    },
+    {
+      "page": "http://192.168.2.224:8767/__ios/replay-demo?run=watch-1790724024-718dbf&fixture=massimo-live-iphone17-2026-09-29",
+      "runId": "watch-1790724024-718dbf",
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+      "elapsedMs": 117,
+      "bridgeVersion": "13.2.8",
+      "uBlacklist": {
+        "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+        "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+        "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+      },
+      "capturedFixture": "massimo-live-iphone17-2026-09-29",
+      "massimo": [
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        }
+      ],
+      "amazonControl": {
+        "proxyUrl": "https://www.amazon.com/",
+        "proxyHost": "www.amazon.com",
+        "dataUbResult": "1",
+        "dataUbBlock": "1",
+        "visible": false
+      },
+      "externalNetworkAttempts": [],
+      "googleRequestsMade": 0,
+      "pass": true
+    },
+    {
+      "page": "http://192.168.2.224:8768/__ios/replay-demo?run=watch-1790724148-a4e83e&fixture=massimo-live-iphone17-2026-09-29",
+      "runId": "watch-1790724148-a4e83e",
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+      "elapsedMs": 103,
+      "bridgeVersion": "13.2.8",
+      "uBlacklist": {
+        "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+        "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+        "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+      },
+      "capturedFixture": "massimo-live-iphone17-2026-09-29",
+      "massimo": [
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        }
+      ],
+      "amazonControl": {
+        "proxyUrl": "https://www.amazon.com/",
+        "proxyHost": "www.amazon.com",
+        "dataUbResult": "1",
+        "dataUbBlock": "1",
+        "visible": false
+      },
+      "externalNetworkAttempts": [],
+      "googleRequestsMade": 0,
+      "pass": true
+    },
+    {
+      "page": "http://192.168.2.224:8768/__ios/replay-demo?run=watch-1790724191-574603&fixture=massimo-live-iphone17-2026-09-29",
+      "runId": "watch-1790724191-574603",
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+      "elapsedMs": 99,
+      "bridgeVersion": "13.2.8",
+      "uBlacklist": {
+        "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+        "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+        "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+      },
+      "capturedFixture": "massimo-live-iphone17-2026-09-29",
+      "massimo": [
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        },
+        {
+          "proxyUrl": "https://www.massimodutti.com/",
+          "proxyHost": "www.massimodutti.com",
+          "dataUbResult": "1",
+          "dataUbBlock": null,
+          "pending": null,
+          "visible": true
+        }
+      ],
+      "amazonControl": {
+        "proxyUrl": "https://www.amazon.com/",
+        "proxyHost": "www.amazon.com",
+        "dataUbResult": "1",
+        "dataUbBlock": "1",
+        "visible": false
+      },
+      "externalNetworkAttempts": [],
+      "googleRequestsMade": 0,
+      "pass": true
+    }
+  ],
+  "probeSafetyReview": {
+    "keeperFailureNowObserved": true,
+    "inProcessReplayWithServerFinally": true,
+    "startupSendRegisterDeadlines": true,
+    "regressionTestsPass": 3,
+    "shortPhysicalAttempt": {
+      "jobId": "969e65b7-b17e-4a26-adca-a13fef4866e9",
+      "state": "NO_DEVICE",
+      "exitCode": 3,
+      "owned8768ServerCleanedUp": true
+    },
+    "successfulRevisedProbePhysicalRunVerified": true,
+    "revisedProbeFailure": {
+      "jobId": "fcb10158-4417-4688-b127-9028615d05b2",
+      "runId": "idle-1790723674-2ab390",
+      "exitCode": 4,
+      "keeperDone": true,
+      "keeperError": "ConnectionTerminatedError()",
+      "failedOperation": "Existing heartbeat recv_plist while new replay_over_wifi client was starting",
+      "cleanupCompleted": true
+    },
+    "correctedSharedClientProbe": {
+      "jobId": "6c22df59-0153-41b0-b5da-5c169b279d6d",
+      "holdSeconds": 11,
+      "notificationProxyConnected": false,
+      "exitCode": 0,
+      "events": [
+        {
+          "state": "HOLD_STARTED",
+          "elapsedSeconds": 2.1,
+          "beats": 1,
+          "durationSeconds": 11
+        },
+        {
+          "state": "HOLD_PROGRESS",
+          "elapsedSeconds": 13.1,
+          "beats": 2,
+          "notificationCount": 0
+        },
+        {
+          "state": "REPLAY_STARTING_WITH_KEEPER_CONNECTED",
+          "elapsedSeconds": 13.1,
+          "beats": 2,
+          "runId": "idle-1790723773-60425e"
+        },
+        {
+          "state": "REPLAY_FINISHED",
+          "elapsedSeconds": 15.9,
+          "exitCode": 0,
+          "beats": 2,
+          "keeperHealthy": true,
+          "result": {
+            "page": "http://192.168.2.224:8767/__ios/replay-demo?run=idle-1790723773-60425e&fixture=massimo-live-iphone17-2026-09-29",
+            "runId": "idle-1790723773-60425e",
+            "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+            "elapsedMs": 151,
+            "bridgeVersion": "13.2.8",
+            "uBlacklist": {
+              "upstreamCommit": "0ca455399f97d5d2c978b993dd00b36c23d070e8",
+              "builtinCommit": "af37cf32fb6702a28e8e3ed1e1e30898deec90a8",
+              "rulesetPackage": "@ublacklist/ruleset@2.0.1"
+            },
+            "capturedFixture": "massimo-live-iphone17-2026-09-29",
+            "massimo": [
+              {
+                "proxyUrl": "https://www.massimodutti.com/",
+                "proxyHost": "www.massimodutti.com",
+                "dataUbResult": "1",
+                "dataUbBlock": null,
+                "pending": null,
+                "visible": true
+              },
+              {
+                "proxyUrl": "https://www.massimodutti.com/",
+                "proxyHost": "www.massimodutti.com",
+                "dataUbResult": "1",
+                "dataUbBlock": null,
+                "pending": null,
+                "visible": true
+              },
+              {
+                "proxyUrl": "https://www.massimodutti.com/",
+                "proxyHost": "www.massimodutti.com",
+                "dataUbResult": "1",
+                "dataUbBlock": null,
+                "pending": null,
+                "visible": true
+              },
+              {
+                "proxyUrl": "https://www.massimodutti.com/",
+                "proxyHost": "www.massimodutti.com",
+                "dataUbResult": "1",
+                "dataUbBlock": null,
+                "pending": null,
+                "visible": true
+              },
+              {
+                "proxyUrl": "https://www.massimodutti.com/",
+                "proxyHost": "www.massimodutti.com",
+                "dataUbResult": "1",
+                "dataUbBlock": null,
+                "pending": null,
+                "visible": true
+              }
+            ],
+            "amazonControl": {
+              "proxyUrl": "https://www.amazon.com/",
+              "proxyHost": "www.amazon.com",
+              "dataUbResult": "1",
+              "dataUbBlock": "1",
+              "visible": false
+            },
+            "externalNetworkAttempts": [],
+            "googleRequestsMade": 0,
+            "pass": true
+          },
+          "notifications": []
+        },
+        {
+          "state": "PROBE_CLEANED_UP",
+          "elapsedSeconds": 16.9
+        }
+      ]
+    },
+    "sevenMinuteCorrectedImplementationVerified": false
+  },
+  "watchLoop": {
+    "architecture": "One paired mobdev2 lockdown and heartbeat; borrow client for each Web Inspector session",
+    "jobId": "6a14d36d-7143-4c51-801b-ea8c8fdfa74a",
+    "command": "npm run watch:ios:wireless -- --udid 00008150-001A030A2E46401C",
+    "exitCode": 0,
+    "sourceEditTriggeredSecondReplay": true,
+    "permanentStartupServiceInstalled": false,
+    "remoteWakeVerified": false,
+    "rawEvents": [
+      {
+        "seq": 1,
+        "stream": "stderr",
+        "text": "C:\\Users\\harsh\\AppData\\Roaming\\Python\\Python312\\site-packages\\requests\\__init__.py:109: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.6.0)/charset_normalizer (2.1.1) doesn't match a supported version!\r\n  warnings.warn(\r\n"
+      },
+      {
+        "seq": 2,
+        "stream": "stdout",
+        "text": "{\"state\": \"BUILDING\", \"runId\": \"watch-1790723986-23a018\"}\r\n"
+      },
+      {
+        "seq": 3,
+        "stream": "stdout",
+        "text": "{\"state\": \"PASS\", \"runId\": \"watch-1790723986-23a018\", \"result\": {\"page\": \"http://192.168.2.224:8767/__ios/replay-demo?run=watch-1790723986-23a018&fixture=massimo-live-iphone17-2026-09-29\", \"runId\": \"watch-1790723986-23a018\", \"userAgent\": \"Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1\", \"elapsedMs\": 142, \"bridgeVersion\": \"13.2.8\", \"uBlacklist\": {\"upstreamCommit\": \"0ca455399f97d5d2c978b993dd00b36c23d070e8\", \"builtinCommit\": \"af37cf32fb6702a28e8e3ed1e1e30898deec90a8\", \"rulesetPackage\": \"@ublacklist/ruleset@2.0.1\"}, \"capturedFixture\": \"massimo-live-iphone17-2026-09-29\", \"massimo\": [{\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}], \"amazonControl\": {\"proxyUrl\": \"https://www.amazon.com/\", \"proxyHost\": \"www.amazon.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": \"1\", \"visible\": false}, \"externalNetworkAttempts\": [], \"googleRequestsMade\": 0, \"pass\": true}}\r\n"
+      },
+      {
+        "seq": 4,
+        "stream": "stdout",
+        "text": "{\"state\": \"WATCHING\", \"runs\": 1}\r\n"
+      },
+      {
+        "seq": 5,
+        "stream": "stdout",
+        "text": "{\"state\": \"BUILDING\", \"runId\": \"watch-1790724024-718dbf\"}\r\n"
+      },
+      {
+        "seq": 6,
+        "stream": "stdout",
+        "text": "{\"state\": \"PASS\", \"runId\": \"watch-1790724024-718dbf\", \"result\": {\"page\": \"http://192.168.2.224:8767/__ios/replay-demo?run=watch-1790724024-718dbf&fixture=massimo-live-iphone17-2026-09-29\", \"runId\": \"watch-1790724024-718dbf\", \"userAgent\": \"Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1\", \"elapsedMs\": 117, \"bridgeVersion\": \"13.2.8\", \"uBlacklist\": {\"upstreamCommit\": \"0ca455399f97d5d2c978b993dd00b36c23d070e8\", \"builtinCommit\": \"af37cf32fb6702a28e8e3ed1e1e30898deec90a8\", \"rulesetPackage\": \"@ublacklist/ruleset@2.0.1\"}, \"capturedFixture\": \"massimo-live-iphone17-2026-09-29\", \"massimo\": [{\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}], \"amazonControl\": {\"proxyUrl\": \"https://www.amazon.com/\", \"proxyHost\": \"www.amazon.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": \"1\", \"visible\": false}, \"externalNetworkAttempts\": [], \"googleRequestsMade\": 0, \"pass\": true}}\r\n"
+      }
+    ],
+    "finalNpmOwnedServerCheck": {
+      "jobId": "14032e50-d5af-4006-8cfb-4e975776b9d3",
+      "exitCode": 0,
+      "rawEvents": [
+        {
+          "seq": 1,
+          "stream": "stdout",
+          "text": "\n> personal-adblock-filterlist-tests@1.0.0 watch:ios:wireless\n> python tests/ios/ios-wireless-replay.py watch --udid 00008150-001A030A2E46401C --max-runs 2 --duration 120 --base-url http://192.168.2.224:8768/__ios/replay-demo\n\n"
+        },
+        {
+          "seq": 2,
+          "stream": "stderr",
+          "text": "C:\\Users\\harsh\\AppData\\Roaming\\Python\\Python312\\site-packages\\requests\\__init__.py:109: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.6.0)/charset_normalizer (2.1.1) doesn't match a supported version!\r\n  warnings.warn(\r\n"
+        },
+        {
+          "seq": 3,
+          "stream": "stdout",
+          "text": "{\"state\": \"BUILDING\", \"runId\": \"watch-1790724148-a4e83e\"}\r\n"
+        },
+        {
+          "seq": 4,
+          "stream": "stdout",
+          "text": "{\"state\": \"PASS\", \"runId\": \"watch-1790724148-a4e83e\", \"result\": {\"page\": \"http://192.168.2.224:8768/__ios/replay-demo?run=watch-1790724148-a4e83e&fixture=massimo-live-iphone17-2026-09-29\", \"runId\": \"watch-1790724148-a4e83e\", \"userAgent\": \"Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1\", \"elapsedMs\": 103, \"bridgeVersion\": \"13.2.8\", \"uBlacklist\": {\"upstreamCommit\": \"0ca455399f97d5d2c978b993dd00b36c23d070e8\", \"builtinCommit\": \"af37cf32fb6702a28e8e3ed1e1e30898deec90a8\", \"rulesetPackage\": \"@ublacklist/ruleset@2.0.1\"}, \"capturedFixture\": \"massimo-live-iphone17-2026-09-29\", \"massimo\": [{\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}], \"amazonControl\": {\"proxyUrl\": \"https://www.amazon.com/\", \"proxyHost\": \"www.amazon.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": \"1\", \"visible\": false}, \"externalNetworkAttempts\": [], \"googleRequestsMade\": 0, \"pass\": true}}\r\n"
+        },
+        {
+          "seq": 5,
+          "stream": "stdout",
+          "text": "{\"state\": \"WATCHING\", \"runs\": 1}\r\n"
+        },
+        {
+          "seq": 6,
+          "stream": "stdout",
+          "text": "{\"state\": \"BUILDING\", \"runId\": \"watch-1790724191-574603\"}\r\n"
+        },
+        {
+          "seq": 7,
+          "stream": "stdout",
+          "text": "{\"state\": \"PASS\", \"runId\": \"watch-1790724191-574603\", \"result\": {\"page\": \"http://192.168.2.224:8768/__ios/replay-demo?run=watch-1790724191-574603&fixture=massimo-live-iphone17-2026-09-29\", \"runId\": \"watch-1790724191-574603\", \"userAgent\": \"Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1\", \"elapsedMs\": 99, \"bridgeVersion\": \"13.2.8\", \"uBlacklist\": {\"upstreamCommit\": \"0ca455399f97d5d2c978b993dd00b36c23d070e8\", \"builtinCommit\": \"af37cf32fb6702a28e8e3ed1e1e30898deec90a8\", \"rulesetPackage\": \"@ublacklist/ruleset@2.0.1\"}, \"capturedFixture\": \"massimo-live-iphone17-2026-09-29\", \"massimo\": [{\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}, {\"proxyUrl\": \"https://www.massimodutti.com/\", \"proxyHost\": \"www.massimodutti.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": null, \"pending\": null, \"visible\": true}], \"amazonControl\": {\"proxyUrl\": \"https://www.amazon.com/\", \"proxyHost\": \"www.amazon.com\", \"dataUbResult\": \"1\", \"dataUbBlock\": \"1\", \"visible\": false}, \"externalNetworkAttempts\": [], \"googleRequestsMade\": 0, \"pass\": true}}\r\n"
+        }
+      ],
+      "owned8768ListenersAfter": 0,
+      "original8767ListenersAfter": 1,
+      "original8767PidAfter": 1204
+    }
+  },
+  "watchReview": {
+    "buildErrorPreservesConnection": true,
+    "ambiguousClientsClosed": true,
+    "borrowedClientOwnershipTested": true
+  }
+}
