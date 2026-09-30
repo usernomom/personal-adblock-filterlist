@@ -2,7 +2,7 @@
 // @name         Walmart.ca — Sold by Walmart only
 // @description  Limits listings to Walmart-sold items and streamlines Walmart.ca checkout.
 // @license      MIT
-// @version      6
+// @version      7
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/walmart_sold_by_walmart.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/walmart_sold_by_walmart.user.js
 // @match        https://www.walmart.ca/*
@@ -10,10 +10,32 @@
 // @grant        none
 // ==/UserScript==
 
+/*
+ * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
+ * Each rule is tested exactly as written, by ID; nothing outside it is.
+ * Rules change only on the owner's request.
+ *
+ * WM-1 Seller filter. On English or French search, browse and shop listing
+ *      pages: unless the only seller filter is retailer_type:Walmart, the URL
+ *      is replaced (no new history entry) with the Walmart seller filter
+ *      first and all other filters kept in order. Non-listing pages stay
+ *      untouched. Re-checks on load, Back/Forward, and every 0.75 s.
+ * WM-2 "Missing anything?" When a visible "Missing anything?" prompt has a
+ *      visible, enabled Continue button, press Continue (at most once every
+ *      2 s).
+ * WM-3 Driver tip to $0. When "Driver tip (optional):" is visible and its
+ *      section does not show $0: with a tip amount field showing a non-zero
+ *      amount, enter 0; with it already 0, press Save, Apply, Done or
+ *      Confirm; with no field, press Custom tip. End state: $0.00.
+ * WM-4 Timing. WM-2 and WM-3 re-run after page changes and every 1 s.
+ * Test marker: html[data-walmart-sold-by-walmart-version] = @version.
+ */
+
 (function () {
   'use strict';
 
   const WALMART_FACET = 'retailer_type:Walmart';
+  const VERSION = '7';
   const LISTING_PATH = /^\/(?:en|fr)\/(?:search|browse|shop)(?:\/|$)/i;
   let lastCheckedUrl = '';
   let lastContinueClick = 0;
@@ -277,7 +299,14 @@
     customButton.click();
   }
 
+  // Live-install marker for the iPhone harness. Re-applied on each pass
+  // because client rendering may replace root attributes.
+  function publishVersion() {
+    document.documentElement?.setAttribute('data-walmart-sold-by-walmart-version', VERSION);
+  }
+
   function runCheckoutAutomation() {
+    publishVersion();
     continuePastMissingAnything();
     keepDriverTipAtZero();
   }

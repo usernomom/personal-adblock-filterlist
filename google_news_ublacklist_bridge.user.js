@@ -19,6 +19,36 @@
 // @connect      *
 // ==/UserScript==
 
+/*
+ * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
+ * Each rule is tested exactly as written, by ID; nothing outside it is.
+ * Rules change only on the owner's request.
+ *
+ * UB-1 Opaque results. When a result links through an opaque Google /goto
+ *      URL, its real destination is found and a hidden proxy link to it
+ *      (a.UBFage inside span[data-ub-google-source-proxy]) is prepended to
+ *      the result, so uBlacklist can match the destination. Sources, in
+ *      order: Google's embedded result data, a destination URL displayed in
+ *      the result, then network resolution of the /goto URL (single-result
+ *      roots, or the primary or nested link of a multi-result module; News
+ *      tab cards are resolved 4 at a time).
+ * UB-2 Direct results. A result whose external links all point to one host
+ *      gets a proxy with the best of those URLs, unless uBlacklist's own
+ *      readable URL is already as good.
+ * UB-3 One proxy per result. Result hrefs are never rewritten, and the
+ *      bridge ignores its own proxies and uBlacklist's changes.
+ * UB-4 Result firewall. On the Web, News, Videos and Forums tabs (never
+ *      Images or other tabs), results uBlacklist classifies stay hidden
+ *      until uBlacklist has processed them (on mobile Web, or until the
+ *      bridge has attached a proxy); results awaiting network resolution
+ *      stay hidden until their proxy exists; News-tab cards stay hidden
+ *      until bridged. Results uBlacklist blocks are hidden when it hides
+ *      blocked results.
+ * UB-5 Gap collapse. When uBlacklist hides blocked results, result slots
+ *      whose results are all blocked are hidden.
+ * Test marker: html[data-ub-google-bridge-version] = @version.
+ */
+
 (() => {
     'use strict';
 

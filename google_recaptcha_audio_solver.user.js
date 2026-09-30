@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Solves reCAPTCHA audio challenges on Google Search unusual-traffic pages and Reddit, with iOS-safe submission, diagnostics, bounded retries, and transcriber failover.
 // @license      MIT
-// @version      10
+// @version      11
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_recaptcha_audio_solver.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_recaptcha_audio_solver.user.js
 // @match        https://*.google.com/sorry/*
@@ -25,10 +25,36 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
+/*
+ * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
+ * Each rule is tested exactly as written, by ID; nothing outside it is.
+ * Rules change only on the owner's request.
+ *
+ * RC-1 Activation. Google /sorry/ pages (google.com, google.ca) and Reddit
+ *      pages record a 10-minute activation. reCAPTCHA frames act only when
+ *      opened from such a page, or from another reCAPTCHA frame within that
+ *      activation.
+ * RC-2 Checkbox. The anchor frame clicks "I'm not a robot" if unchecked;
+ *      once checked, the activation ends.
+ * RC-3 Audio solve. The challenge frame switches to the audio challenge,
+ *      sends the audio URL to the transcription servers (the last working
+ *      one first, failing over to the other), enters the transcript and
+ *      submits it (Verify, then Enter from the answer field if needed).
+ * RC-4 Retries. On rejection, request a new clip, up to 5 rejections; if
+ *      nothing is transcribed, request one fresh clip. Stop with an error if
+ *      reCAPTCHA has disabled audio.
+ * RC-5 Status. The challenge frame shows the last 7 status lines in an
+ *      overlay (#recaptcha-audio-solver-status).
+ * End state: the challenge is solved and the page continues.
+ * Test marker: html[data-recaptcha-audio-solver-version] = @version on the
+ * activating page and in reCAPTCHA frames.
+ */
+
 (function () {
     'use strict';
 
     const TAG = '[RecaptchaAudio]';
+    const VERSION = '11';
     const ACTIVE_KEY = 'recaptcha-audio-active-v7';
     const SERVER_KEY = 'recaptcha-audio-transcriber-v7';
     const TTL = 10 * 60 * 1000;
@@ -418,7 +444,7 @@
         solving = true;
 
         try {
-            log('Solver v9 active');
+            log('Solver v' + VERSION + ' active');
             if (blocked()) return log('reCAPTCHA disabled audio: ' + blocked(), true);
 
             let url = audioUrl();
@@ -513,12 +539,20 @@
         }
     }
 
+    // Live-install marker for the iPhone harness on challenge pages and
+    // reCAPTCHA frames; it does not affect challenge handling.
+    function publishVersion() {
+        document.documentElement?.setAttribute('data-recaptcha-audio-solver-version', VERSION);
+    }
+
     if (supportedTopPage()) {
+        publishVersion();
         void gmSet(ACTIVE_KEY, { ts: Date.now(), host: location.hostname });
         return;
     }
 
     if (!recaptchaFrame()) return;
+    publishVersion();
 
     const start = () => {
         if (location.pathname.includes('/anchor')) {

@@ -74,6 +74,30 @@ test('autoplay permission is media-scoped rather than a global click grace perio
 });
 
 
+test('runtime VERSION constants match userscript metadata', () => {
+    const scripts = fs.readdirSync(repoRoot).filter((name) => name.endsWith('.user.js'));
+    for (const name of scripts) {
+        const source = read(path.join(repoRoot, name));
+        const constant = source.match(/^\s*const VERSION = '([^']+)';/m);
+        if (!constant) continue;
+        assert.equal(constant[1], metadataVersion(source), name);
+    }
+});
+
+test('every userscript carries a behaviour spec with rule IDs', () => {
+    const scripts = fs.readdirSync(repoRoot).filter((name) => name.endsWith('.user.js'));
+    for (const name of scripts) {
+        const source = read(path.join(repoRoot, name));
+        const spec = source.match(/\/\*\s*\n \* BEHAVIOUR SPEC[\s\S]*?\*\//);
+        assert.ok(spec, `${name} must have a BEHAVIOUR SPEC block`);
+        assert.ok(/^ \* [A-Z]{2}-\d+ /m.test(spec[0]), `${name} spec must number its rules`);
+        assert.ok(
+            source.indexOf(spec[0]) > source.indexOf('// ==/UserScript=='),
+            `${name} spec must follow the metadata block`,
+        );
+    }
+});
+
 test('all root userscripts use the .user.js suffix', () => {
     const offenders = fs.readdirSync(repoRoot)
         .filter((name) => name.endsWith('.js') && !name.endsWith('.user.js'))

@@ -25,10 +25,11 @@ test('Google new-tab userscript packaging is stable and canonical', () => {
     const bytes = fs.readFileSync(scriptPath);
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
-    assert.match(source, /^\/\/ @version\s+7$/m);
+    assert.match(source, /^\/\/ @version\s+9$/m);
     const raw = 'https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.user.js';
     assert.ok(source.includes(`// @downloadURL  ${raw}`));
     assert.ok(source.includes(`// @updateURL    ${raw}`));
+    assert.match(source, /^\/\/ @grant\s+GM\.log$/m);
 
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
 });
@@ -39,6 +40,7 @@ test('organic Google result is prepared for native new-tab navigation with noope
     anchor.dispatchEvent(new dom.window.FocusEvent('focusin', { bubbles: true, composed: true }));
 
     assert.equal(anchor.target, '_blank');
+    assert.equal(dom.window.document.documentElement.getAttribute('data-google-new-tab-version'), '9');
     const rel = new Set(anchor.rel.split(/\s+/).filter(Boolean));
     assert.ok(rel.has('nofollow'));
     assert.ok(rel.has('noopener'));

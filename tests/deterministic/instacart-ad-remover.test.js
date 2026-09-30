@@ -109,3 +109,16 @@ test('search compaction stays inside the actual Results section', async () => {
         dom.window.close();
     }
 });
+
+test('publishes the installed version for live verification', () => {
+    const dom = createHarness();
+    try {
+        const version = scriptSource.match(/^\/\/ @version\s+(\S+)/m)[1];
+        assert.equal(
+            dom.window.document.documentElement.getAttribute('data-instacart-ad-remover-version'),
+            version,
+        );
+    } finally {
+        dom.window.close();
+    }
+});

@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Open Google Search result links in new tabs while preserving uBlacklist and archive.ph link handling.
 // @license      MIT
-// @version      7
+// @version      9
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_open_results_new_tab.user.js
 // @match        https://*.google.com/search*
@@ -12,11 +12,37 @@
 // @match        https://*.google.fr/search*
 // @match        https://*.google.co.uk/search*
 // @run-at       document-start
-// @grant        none
+// @grant        GM.log
 // ==/UserScript==
+
+/*
+ * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
+ * Each rule is tested exactly as written, by ID; nothing outside it is.
+ * Rules change only on the owner's request.
+ *
+ * NT-1 New tab. On Google search pages, when the user taps, clicks,
+ *      long-presses, right-clicks or focuses a search result link (a link
+ *      containing a level-3 heading, or any link inside a news card), it gets
+ *      target=_blank and rel=noopener, so it opens in a new tab.
+ * NT-2 Google's handlers. For a plain left click or tap on such a result,
+ *      Google's own click handlers are stopped so Google cannot navigate the
+ *      current tab; the browser still opens the link. Not for modified
+ *      clicks, or links already rewritten by the archive script.
+ * NT-3 Ignored links: hidden or aria-hidden links (including uBlacklist
+ *      bridge proxies), "#" and javascript: links.
+ * Test marker: html[data-google-new-tab-version] = @version.
+ */
 
 (() => {
     'use strict';
+
+    const VERSION = '9';
+    function publishVersion() {
+        document.documentElement?.setAttribute('data-google-new-tab-version', VERSION);
+    }
+    publishVersion();
+    addEventListener('DOMContentLoaded', publishVersion, { once: true });
+    addEventListener('pageshow', publishVersion, true);
 
     function findAnchor(event) {
         for (const node of event.composedPath()) {

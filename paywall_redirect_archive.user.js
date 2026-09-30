@@ -15,6 +15,29 @@
 // @grant        none
 // ==/UserScript==
 
+/*
+ * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
+ * Each rule is tested exactly as written, by ID; nothing outside it is.
+ * Rules change only on the owner's request.
+ *
+ * AR-1 Supported articles (http/https only): www.wsj.com and www.thestar.com
+ *      (any path except /), ft.com and *.ft.com (/content/ paths),
+ *      bloomberg.com and *.bloomberg.com (paths containing /articles/),
+ *      haaretz.com and economist.com (any path, including subdomains).
+ * AR-2 Direct visits. Opening a supported article directly replaces the
+ *      page with https://archive.ph/newest/<article URL without query or
+ *      fragment>.
+ * AR-3 Links. On other sites, activating a link to a supported article (tap,
+ *      click, middle click, long press, right click, keyboard focus)
+ *      rewrites that link to its archive URL (keeping the original in
+ *      data-archive-original-href) and navigates there. New-tab intent
+ *      (middle or modified click, or a non-_self target) opens a new tab,
+ *      falling back to the same tab if blocked. Links are not rewritten
+ *      before interaction, so uBlacklist sees the original URLs.
+ * AR-4 Never runs on archive.ph, archive.is or archive.today.
+ * No DOM marker is possible: the publisher page is replaced before render.
+ */
+
 (function () {
     'use strict';
 

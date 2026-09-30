@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instacart Ad Remover
 // @description  Removes sponsored products and placements, compacts search results, and hides cart cross-sells.
-// @version      88
+// @version      91
 // @license      MIT
 // @match        https://*.instacart.ca/*
 // @match        https://*.instacart.com/*
@@ -12,10 +12,46 @@
 // @grant        none
 // ==/UserScript==
 
+/*
+ * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
+ * Each rule is tested exactly as written, by ID; nothing outside it is.
+ * Rules change only on the owner's request.
+ *
+ * IC-1 Sponsored product cards. When a product card contains a sponsored
+ *      signal (the ad-eligibility attribute; a tag or text reading
+ *      "Sponsored", including Instacart's misspellings; or an image labelled
+ *      sponsored), its list item (or the card) is hidden. Cards without a
+ *      signal must stay visible.
+ * IC-2 Sponsored placements outside cards. When a sponsored label sits
+ *      outside any product card, the smallest containing placement is hidden:
+ *      its block in the "Results for..." section, its block in a unified
+ *      placement area, its article or placement container, or the smallest
+ *      block containing it. Old-layout storefront placements with a sponsored
+ *      signal and no product cards are also hidden.
+ * IC-3 Search compaction. In the "Results for..." section, ordinary results
+ *      from later lists (up to the next section heading) are moved into the
+ *      first results list and the emptied lists are hidden. Content before
+ *      "Results for..." and sections after the next heading stay untouched.
+ * IC-4 Cart cross-sells. On cart or checkout pages, or when the cart drawer
+ *      is open, sections headed exactly "Suggested items", "You may also
+ *      like", "Recommended for you" or "Before you go" are hidden. Cart lines
+ *      must stay visible.
+ * IC-5 Tip to $0. When the delivery tip is not $0.00: open Other/Edit; in
+ *      "Say thanks with a tip" select the other-amount option, enter 0 and
+ *      press Save tip; on the $0 confirmation press Continue with tip.
+ *      End state: tip reads $0.00 with no dialog open.
+ * IC-6 Checkout aisle. On a checkout-aisle page, press the visible
+ *      "Continue to checkout" once.
+ * IC-7 Timing. IC-1 to IC-6 re-run after page changes, on Back/Forward, and
+ *      every 1.5 s.
+ * Test marker: html[data-instacart-ad-remover-version] = @version.
+ */
+
 (function () {
   'use strict';
 
   const HIDDEN_CLASS = 'instacart-cleanup-hidden';
+  const VERSION = '91';
   const SPONSORED_TEXTS = new Set([
     'advertisingcontenthere',
     'advertisement',
@@ -58,6 +94,14 @@
   }
 
   installStyles();
+
+  // Live-install marker for the iPhone harness. Re-applied on each cleanup
+  // pass because client rendering may replace root attributes.
+  function publishVersion() {
+    document.documentElement?.setAttribute('data-instacart-ad-remover-version', VERSION);
+  }
+
+  publishVersion();
 
   function normalizeText(value) {
     return (value || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -541,6 +585,7 @@
 
   function runCleanup() {
     cleanupScheduled = false;
+    publishVersion();
     hideSponsoredProducts();
     hideStandalonePlacements();
     compactSearchResults();

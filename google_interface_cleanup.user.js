@@ -12,6 +12,50 @@
 // @run-at       document-start
 // ==/UserScript==
 
+/*
+ * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
+ * Each rule is tested exactly as written, by ID; nothing outside it is.
+ * Rules change only on the owner's request.
+ *
+ * GC-1 Video autoplay. On search pages every video loses autoplay and is
+ *      paused whenever it starts playing, unless the user clicked (or pressed
+ *      Enter/Space on) that video or a small container holding at most 3
+ *      videos. That permission ends when the video pauses, ends or empties.
+ * GC-2 Explicit vertical pages. When the URL has a udm or tbm parameter,
+ *      nothing is hidden and earlier hides are undone; only GC-1 and GC-5
+ *      apply.
+ * GC-3 Result modules (All results). Each top-level block of the results
+ *      areas (#rso, #botstuff, #bres, and Google's asynchronously loaded
+ *      result slots) is hidden, marked with its reason, when it is:
+ *      generic-section - a g-section-with-header section without News,
+ *        Forums or knowledge-panel content (the whole block if the block is
+ *        only that section);
+ *      recipe-cluster - recipe cluster data;
+ *      social-profiles - "social media presence" data;
+ *      products - a product viewer group;
+ *      non-news-cluster - a news-cluster card with no link to the News tab
+ *        (an embedded cluster hides only that cluster and its title:
+ *        embedded-news-cluster);
+ *      question-accordion - no News/Forums links, no Google-search links,
+ *        at least 2 progress bars and 2 buttons;
+ *      unwanted-vertical - links to Google verticals udm=2, 7, vids, 28, 39
+ *        or 54 and no Forums link (an Images-only block carrying other
+ *        knowledge-panel data is kept);
+ *      query-refinement - no News/Forums links, no knowledge-panel data, no
+ *        external links, and at least 2 Google-search links.
+ *      Blocks containing #bres are skipped.
+ * GC-4 Visual digest. Visual-digest news-article, social-media and web
+ *      results are hidden (the whole block when they are all of its text).
+ * GC-5 Search suggestions. The search box's suggestion controller is
+ *      removed, on all search pages.
+ * GC-6 Must stay visible: ordinary organic results, results linking to the
+ *      News tab, Forums results and knowledge panels. Destination-domain
+ *      filtering is not this script's job (uBlacklist is).
+ * GC-7 Timing. Runs at page start and every 0.3 s.
+ * Test marker: #google-interface-cleanup-style[data-google-cleanup-version]
+ * = @version; each hidden block carries data-google-cleanup-hidden=reason.
+ */
+
 (() => {
     'use strict';
 
