@@ -1118,7 +1118,19 @@
     "forwardEvaluation": "Independent simulated application evaluated pending challenge, live DOM evidence with missing runtime/desktop headings, and watcher ownership. It identified a cleanup/preservation conflict and an unproven job-extension assumption. Both were corrected and re-evaluation found no material lifecycle guidance ambiguity.",
     "liveDeviceEvaluation": "Clean live PASS and post-exit automation release recorded in cleanupInstalledLiveCompleteE2E.",
     "newRuntimeTestsAdded": false,
-    "fullSuiteRerun": false,
+    "fullSuiteRerun": true,
+    "javascriptRegression": {
+      "command": "npm test",
+      "pass": 127,
+      "fail": 0,
+      "initialRerun": "126/127; new Cleanup replay test used an over-escaped version regex",
+      "fix": "Corrected the test assertion regex; production userscript unchanged"
+    },
+    "pythonRegression": {
+      "command": "npm run test:ios-wireless",
+      "pass": 21,
+      "fail": 0
+    },
     "lifecycleCorrection": "Prior preservation guidance left automation completion unverified. Default disposable live tests now have bounded observation, owned-context cleanup, and verified automation release; explicit retained-tab requests remain distinct."
   },
   "cleanupInstalledLiveCompleteE2E": {
@@ -1240,5 +1252,14 @@
     },
     "scope": "Automatic installed version, observed hidden modules, five visible ordinary results, clean process exit and released automation. Not full regression coverage.",
     "rawChallengeTokensAndNetworkAddressOmitted": true
+  },
+  "futureTestBed": {
+    "currentRequirement": false,
+    "candidateDevice": "old iPhone 11",
+    "trigger": "Only revisit if the device is adopted as a dedicated test bed",
+    "likelyConnection": "Direct wired PC connection",
+    "wirelessAllDayLockedAvailabilityRequired": false,
+    "remoteWakeRequired": false,
+    "note": "All-day locked-device availability and remote wake remain historical wireless limits, not current unfinished work. A wired dedicated test bed would avoid requiring them."
   }
 }
