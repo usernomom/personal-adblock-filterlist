@@ -1110,13 +1110,135 @@
       "error": "RemoteAutomationNotEnabledError",
       "errorOccurredBeforeNavigation": true,
       "settingsChanged": false
-    }
+    },
+    "supersededBy": "cleanupInstalledLiveCompleteE2E"
   },
   "userscriptsSkillReview": {
     "baseline": "Published skill lacked wireless and live-session lifecycle instructions; prior read-only baseline review and the actual premature-tab-close failure exposed these gaps.",
     "forwardEvaluation": "Independent simulated application evaluated pending challenge, live DOM evidence with missing runtime/desktop headings, and watcher ownership. It identified a cleanup/preservation conflict and an unproven job-extension assumption. Both were corrected and re-evaluation found no material lifecycle guidance ambiguity.",
-    "liveDeviceEvaluation": "Actual installed execution and observed live module behavior recorded in cleanupInstalledLiveE2E.",
+    "liveDeviceEvaluation": "Clean live PASS and post-exit automation release recorded in cleanupInstalledLiveCompleteE2E.",
     "newRuntimeTestsAdded": false,
-    "fullSuiteRerun": false
+    "fullSuiteRerun": false,
+    "lifecycleCorrection": "Prior preservation guidance left automation completion unverified. Default disposable live tests now have bounded observation, owned-context cleanup, and verified automation release; explicit retained-tab requests remain distinct."
+  },
+  "cleanupInstalledLiveCompleteE2E": {
+    "runId": "cleanup-live-20260930T005355Z-e907f8",
+    "state": "PASS",
+    "pass": true,
+    "processExitCode": 0,
+    "execution": "Native Home PC Python process; polled to completion",
+    "usbConnected": false,
+    "dynamicMobdev2Discovery": true,
+    "existingWifiInspectorHelperReused": true,
+    "automaticSafariNavigation": true,
+    "implementationInjected": false,
+    "capturedReplay": false,
+    "installedVersion": "140.0.13",
+    "installedVersionSource": "#google-interface-cleanup-style[data-google-cleanup-version]",
+    "challengeObserved": true,
+    "challengeResolvedWithinSameNavigation": true,
+    "challengeInteractedWithByRunner": false,
+    "captchaResolutionMechanismVerified": false,
+    "observationDeadlineSeconds": 150,
+    "remoteAutomationEnabledByUserBeforeRun": true,
+    "additionalPhoneActionNeeded": false,
+    "snapshot": {
+      "url": "https://www.google.com/search",
+      "query": "massimo dutti leather jacket men",
+      "title": "massimo dutti leather jacket men - Google Search",
+      "challenge": false,
+      "version": "140.0.13",
+      "runtimeVersion": null,
+      "ordinaryResults": [
+        {
+          "text": "Men's Leather Jackets - Massimo Dutti - CA",
+          "displayedCitation": "https://www.massimodutti.com",
+          "visible": true,
+          "headingTag": "DIV"
+        },
+        {
+          "text": "LEATHER JACKETS - Massimo Dutti - CA",
+          "displayedCitation": "https://www.massimodutti.com",
+          "visible": true,
+          "headingTag": "DIV"
+        },
+        {
+          "text": "Men's Leather Jackets",
+          "displayedCitation": "https://www.massimodutti.com",
+          "visible": true,
+          "headingTag": "DIV"
+        },
+        {
+          "text": "Men's Leather Jackets",
+          "displayedCitation": "https://www.massimodutti.com",
+          "visible": true,
+          "headingTag": "DIV"
+        },
+        {
+          "text": "Men's Jackets & Coats",
+          "displayedCitation": "https://www.massimodutti.com",
+          "visible": true,
+          "headingTag": "DIV"
+        }
+      ],
+      "hidden": [
+        {
+          "reason": "products",
+          "display": "none",
+          "visible": false,
+          "text": "Popular productsMassimo Dutti Nappa Leather jacket Men's WITH Pocket Leather jacket$599.00Massimo Dutti & moreFree same-day delivery5.0(1)Massimo Dutti Leather "
+        },
+        {
+          "reason": "unwanted-vertical",
+          "display": "none",
+          "visible": false,
+          "text": "ImagesMen's Leather Jackets - Massimo Dutti - CAMassimo DuttiMen's Leather Jackets - Massimo Dutti - CAMassimo Dutti6 days agoLEATHER JACKETS - Massimo Dutti - "
+        },
+        {
+          "reason": "products",
+          "display": "none",
+          "visible": false,
+          "text": "Shop by storemassimodutti4.6store rating. Massimo Dutti Nappa Leather jacket Men's WITH Pocket Leather jacket$599.00Free same-day delivery5.0(1)Massimo Dutti Le"
+        },
+        {
+          "reason": "question-accordion",
+          "display": "none",
+          "visible": false,
+          "text": "People also askAre Massimo Dutti leather jackets good quality?An error has occurred. Please try again later.Does Massimo Dutti use real leather?An error has occ"
+        },
+        {
+          "reason": "query-refinement",
+          "display": "none",
+          "visible": false,
+          "text": "People also search for  Massimo dutti leather jacket men sale   Massimo dutti leather jacket men price   Massimo Dutti leather jacket price   Massimo dutti leat"
+        }
+      ],
+      "bodyExcerpt": "Sign in\n\nAll\nImages\nShopping\nVideos\nNews\nForums\nWeb\nMaps\nBooks\nFlights\nFinance\nSearch tools\nFeedback\nSearch Results\nWeb results\nMassimo Dutti\nhttps://www.massimodutti.com\nMen's Leather Jackets - Massimo Dutti - CA\nDiscover timeless elegance with Massimo Dutti's collection of men's leather jackets. From classic black to luxurious nappa and suede designs, ...\n4.6 (store rating) · Free delivery over $99 · Free 30-day returns\nWeb results\nMassimo Dutt"
+    },
+    "cleanup": {
+      "ownedContextCreated": true,
+      "ownedContextClosed": true,
+      "preexistingContextsPreserved": true,
+      "remainingOwnedContexts": 0
+    },
+    "postProcessReleaseVerification": {
+      "execution": "Separate native read-only inspection after runner exit; same wireless helper",
+      "processExitCode": 0,
+      "populatedListings": 2,
+      "listingIntervalSeconds": 5,
+      "automationTargetCount": 0,
+      "pagesWithAutomationOwner": 0,
+      "googlePageCount": 0,
+      "globalAvailability": "WIRAutomationAvailabilityAvailable",
+      "newNavigationIssued": false
+    },
+    "priorNativeFailure": {
+      "runId": "cleanup-live-20260930T004814Z-44428c",
+      "state": "CLEANUP_FAILED",
+      "pass": false,
+      "cause": "External-anchor probe missed mobile heading/citation results; later read and close timeouts"
+    },
+    "scope": "Automatic installed version, observed hidden modules, five visible ordinary results, clean process exit and released automation. Not full regression coverage.",
+    "rawChallengeTokensAndNetworkAddressOmitted": true
   }
 }

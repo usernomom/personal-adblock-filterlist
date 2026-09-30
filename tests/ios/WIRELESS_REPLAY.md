@@ -305,7 +305,27 @@ The observation helper's desktop-only `#search h3, #rso h3` probe remained empty
 
 A subsequent read-only retained-page check (job `a4ee3019-14eb-4ee9-9106-3113ad0afc96`) found no matching exposed page and issued no navigation; post-disconnect tab retention is **unverified**. A final attempt to collect broader mobile-link evidence (job `94fa90d9-d139-4e44-98d3-1a30a896de39`) returned `RemoteAutomationNotEnabledError` before any navigation. No settings were changed and no transport investigation was restarted. The failed follow-up does not provide additional result-preservation evidence.
 
-For subsequent inspection, use the installed API's `Page.web_url` and `Page.web_title` fields, inspect current mobile result elements/links rather than assuming desktop headings, and choose the observation lifetime before launching the job. Keep the single heartbeat owner throughout the live workflow. Preserve a pending challenge or a user-requested retained page; do not confuse closing browsing contexts with releasing transport.
+For subsequent inspection, use the installed API's `Page.web_url` and `Page.web_title` fields and inspect current mobile markup. Keep the single heartbeat owner throughout a bounded observation window. A pending challenge must not trigger premature teardown, but the run must still close its owned test context and release automation on completion or deadline. Retain a page only when the user explicitly requests it; verify that releasing transport actually releases automation.
+
+## Completed live Google Cleanup E2E with automatic cleanup (2026-09-29)
+
+The native Home PC run `cleanup-live-20260930T005355Z-e907f8` completed with **PASS and process exit 0** on the physical unplugged iPhone. This supersedes the earlier snapshot-only completion claim. The user had enabled Safari Remote Automation; no additional phone action was needed for this successful run.
+
+```powershell
+python -B G:\GitHub\personal-adblock-filterlist\tests\ios\ios-live-cleanup.py --udid 00008150-001A030A2E46401C --output C:\Users\harsh\AppData\Local\UserscriptTestHarness\cleanup-live-complete-latest.json
+```
+
+The runner used dynamic mobdev2 discovery and the existing `wifi_inspector` helper with its single shared heartbeat client. It automatically navigated to a fresh Google search for **massimo dutti leather jacket men**. Google briefly returned `/sorry/index`; the runner observed the same tab until live results appeared, without interacting with the challenge or issuing another search. The mechanism that cleared the challenge was not independently instrumented.
+
+Read-only inspection established automatic installed Cleanup **140.0.13** from the versioned style marker. Five script-tagged modules had computed `display: none` and were not visible: Popular products, Shop by store, Images, People also ask, and People also search for. Five ordinary Massimo Dutti results remained visible, with their visible `https://www.massimodutti.com` citations and mobile `DIV[role="heading"][aria-level="3"]` titles. No Cleanup implementation was injected/evaluated. The runtime global remained inaccessible in the automation context; its cause is unverified.
+
+The corrected probe reads visible mobile headings and their nearby visible domain citations. Neither desktop `h3` selectors nor external `a[href]` selectors described these result headers. The preceding native run `cleanup-live-20260930T004814Z-44428c` missed them, later timed out on reads, and reported `CLEANUP_FAILED`; it is not a PASS.
+
+After three seconds of stable verification, the successful runner closed its owned Google browsing context. It reported `ownedContextClosed: true`, `remainingOwnedContexts: 0`, and `preexistingContextsPreserved: true`, then released inspector, heartbeat, and lockdown and exited 0. A separate read-only inspection after process completion returned two populated Safari page listings five seconds apart: no automation target, no automation owner, and no Google test page; global automation availability remained available. That inspection also exited 0. The test did not leave Safari waiting for the user to end automation.
+
+The observation window is bounded (default 150 seconds), and connection, inspection, and cleanup waits also have deadlines. A failed cleanup is a failed run even if live DOM checks succeeded. Live PASS covers this returned page and the behaviors above. Dynamic insertion, autoplay, and explicit `udm=2` restoration remain captured-replay evidence; the full regression suite has not been rerun.
+
+The userscripts skill now specifies native execution on the target PC, mobile heading/citation inspection, bounded same-tab challenge observation, owned-context cleanup, and automation-release verification. Documentation and skill changes are published separately; the live runner and other harness implementation remain uncommitted under the existing instruction not to commit harness work.
 
 ## Primary source references
 
