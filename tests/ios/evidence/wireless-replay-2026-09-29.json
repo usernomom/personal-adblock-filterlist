@@ -33,7 +33,9 @@
       "fail": 0
     },
     "gitDiffCheck": true,
-    "finalSyntaxJsonReadback": true
+    "finalSyntaxJsonReadback": true,
+    "scope": "Historical pre-Cleanup-suite checks; not the current full working-tree suite.",
+    "latestFullSuiteVerified": false
   },
   "latestPhysicalRecovery": {
     "runId": "wireless-1790721707-97a3f4",
@@ -941,5 +943,180 @@
     "buildErrorPreservesConnection": true,
     "ambiguousClientsClosed": true,
     "borrowedClientOwnershipTested": true
+  },
+  "cleanupPhysicalE2E": {
+    "jobId": "ba384115-a65c-422e-bb4d-abc6713cbb0a",
+    "exitCode": 0,
+    "usbConnected": false,
+    "controllerElapsedMs": 24007,
+    "command": "python tests/ios/ios-wireless-replay.py run --suite cleanup --fixture cleanup-live-iphone17-2026-09-29 --udid 00008150-001A030A2E46401C --id cleanup-physical-20260929-e2e --base-url http://192.168.2.224:8768/__ios/replay-demo",
+    "scope": "Local physical replay of unchanged production Google Cleanup on captured real Google DOM; does not verify installed Macaque automatic execution on a fresh live Google page.",
+    "callback": {
+      "state": "PASS",
+      "runId": "cleanup-physical-20260929-e2e",
+      "result": {
+        "suite": "cleanup",
+        "runId": "cleanup-physical-20260929-e2e",
+        "page": "http://192.168.2.224:8768/__ios/replay-demo?run=cleanup-physical-20260929-e2e&fixture=cleanup-live-iphone17-2026-09-29&suite=cleanup",
+        "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "capturedFixture": "cleanup-live-iphone17-2026-09-29",
+        "elapsedMs": 419,
+        "cleanupVersion": "140.0.13",
+        "expectedVersion": "140.0.13",
+        "products": {
+          "reason": "products",
+          "visible": false
+        },
+        "images": {
+          "reason": "unwanted-vertical",
+          "visible": false
+        },
+        "ordinary": [
+          {
+            "reason": null,
+            "visible": true
+          },
+          {
+            "reason": null,
+            "visible": true
+          },
+          {
+            "reason": null,
+            "visible": true
+          },
+          {
+            "reason": null,
+            "visible": true
+          },
+          {
+            "reason": null,
+            "visible": true
+          }
+        ],
+        "dynamicProducts": {
+          "reason": "products",
+          "visible": false
+        },
+        "autoplay": {
+          "attributeRemoved": true,
+          "propertyDisabled": true,
+          "pauseCalls": 2
+        },
+        "explicitVerticalRestored": true,
+        "googleRequestsMade": 0,
+        "externalNetworkAttempts": [],
+        "pass": true
+      }
+    }
+  },
+  "cleanupFreshGoogle": {
+    "state": "BLOCKED",
+    "queries": [
+      "Toronto weather",
+      "cats"
+    ],
+    "path": "/sorry/index",
+    "challenge": true,
+    "resultCount": 0,
+    "cleanupRuntime": null,
+    "successfulLiveVerification": false,
+    "ownedAutomationSessionClosed": true
+  },
+  "cleanupInstalledLiveE2E": {
+    "state": "VERIFIED_OBSERVED_LIVE_BEHAVIOR",
+    "scope": "Automatic installed Google Cleanup version and observed current live Google module hiding; not a full regression or all-results-preservation claim.",
+    "runId": "cleanup-live-preserve-20260930T001406Z-c2fee9",
+    "jobId": "b889e686-7392-4501-9640-7c0dfc070962",
+    "automaticSafariNavigation": true,
+    "usbConnected": false,
+    "dynamicMobdev2Discovery": true,
+    "existingWifiInspectorHelperReused": true,
+    "implementationInjected": false,
+    "installedVersion": "140.0.13",
+    "installedVersionSource": "#google-interface-cleanup-style[data-google-cleanup-version]",
+    "successfulLiveVerification": true,
+    "observationSeconds": [
+      10,
+      30,
+      61,
+      92,
+      122,
+      153
+    ],
+    "snapshot": {
+      "url": "https://www.google.com/search",
+      "query": "massimo dutti leather jacket men",
+      "challenge": false,
+      "title": "massimo dutti leather jacket men - Google Search",
+      "version": null,
+      "stats": null,
+      "styleVersion": "140.0.13",
+      "headings": [],
+      "hidden": [
+        {
+          "reason": "products",
+          "display": "none",
+          "text": "Popular productsMassimo Dutti Nappa Leather jacket Men's WITH Pocket Leather jacket$599.00Massimo Dutti & moreFree same-day delivery5.0(1)Massimo Dutti Leather jacket Men's$629.00Massimo DuttiFree sam"
+        },
+        {
+          "reason": "products",
+          "display": "none",
+          "text": "Shop by storemassimodutti4.6store rating. Massimo Dutti Nappa Leather jacket Men's WITH Pocket Leather jacket$599.00Free same-day delivery5.0(1)Massimo Dutti Leather jacket Men's$629.00Free same-day d"
+        },
+        {
+          "reason": "unwanted-vertical",
+          "display": "none",
+          "text": "Images6 days agoLEATHER JACKETS - Massimo Dutti - CAMassimo DuttiMen's Leather Jackets - Massimo Dutti - CAMassimo DuttiMen's Leather Jackets - Massimo Dutti - CAMassimo Dutti6 days agoMen's Leather J"
+        },
+        {
+          "reason": "question-accordion",
+          "display": "none",
+          "text": "People also askAre Massimo Dutti leather jackets good quality?An error has occurred. Please try again later.Does Massimo Dutti use real leather?An error has occurred. Please try again later.Should a 5"
+        },
+        {
+          "reason": "query-refinement",
+          "display": "none",
+          "text": "People also search for  Massimo dutti leather jacket men sale   Massimo Dutti leather jacket price   Massimo Dutti leather jacket woman   Massimo Dutti leather jacket men price"
+        }
+      ],
+      "frames": [],
+      "bodyExcerpt": "Sign in\n\nAll\nImages\nShopping\nVideos\nNews\nForums\nWeb\nMaps\nBooks\nFlights\nFinance\nSearch tools\nFeedback\nSearch Results\nWeb results\nMassimo Dutti\nhttps://www.massimodutti.com\nMen's Leather Jackets - Massimo Dutti - CA\nDiscover timeless elegance with Massimo Dutti's collection of men's leather jackets. From classic black to luxurious nappa and suede des"
+    },
+    "processExitCode": 20,
+    "processExitIsPass": false,
+    "processExitExplanation": "Desktop-only h3 completion probe missed mobile results; subsequent read timeouts preceded observation deadline. Live conclusion is based on snapshots.",
+    "allOrdinaryResultsPreservedVerified": false,
+    "runtimeGlobalAccessibleInAutomationContext": false,
+    "isolatedWorldCauseVerified": false,
+    "explicitBrowsingContextCloseRequested": false,
+    "postDisconnectTabRetentionVerified": false,
+    "captchaResolutionMechanismVerified": false,
+    "earlierPrematureTeardown": {
+      "runId": "cleanup-live-20260930T001043Z-131972",
+      "jobId": "f7fd08a7-9f30-4224-b9fb-a0290bee0595",
+      "exitCode": 20,
+      "observedChallenge": true,
+      "stopSessionCalled": true,
+      "userReportedOtherInstalledScriptProcessingChallenge": true,
+      "manualInterventionRequiredConclusion": "withdrawn; observation ended prematurely"
+    },
+    "followup": {
+      "retainedPageJobId": "a4ee3019-14eb-4ee9-9106-3113ad0afc96",
+      "retainedPageExitCode": 22,
+      "matchingExposedPages": 0,
+      "navigationIssued": false,
+      "broaderMobileInspectionJobId": "94fa90d9-d139-4e44-98d3-1a30a896de39",
+      "broaderMobileInspectionExitCode": 21,
+      "error": "RemoteAutomationNotEnabledError",
+      "errorOccurredBeforeNavigation": true,
+      "settingsChanged": false
+    }
+  },
+  "userscriptsSkillReview": {
+    "baseline": "Published skill lacked wireless and live-session lifecycle instructions; prior read-only baseline review and the actual premature-tab-close failure exposed these gaps.",
+    "forwardEvaluation": "Independent simulated application evaluated pending challenge, live DOM evidence with missing runtime/desktop headings, and watcher ownership. It identified a cleanup/preservation conflict and an unproven job-extension assumption. Both were corrected and re-evaluation found no material lifecycle guidance ambiguity.",
+    "liveDeviceEvaluation": "Actual installed execution and observed live module behavior recorded in cleanupInstalledLiveE2E.",
+    "newRuntimeTestsAdded": false,
+    "fullSuiteRerun": false
   }
 }

@@ -1,6 +1,6 @@
 # Physical iPhone replay over Wi-Fi
 
-Last updated: 2026-09-29 (America/Toronto). Repository: `G:\GitHub\personal-adblock-filterlist`. Production HEAD and origin/main remain `0025667fc2a827abe16c821ceef20073e9d0e8a6`; harness work is intentionally uncommitted.
+Last updated: 2026-09-29 (America/Toronto). Repository: `G:\GitHub\personal-adblock-filterlist`. Production bridge fix: `0025667fc2a827abe16c821ceef20073e9d0e8a6`. Investigation documentation was published as `1af8bfa204d5def9143fcbe70689a133c455dff3`; harness implementation remains intentionally uncommitted.
 
 ## Outcome and scope
 
@@ -213,7 +213,7 @@ npm run test:ios-wireless
 git diff --check
 ```
 
-Latest completed checks: 125/125 JavaScript tests and 21/21 Python tests. Documentation/evidence readback and diagnostic syntax/path checks passed; whitespace checks are recorded alongside the final state. Python tests cover heartbeat check-in ordering, continued replies, invalid/missing check-in, inspector/body failure cleanup, cancellation with stalled closes, actual Node server ownership/reuse, unrelated-server rejection, build failure, stale callback IDs, malformed non-object rows, and strict boolean results, keeper failure/cancellation monitoring, borrowed lockdown ownership, changed/unchanged watch snapshots, build-error recovery, and ambiguous-client cleanup. The JavaScript missing-fixture regression also models Safari's frame-only stack.
+Historical checks before the new Cleanup suite: 125/125 JavaScript tests and 21/21 Python tests. The new Cleanup deterministic tests initially failed; after fixture corrections, the physical replay passed, but those deterministic tests and the latest full suite have not been rerun. Do not describe the current full suite as green. Documentation/evidence readback and diagnostic syntax/path checks passed; whitespace checks are recorded alongside the final state. Python tests cover heartbeat check-in ordering, continued replies, invalid/missing check-in, inspector/body failure cleanup, cancellation with stalled closes, actual Node server ownership/reuse, unrelated-server rejection, build failure, stale callback IDs, malformed non-object rows, and strict boolean results, keeper failure/cancellation monitoring, borrowed lockdown ownership, changed/unchanged watch snapshots, build-error recovery, and ambiguous-client cleanup. The JavaScript missing-fixture regression also models Safari's frame-only stack.
 
 Code review originally stalled on a remote read batch. Exact source snapshots were provided locally to the reviewer. Review identified the cleanup deadline issue; it was fixed and the new test went RED then GREEN. Review subsequently reported no remaining Critical/Important/Minor findings in its bounded controller review and confirmed the cancellation regression exercises both service closes. That review did not independently judge dependency-level UDID filtering or HTML runtime behavior; direct physical runs and the JS suite supply that evidence.
 
@@ -251,6 +251,61 @@ Temporary host probes are under `C:\Users\harsh\AppData\Local\UserscriptTestHarn
 Current durable harness code is in the repo paths above; tests/ios/evidence/wireless-replay-2026-09-29.json records structured evidence. Do not commit harness work until explicitly requested. Production source commit remains unchanged.
 
 The next development change should be followed by the routine wireless command and current-run PASS/FAIL inspection. Any proposal to claim always-available operation must first establish idle/lock behavior, safe bounded reconnect, and power/battery implications. A bounded held-heartbeat session is a candidate to test, not proof of remote wake or a reason to install a large proxy. The saved probe accepts `--hold-seconds` and `--no-notifications` to isolate heartbeat-only behavior; it does not install an always-on service. For development gaps, use watch mode to keep one checked-in connection alive and reuse it; avoid competing Wi-Fi replay clients. The corrected heartbeat-only architecture is proven over short gaps and two automatic changes, not yet over a full-day locked-device session.
+
+## Google Cleanup captured physical replay (2026-09-29)
+
+After adding the Cleanup replay suite, the unplugged physical iPhone completed the full controller workflow: build → verify/start owned LAN server on 8768 → Bonjour discovery → automatic Safari launch → production Google Cleanup execution → correlated POST → exit 0. Run ID: `cleanup-physical-20260929-e2e`; Cleanup version: `140.0.13`; callback elapsed time: **419 ms** (page execution, not total controller duration). The finite Home PC job completed in about 24 seconds.
+
+```powershell
+Set-Location G:\GitHub\personal-adblock-filterlist
+npm run replay:ios:wireless -- --udid 00008150-001A030A2E46401C --suite cleanup --fixture cleanup-live-iphone17-2026-09-29
+```
+
+For edit/replay development, substitute `watch:ios:wireless` with the same suite/fixture arguments. The initial Cleanup E2E used `--base-url http://192.168.2.224:8768/__ios/replay-demo` to exercise owned-server startup while preserving the original 8767 listener.
+
+The new fixture reuses the existing passive capture for **massimo dutti leather jacket men**: captured root 4 (Shop by store/product-viewer-group), root 5 (images universal), and ordinary roots 2, 6, 7, 11, 12 plus Amazon root 14. Images/resource attributes and inline event handlers are removed; no Google scripts run. Production Cleanup source is fetched locally and evaluated unchanged.
+
+Physical callback:
+- Captured products: reason `products`, hidden.
+- Captured images module: reason `unwanted-vertical`, hidden.
+- Five captured Massimo ordinary roots: visible, no cleanup hide reason.
+- Appended clone of the captured products root: hidden by subsequent production cleanup.
+- Unsolicited autoplay probe: autoplay attribute removed, property disabled, pause called twice.
+- Explicit `udm=2` transition: Cleanup hides restored.
+- Google requests made: 0; reported external attempts: [].
+
+This is an end-to-end **local physical replay**, not Macaque installation or fresh-live-Google verification. Earlier fresh Google navigations for `Toronto weather` and `cats` both returned Google's unusual-traffic `/sorry/index` challenge, with no results or Cleanup runtime. Those attempts are **BLOCKED**, not PASS. Their reconnaissance command's exit 0 meant the inspection completed; it did not mean the userscript passed. The owned automation tab/session was closed.
+
+The existing default bridge/uBlacklist replay does not execute Cleanup. Only `--suite cleanup` with its appropriate fixture establishes the Cleanup behaviors above. Production script files were not changed in this step. Harness changes remain uncommitted; the commands require this Home PC working tree until the harness is separately reviewed/published.
+
+
+## Installed Google Cleanup on live Google (2026-09-29 evening)
+
+The installed Cleanup **140.0.13** executed automatically on the unplugged physical iPhone after an automatic Safari navigation to the live Google search **massimo dutti leather jacket men**. This is live-origin installation evidence, separate from the captured replay above. Run `cleanup-live-preserve-20260930T001406Z-c2fee9`, CatDesk job `b889e686-7392-4501-9640-7c0dfc070962`, reused the existing controller's `wifi_inspector` helper and dynamically discovered paired client. Only read-only DOM inspection ran in the page; no Cleanup implementation was injected or evaluated.
+
+At observation second 0 the installed style marker reported version 140.0.13. At seconds 10, 30, 61, 92, 122, and 153 the live `https://www.google.com/search` page reported the query title, no challenge, and the following script-tagged nodes with computed `display: none`:
+
+| Live module | Cleanup reason |
+| --- | --- |
+| Popular products | products |
+| Shop by store | products |
+| Images | unwanted-vertical |
+| People also ask | question-accordion |
+| People also search for | query-refinement |
+
+The rendered body text retained an ordinary Massimo Dutti result: **Men's Leather Jackets - Massimo Dutti - CA**, its domain, and descriptive snippet. This verifies the observed live cleanup and automatic installed version; it does not establish that every ordinary result was preserved or that every possible Cleanup behavior was exercised. The five-ordinary-root, dynamic-insertion, autoplay, and explicit-vertical checks remain captured-replay evidence only.
+
+### Premature teardown correction and inspection limitations
+
+An earlier live attempt, `cleanup-live-20260930T001043Z-131972` (job `f7fd08a7-9f30-4224-b9fb-a0290bee0595`, exit 20), observed a challenge and then called `AutomationSession.stop_session()` immediately. The user reported that another installed userscript was still handling the challenge when the tab closed. Installed pymobiledevice3 source confirms that `stop_session()` closes every browsing context returned by `get_window_handles()`. The assertion that phone intervention was already unavoidable was unsupported and is withdrawn.
+
+The corrected run maintained the same heartbeat and observed the page for a bounded period, omitting `stop_session()` and explicit browsing-context closure. It recorded the live results above before transport release. It did not automate a CAPTCHA bypass, manipulate verification state, or keep issuing searches on the challenge. The successful run's snapshots do not establish which mechanism cleared any prior challenge.
+
+The observation helper's desktop-only `#search h3, #rso h3` probe remained empty despite rendered mobile results. Its completion condition therefore missed the successful live page; the job later logged read timeouts and exited **20** after its observation window. That exit is not a passing test exit. The verified live behavior comes from the inspected snapshots, not the process status. The runtime global was inaccessible in this evaluation context; the automatic versioned style and script-specific DOM changes establish execution. An isolated-world explanation was not independently verified.
+
+A subsequent read-only retained-page check (job `a4ee3019-14eb-4ee9-9106-3113ad0afc96`) found no matching exposed page and issued no navigation; post-disconnect tab retention is **unverified**. A final attempt to collect broader mobile-link evidence (job `94fa90d9-d139-4e44-98d3-1a30a896de39`) returned `RemoteAutomationNotEnabledError` before any navigation. No settings were changed and no transport investigation was restarted. The failed follow-up does not provide additional result-preservation evidence.
+
+For subsequent inspection, use the installed API's `Page.web_url` and `Page.web_title` fields, inspect current mobile result elements/links rather than assuming desktop headings, and choose the observation lifetime before launching the job. Keep the single heartbeat owner throughout the live workflow. Preserve a pending challenge or a user-requested retained page; do not confuse closing browsing contexts with releasing transport.
 
 ## Primary source references
 
