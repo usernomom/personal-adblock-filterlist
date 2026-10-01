@@ -1,2 +1,13 @@
 node_modules/
 .worktrees/
+.patchloom/
+__pycache__/
+*.pyc
+*.pyo
+tests/ios/*.bundle.js
+tests/ios/evidence/
+tests/ios/output/
+tests/ios/diagnostics/
+*.jsonl
+*.log
+*-live-test-output.json
