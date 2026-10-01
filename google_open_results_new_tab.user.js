@@ -16,9 +16,9 @@
 // ==/UserScript==
 
 /*
- * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
- * Each rule is tested exactly as written, by ID; nothing outside it is.
- * Rules change only on the owner's request.
+ * BEHAVIOUR SPEC - exactly what this script does, by rule ID. Update it in
+ * the same change as any code change; rules change only on the owner's
+ * request.
  *
  * NT-1 New tab. On Google search pages, when the user taps, clicks,
  *      long-presses, right-clicks or focuses a search result link (a link

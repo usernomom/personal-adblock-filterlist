@@ -9,9 +9,9 @@ npm test
 
 The jsdom tests in tests/deterministic/ exercise the actual .user.js packages, metadata, and behavior. These tests are useful for fast regressions but do not establish what an installed script does on a current website.
 
-## Physical iPhone live tests
+## iPhone troubleshooting
 
-Physical iPhone testing lives in the private [iphone-safari-toolkit repository](https://github.com/usernomom/iphone-safari-toolkit). Its [live-testing procedure](https://github.com/usernomom/iphone-safari-toolkit/blob/main/tests/ios/LIVE_TESTING.md) covers installed Macaque scripts on real current sites. The transport, Python tests, site notes, and archived definitions are maintained there. Captured Google DOM is **not** an acceptable physical validation method.
+There is no routine live testing. When a problem shows up while browsing, it is troubleshot once on the phone with the private [iphone-safari-toolkit](https://github.com/usernomom/iphone-safari-toolkit) (see its README and site notes), against the installed Macaque script on the real site. Each fix adds a deterministic test here and updates the script's `BEHAVIOUR SPEC` comment in the same change. Captured Google DOM is **not** an acceptable physical validation method.
 
 The development server stays in this production userscript checkout:
 

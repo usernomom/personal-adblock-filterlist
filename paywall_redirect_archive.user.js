@@ -16,9 +16,9 @@
 // ==/UserScript==
 
 /*
- * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
- * Each rule is tested exactly as written, by ID; nothing outside it is.
- * Rules change only on the owner's request.
+ * BEHAVIOUR SPEC - exactly what this script does, by rule ID. Update it in
+ * the same change as any code change; rules change only on the owner's
+ * request.
  *
  * AR-1 Supported articles (http/https only): www.wsj.com and www.thestar.com
  *      (any path except /), ft.com and *.ft.com (/content/ paths),

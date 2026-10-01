@@ -26,9 +26,9 @@
 // ==/UserScript==
 
 /*
- * BEHAVIOUR SPEC - the live-test contract (tests/ios/LIVE_TESTING.md).
- * Each rule is tested exactly as written, by ID; nothing outside it is.
- * Rules change only on the owner's request.
+ * BEHAVIOUR SPEC - exactly what this script does, by rule ID. Update it in
+ * the same change as any code change; rules change only on the owner's
+ * request.
  *
  * RC-1 Activation. Google /sorry/ pages (google.com, google.ca) and Reddit
  *      pages record a 10-minute activation. reCAPTCHA frames act only when
