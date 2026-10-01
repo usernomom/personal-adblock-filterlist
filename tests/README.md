@@ -1,91 +1,26 @@
-# Userscript regression and live testing
+# Userscript testing
 
-The repository uses deterministic jsdom tests for stable behavior, targeted live browser smoke tests where DOM reality matters, and a LAN development server for rapid iPhone/Safari/Macaque iteration.
+Run the deterministic production-userscript suite with:
 
-## Deterministic suite
-
-Install dependencies once, then run:
-
-```powershell
+~~~powershell
 npm ci
 npm test
-```
+~~~
 
-The suite executes the canonical `.user.js` packages and checks syntax, metadata, packaging invariants, and behavior. `google_interface_cleanup.user.js` also starts at `document-start`, strips `autoplay` from current and dynamically inserted videos, directly instruments media events, periodically re-enforces the paused state, and permits playback only when the trusted interaction occurred inside the same media scope. Unrelated taps and scrolling do not globally unlock video playback. For the related Google/navigation userscripts:
+The jsdom tests in tests/deterministic/ exercise the actual .user.js packages, metadata, and behavior. These tests are useful for fast regressions but do not establish what an installed script does on a current website.
 
-- `google_news_ublacklist_bridge.user.js` exposes the exact external destination for Google result shapes that uBlacklist cannot classify directly, including links whose `href` is assigned after insertion; it does not decide which domains are blocked.
-- `google_open_results_new_tab.user.js` keeps the original Google-result behavior: prepare recognized result links with `target="_blank"`, add `rel="noopener"`, ignore hidden uBlacklist proxy anchors, suppress Google's later ordinary-click handlers without preventing the browser's default anchor action, and leave archive.ph-owned clicks alone.
-- `reddit_safari_back_button_fix.user.js` keeps the verified pre-September-8 behavior: ordinary Reddit navigation is untouched; only a top-level `back_forward` navigation with history length at most 2 is treated as the Safari trap; challenge parameters are scrubbed; the script tries `window.close()` first and falls back to `history.forward()` if the tab remains alive.
+## Physical iPhone live tests
 
-The published version numbers are intentionally higher than the previously published experimental versions so Macaque/Violentmonkey can update normally. Runtime behavior is the restored, user-verified baseline.
+Physical iPhone testing lives in the private [iphone-safari-toolkit repository](https://github.com/usernomom/iphone-safari-toolkit). Its [live-testing procedure](https://github.com/usernomom/iphone-safari-toolkit/blob/main/tests/ios/LIVE_TESTING.md) covers installed Macaque scripts on real current sites. The transport, Python tests, site notes, and archived definitions are maintained there. Captured Google DOM is **not** an acceptable physical validation method.
 
-## StopTheMadness compatibility note
+The development server stays in this production userscript checkout:
 
-As of the StopTheMadness update observed on 2026-09-08, its Google-side behavior interferes with Safari's native Google -> Reddit child-tab Back handling. For the verified iPhone workflow, disable StopTheMadness on Google. Disabling it only on Reddit is not sufficient. No StopTheMadness-specific workaround is built into these userscripts.
-
-## iOS / Macaque LAN development server
-
-For rapid iPhone iteration, do not push every experiment to GitHub. Start the working-tree server instead:
-
-```powershell
+~~~powershell
 npm run serve:userscripts:lan
-```
+~~~
 
-It listens on port `8767` by default. From an iPhone on the same LAN, open a canonical development URL such as:
+It serves the current working-tree userscript with no-cache headers and rewrites only the served development download/update URLs to the LAN host. Committed source metadata continues to point to canonical GitHub URLs. Use the private toolkit to open the install URL in Safari, manually approve Install/Update in Macaque, and continue live testing.
 
-```text
-http://<PC-LAN-IP>:8767/google_open_results_new_tab.user.js
-http://<PC-LAN-IP>:8767/reddit_safari_back_button_fix.user.js
-```
+## Desktop live checks
 
-The server also exposes the corresponding `.meta.js` URL for userscript-manager update checks. Responses use no-cache headers and support GET and HEAD.
-
-The important safety property is that the server rewrites `@downloadURL` and `@updateURL` only in the served response, using the request's host. The working-tree source stays pointed at the stable GitHub `.user.js` URL, so a LAN development URL cannot accidentally be committed or published.
-
-For iPhone-only failures that need telemetry, temporarily instrument the development script to POST newline-oriented JSON/text to:
-
-```text
-http://<PC-LAN-IP>:8767/__userscript_log
-```
-
-The legacy `POST /__rbf_log` endpoint is also accepted. On Windows the default logs are:
-
-```text
-%TEMP%\userscript-live.log
-%TEMP%\userscript-http.log
-```
-
-If a userscript uses `GM.xmlHttpRequest`/`GM.xmlhttpRequest` for LAN logging, grant/connect the LAN host only in the development instrumentation and remove that instrumentation before publishing. When the user reports a test result, read the live-log tail directly from the PC rather than asking them to paste logs.
-
-Environment overrides are available as `USERSCRIPT_DEV_HOST`, `USERSCRIPT_DEV_PORT`, `USERSCRIPT_LIVE_LOG`, and `USERSCRIPT_HTTP_LOG`.
-
-GitHub remains the canonical persisted source. Before publishing, run the deterministic suite, verify stable GitHub metadata, and commit only the proven implementation.
-
-## Live Google cleanup smoke suite
-
-The Google interface-cleanup suite also has a dedicated live Neon test path. Prerequisites:
-
-- Dedicated Opera Neon automation profile running with DevTools on `127.0.0.1:9223`.
-- Violentmonkey enabled in that profile with **Allow User Scripts** enabled.
-- uBlacklist enabled, with `google_news_ublacklist_bridge.user.js` installed so the live delegation check can verify bridge exposure and uBlacklist processing.
-- The local working-tree `google_interface_cleanup.user.js` installed through the normal userscript install flow.
-
-For an uncommitted cleanup-userscript change:
-
-```powershell
-npm run serve:google-userscript
-```
-
-Then install/update from:
-
-```text
-http://127.0.0.1:8766/google_interface_cleanup.user.js
-```
-
-Run the live cleanup suite with:
-
-```powershell
-npm run test:live
-```
-
-The runner creates only its temporary test tab, exercises fresh Google navigations, verifies the cleanup userscript version against the working tree, and restores tab state during cleanup. Its YouTube Music regression verifies ownership boundaries: Google Cleanup must not domain-filter the result, the bridge must expose the exact `music.youtube.com` destination, and uBlacklist must process the bridged result root; whether that destination is ultimately blocked remains uBlacklist policy. It intentionally does not run in GitHub Actions because it depends on the local dedicated Neon profile and current Google markup.
+npm run test:live remains a separate Opera Neon / Violentmonkey check for live Google. It requires the configured desktop browser profile and installed scripts. It does not substitute for physical Safari validation.
