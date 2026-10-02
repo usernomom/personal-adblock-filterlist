@@ -261,11 +261,11 @@ const RELATED_SEARCHES_AUDIT = `(async () => {
   return result;
 })()`;
 
-function assertRelatedSearchesGone(result, label) {
+function assertRelatedSearchesGone(result, label, { requireModule = true } = {}) {
   if (!result) fail(`${label}: audit returned nothing`);
-  if (!result.labels && !result.relatedHidden) fail(`${label}: Google served no related-searches module to audit`, result);
+  if (requireModule && !result.labels && !result.relatedHidden) fail(`${label}: Google served no related-searches module to audit`, result);
   if (result.visibleLabels || result.relatedHiddenVisible) fail(`${label}: related searches are still visible`, result);
-  if (!result.relatedHidden) fail(`${label}: no GC-8 related-searches hide was recorded`, result);
+  if (result.labels && !result.relatedHidden) fail(`${label}: no GC-8 related-searches hide was recorded`, result);
   if (!result.visibleResultHeadings) fail(`${label}: no ordinary results remained visible`, result);
 }
 
@@ -860,12 +860,13 @@ try {
 
   // Forums results stay behind the bridge's result firewall until uBlacklist
   // classifies them, which needs ublacklist_serpinfo.yml subscribed in uBlacklist.
+  // Google does not always serve related searches on this tab.
   const desktopForumsRelated = await runCase(
     client,
-    'desktop People also search for removal on Forums tab',
+    'desktop Forums results visible and People also search for removed when served',
     'https://www.google.com/search?q=funny+cats&udm=18',
     RELATED_SEARCHES_AUDIT,
-    result => assertRelatedSearchesGone(result, 'Desktop Forums tab'),
+    result => assertRelatedSearchesGone(result, 'Desktop Forums tab', { requireModule: false }),
   );
   await assertInstalledVersion();
 
