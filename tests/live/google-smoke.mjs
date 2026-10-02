@@ -1,3 +1,4 @@
+import { createSuite } from './suite-runner.mjs';
 const DEBUG_HOST = 'http://127.0.0.1:9223';
 const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
 const MOBILE_VIEWPORT = { width: 390, height: 844, deviceScaleFactor: 3, mobile: true };
@@ -39,10 +40,19 @@ class CdpClient {
   }
 
   send(method, params = {}) {
+    if (this.ws.readyState !== WebSocket.OPEN) throw new Error('Browser connection is not open');
     const id = this.nextId++;
-    const promise = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    const promise = new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+    });
+    const timer = setTimeout(() => {
+      const waiter = this.pending.get(id);
+      if (!waiter) return;
+      this.pending.delete(id);
+      waiter.reject(new Error(`Timed out waiting for ${method}`));
+    }, TIMEOUT_MS);
     this.ws.send(JSON.stringify({ id, method, params }));
-    return promise;
+    return promise.finally(() => clearTimeout(timer));
   }
 
   close() {
@@ -292,6 +302,10 @@ const bridgeVersionMatch = bridgeSource.match(/^\/\/ @version\s+(.+)$/m);
 if (!bridgeVersionMatch) fail('Local bridge userscript has no @version metadata');
 const expectedBridgeVersion = bridgeVersionMatch[1].trim();
 
+const checks = createSuite({ onResult: result => {
+  if (result.status === 'fail') console.error(`FAIL ${result.name}: ${result.error}`);
+} });
+
 let target;
 let temporaryLinkedInRuleAdded = false;
 let cleanupTemporaryLinkedInBlock = null;
@@ -448,6 +462,7 @@ try {
     }
   };
 
+  await checks.run("Columbus mobile knowledge/entity result", async () => {
   await navigate(client, 'https://www.google.com/search?q=Columbus+Ohio');
   await assertInstalledVersion();
   await assertBridgeInstalledVersion();
@@ -458,7 +473,10 @@ try {
   );
   assertVisible(columbus, 'Columbus data-kpid knowledge result');
   console.log('PASS Columbus mobile knowledge/entity result');
+  return columbus;
+  });
 
+  await checks.run("Toronto mobile weather/entity result", async () => {
   const toronto = await runCase(
     client,
     'Toronto mobile weather/entity result',
@@ -468,7 +486,10 @@ try {
     result => assertVisible(result, 'Toronto weather/entity result'),
   );
   await assertInstalledVersion();
+  return toronto;
+  });
 
+  await checks.run("Mobile autoplay and trusted playback", async () => {
   await navigate(client, 'https://www.google.com/search?q=Grok+4.6');
   await assertInstalledVersion();
   const autoplayProbe = await evaluate(client, `(async () => {
@@ -577,7 +598,10 @@ try {
     fail('Unrelated trusted click must not globally unlock video playback', trustedPlaybackProbe);
   }
   console.log('PASS mobile autoplay guard scopes playback permission to the interacted media card');
+  return {autoplayProbe,trustedPlaybackProbe};
+  });
 
+  await checks.run("People Also Ask removal", async () => {
   const paa = await runCase(
     client,
     'People Also Ask removal',
@@ -586,7 +610,10 @@ try {
     result => assertCleanupHidden(result, 'question-accordion', 'People Also Ask'),
   );
   await assertInstalledVersion();
+  return paa;
+  });
 
+  await checks.run("Video/refinement junk removal", async () => {
   const junk = await runCase(
     client,
     'video/refinement junk removal',
@@ -618,7 +645,10 @@ try {
     },
   );
   await assertInstalledVersion();
+  return junk;
+  });
 
+  await checks.run("YouTube Music delegated to bridge/uBlacklist", async () => {
   const youtubeAll = await runCase(
     client,
     'YouTube Music delegated to bridge/uBlacklist on All',
@@ -651,7 +681,10 @@ try {
     },
   );
   await assertInstalledVersion();
+  return youtubeAll;
+  });
 
+  await checks.run("YouTube result preservation on Videos", async () => {
   const youtubeVideos = await runCase(
     client,
     'YouTube result preservation on Videos tab',
@@ -671,7 +704,10 @@ try {
     fail('Explicit Videos tab may only contain GC-8 related-searches hides', { videosHiddenReasons });
   }
   await assertInstalledVersion();
+  return {youtubeVideos,videosHiddenReasons};
+  });
 
+  await checks.run("Mobile related searches on Videos", async () => {
   const mobileVideosRelated = await runCase(
     client,
     'mobile People also search for removal on Videos tab',
@@ -680,7 +716,10 @@ try {
     result => assertRelatedSearchesGone(result, 'Mobile Videos tab'),
   );
   await assertInstalledVersion();
+  return mobileVideosRelated;
+  });
 
+  await checks.run("Mobile dynamically loaded blocked results", async () => {
   await addTemporaryLinkedInBlock();
   const moreLinkedInQuery =
     'https://www.google.com/search?q=site%3Alinkedin.com%2Fin+senior+software+engineer';
@@ -753,7 +792,10 @@ try {
     fail('More search results exposed blocked roots before final uBlacklist judgment', dynamicBlockedLeaks);
   }
   console.log('PASS mobile More search results keeps dynamically loaded blocked results at zero visible frames');
+  return {dynamicBlockedCount:dynamicBlockedResults.length,visibleLeaks:dynamicBlockedLeaks.length};
+  });
 
+  await checks.run("Desktop ordinary web results", async () => {
   await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   const webResult = await runCase(
     client,
@@ -767,7 +809,11 @@ try {
     result => assertVisible(result, 'Ordinary external web result'),
   );
   await assertInstalledVersion();
+  return webResult;
+  });
 
+  await checks.run("Desktop related searches on Videos", async () => {
+  await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   const desktopVideosRelated = await runCase(
     client,
     'desktop People also search for removal on Videos tab',
@@ -776,7 +822,11 @@ try {
     result => assertRelatedSearchesGone(result, 'Desktop Videos tab'),
   );
   await assertInstalledVersion();
+  return desktopVideosRelated;
+  });
 
+  await checks.run("Desktop blocked/allowed result timing", async () => {
+  await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   await navigate(client, linkedInQuery);
   await assertInstalledVersion();
   await assertBridgeInstalledVersion();
@@ -805,7 +855,14 @@ try {
     fail('Allowed Google result was released more than one animation frame after uBlacklist classification', slowAllowed);
   }
   console.log('PASS blocked Google results record zero visible frames and allowed results release within one frame');
+  return firewallAudit;
+  });
 
+  await checks.run("Desktop unresolved-result isolation", async () => {
+  await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
+  await navigate(client, linkedInQuery);
+  await assertInstalledVersion();
+  await assertBridgeInstalledVersion();
   const isolationProbe = await evaluate(client, `(async () => {
     const host = document.createElement('div');
     host.id = '__ub_firewall_isolation_probe__';
@@ -827,10 +884,17 @@ try {
     fail('One unresolved protected result delayed or exposed an independent sibling', isolationProbe);
   }
   console.log('PASS unresolved-result firewall isolation');
+  return isolationProbe;
+  });
 
+  await checks.run("Temporary uBlacklist rule restoration", async () => {
   await cleanupTemporaryLinkedInBlock();
   console.log('PASS temporary uBlacklist timing rule restored');
+  return {temporaryLinkedInRuleAdded};
+  });
 
+  await checks.run("Desktop explicit Images navigation", async () => {
+  await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   await navigate(client, 'https://www.google.com/search?q=cats&udm=2');
   await assertInstalledVersion();
   await assertBridgeInstalledVersion();
@@ -857,7 +921,11 @@ try {
     fail('Explicit Images navigation did not render visible image results', imagesProbe);
   }
   console.log('PASS explicit Images navigation is outside the result firewall');
+  return imagesProbe;
+  });
 
+  await checks.run("Desktop Forums results and related searches", async () => {
+  await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   // Forums results stay behind the bridge's result firewall until uBlacklist
   // classifies them, which needs ublacklist_serpinfo.yml subscribed in uBlacklist.
   // Google does not always serve related searches on this tab.
@@ -869,32 +937,21 @@ try {
     result => assertRelatedSearchesGone(result, 'Desktop Forums tab', { requireModule: false }),
   );
   await assertInstalledVersion();
+  return desktopForumsRelated;
+  });
 
-  console.log(`\nLive Google smoke passed against cleanup ${expectedVersion} and bridge ${expectedBridgeVersion}`);
-  console.log(JSON.stringify({
-    columbus,
-    toronto,
-    autoplayProbe,
-    trustedPlaybackProbe,
-    paa,
-    junk,
-    youtubeAll,
-    youtubeVideos,
-    mobileVideosRelated,
-    webResult,
-    desktopVideosRelated,
-    desktopForumsRelated,
-    firewallAudit,
-    isolationProbe,
-    imagesProbe,
-  }, null, 2));
+  const summary = checks.summary();
+  console.log(JSON.stringify({ ...summary, cleanupVersion:expectedVersion, bridgeVersion:expectedBridgeVersion }, null, 2));
+  if (!summary.ok) process.exitCode = 1;
+
 } finally {
   if (client && temporaryLinkedInRuleAdded && cleanupTemporaryLinkedInBlock) {
     try {
       await cleanupTemporaryLinkedInBlock();
       console.log('PASS temporary uBlacklist timing rule restored during cleanup');
     } catch (error) {
-      console.error(`WARN could not restore temporary uBlacklist timing rule: ${error.message}`);
+      process.exitCode = 1;
+      console.error(`FAIL could not restore temporary uBlacklist timing rule: ${error.message}`);
     }
   }
   if (client) client.close();
@@ -902,7 +959,8 @@ try {
     try {
       await fetch(`${DEBUG_HOST}/json/close/${target.id}`);
     } catch (error) {
-      console.error(`WARN could not close temporary Neon tab: ${error.message}`);
+      process.exitCode = 1;
+      console.error(`FAIL could not close temporary Neon tab: ${error.message}`);
     }
   }
 }
