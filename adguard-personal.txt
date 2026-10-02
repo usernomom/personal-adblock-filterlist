@@ -2,7 +2,7 @@
 ! Title: Personal AdGuard Filter List
 ! Description: Personal cosmetic, scriptlet, and network filters organized by website.
 ! Homepage: https://github.com/usernomom/personal-adblock-filterlist
-! Version: 2026.10.02.1
+! Version: 2026.10.02.2
 ! Expires: 1 day
 
 ! Walmart.ca
@@ -72,8 +72,8 @@ google.*#?#div[data-initq]
 google.*#?#.MjjYud:has(div:contains(Find related products & services))
 
 google.*#?##appbar
-! Header logo stays visible but is not a link, so taps aimed at the search box cannot open the Google home page.
-google.*#$#header a[aria-label="Go to Google Home"] { pointer-events: none !important; }
+! Logo stays visible but is not a link, so taps aimed at the search box cannot open the Google home page (mobile header and desktop #logo).
+google.*#$#a[aria-label="Go to Google Home"] { pointer-events: none !important; }
 
 ! X / Twitter
 x.com##[data-interaction="app-store-obstruction"]
