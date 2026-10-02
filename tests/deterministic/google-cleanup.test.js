@@ -432,12 +432,12 @@ test('#bres descendant protection short-circuits classification where applicable
     h.close();
 });
 
-test('explicit udm page restores prior cleanup hides and skips structural hiding', () => {
+test('explicit udm page restores prior non-GC-8 hides and skips structural hiding', () => {
     const h = createHarness({
         url: 'https://www.google.com/search?q=test&udm=2',
         html:
-            '<div id="rso"><div id="junk" data-google-cleanup-hidden="query-refinement" style="display:none !important">' +
-            `${queryLink('a')}${queryLink('b')}</div></div>` +
+            '<div id="rso"><div id="junk" data-google-cleanup-hidden="unwanted-vertical" style="display:none !important">' +
+            `${externalLink()}<a href="/search?q=test&udm=7">Videos</a></div></div>` +
             '<form action="/search"><div><div id="suggest" jscontroller="abc"></div></div></form>',
     });
     assertPreserved(h.document, 'junk');
@@ -446,15 +446,167 @@ test('explicit udm page restores prior cleanup hides and skips structural hiding
     h.close();
 });
 
-test('explicit tbm page restores prior cleanup hides and skips structural hiding', () => {
+test('explicit tbm page restores prior non-GC-8 hides and skips structural hiding', () => {
     const h = createHarness({
         url: 'https://www.google.com/search?q=test&tbm=nws',
         html:
             '<div id="rso"><div id="root" data-google-cleanup-hidden="query-refinement" style="display:none !important">' +
-            `${queryLink('a')}${queryLink('b')}</div></div>`,
+            `${externalLink()}${queryLink('a')}</div></div>`,
     });
     assertPreserved(h.document, 'root');
     assert.equal(h.api.stats.scans, 0);
+    h.close();
+});
+
+function relatedSearches(id, queries = ['funny cat videos for kids', 'very funny cat videos']) {
+    return `<div id="${id}"><span role="heading" aria-level="2">People also search for</span>` +
+        queries.map((q) => `<div>${queryLink(q)}</div>`).join('') + '</div>';
+}
+
+function videoResult(id) {
+    return `<div id="${id}"><h3>Cat video</h3>` +
+        '<a href="https://www.google.com/goto?url=opaque">Watch</a>' +
+        '<a href="https://www.youtube.com/watch?v=cat">YouTube</a></div>';
+}
+
+const VIDEOS_URL = 'https://www.google.com/search?q=funny+cats&udm=7';
+
+test('GC-8 hides related searches nested in the Videos tab result block and keeps the videos', () => {
+    const h = createHarness({
+        url: VIDEOS_URL,
+        html: `<div id="rso" data-async-context="query:funny%20cats"><div id="block">${videoResult('v1')}` +
+            `<div id="wrap">${relatedSearches('pasf')}</div>${videoResult('v2')}</div></div>`,
+    });
+    assertHidden(h.document, 'wrap', 'related-searches');
+    assertPreserved(h.document, 'block');
+    assertPreserved(h.document, 'v1');
+    assertPreserved(h.document, 'v2');
+    assert.equal(h.api.stats.scans, 0);
+    h.close();
+});
+
+test('GC-8 hides related searches in #bres on the Forums tab and keeps forum results', () => {
+    const h = createHarness({
+        url: 'https://www.google.com/search?q=funny+cats&udm=18',
+        html: `<div id="rso"><div id="forum">${externalLink('https://www.reddit.com/r/cats/')}${forumLink('18')}</div></div>` +
+            `<div id="botstuff"><div id="bres"><div id="slot">${relatedSearches('pasf')}</div></div></div>`,
+    });
+    assertHidden(h.document, 'slot', 'related-searches');
+    assertPreserved(h.document, 'forum');
+    h.close();
+});
+
+test('GC-8 hides related searches nested in a mixed All-results block', () => {
+    const h = createHarness({
+        html: withRoot(`${externalLink()}${relatedSearches('pasf', ['alpha one', 'beta two'])}`),
+    });
+    assertPreserved(h.document, 'root');
+    assertHidden(h.document, 'pasf', 'related-searches');
+    h.close();
+});
+
+test('GC-8 hides related searches in an asynchronously loaded query context', () => {
+    const h = createHarness({
+        url: VIDEOS_URL,
+        html: `<div data-async-context="query:funny%20cats"><div id="slot">${relatedSearches('pasf')}</div>` +
+            `${videoResult('v')}</div>`,
+    });
+    assertHidden(h.document, 'slot', 'related-searches');
+    assertPreserved(h.document, 'v');
+    h.close();
+});
+
+test('GC-8 ignores same-query links such as pagination and see-more links', () => {
+    const h = createHarness({
+        url: VIDEOS_URL,
+        html: `<div id="rso"><div id="block">${videoResult('v')}<div id="pager">` +
+            '<a href="/search?q=funny+cats&udm=7&start=10">2</a>' +
+            '<a href="/search?q=Funny%20%20Cats&udm=7&start=20">3</a></div>' +
+            `<div id="mixed">${queryLink('kittens')}<a href="/search?q=funny+cats&udm=2">Images</a>${queryLink('puppies')}</div>` +
+            '</div></div>',
+    });
+    assertPreserved(h.document, 'pager');
+    assertPreserved(h.document, 'mixed');
+    h.close();
+});
+
+test('GC-8 keeps blocks shielded by News or Forums routes on the All tab', () => {
+    const h = createHarness({
+        html: `<div id="rso"><div id="mix"><h3>Result</h3>${externalLink()}` +
+            `<div id="forums">${forumLink('18')}${queryLink('related')}</div>` +
+            `<div id="news">${newsLink()}${queryLink('other')}</div></div></div>`,
+    });
+    assertPreserved(h.document, 'forums');
+    assertPreserved(h.document, 'news');
+    h.close();
+});
+
+test('GC-8 hides Forums-tab related searches whose links stay on the Forums tab', () => {
+    const h = createHarness({
+        url: 'https://www.google.com/search?q=funny+cats&udm=18',
+        html: `<div id="rso"><div id="mix">${externalLink('https://www.reddit.com/r/cats/')}<div id="pasf">` +
+            '<a href="/search?q=cat+memes&udm=18">cat memes</a><a href="/search?q=cat+jokes&udm=18">cat jokes</a>' +
+            '</div></div></div>',
+    });
+    assertHidden(h.document, 'pasf', 'related-searches');
+    assertPreserved(h.document, 'mix');
+    h.close();
+});
+
+test('GC-8 needs at least two distinct related queries', () => {
+    const h = createHarness({
+        url: VIDEOS_URL,
+        html: `<div id="rso"><div id="block">${videoResult('v')}<div id="single">` +
+            `${queryLink('kittens')}${queryLink('Kittens', 'again')}</div></div></div>`,
+    });
+    assertPreserved(h.document, 'single');
+    h.close();
+});
+
+test('GC-8 preserves knowledge-panel data and navigation landmarks', () => {
+    const h = createHarness({
+        url: VIDEOS_URL,
+        html: `<div id="rso"><div id="block">${videoResult('v')}` +
+            `<div id="kp" data-kpid="vise:/m/cat">${queryLink('a')}${queryLink('b')}</div>` +
+            `<div id="nav" role="navigation">${queryLink('c')}${queryLink('d')}</div></div></div>`,
+    });
+    assertPreserved(h.document, 'kp');
+    assertPreserved(h.document, 'nav');
+    h.close();
+});
+
+test('GC-8 keeps related-search carousels inside knowledge panels', () => {
+    const h = createHarness({
+        url: VIDEOS_URL,
+        html: `<div id="rso"><div id="block">${videoResult('v')}` +
+            `<div data-attrid="kc:/film/film:cast"><div id="cast">${queryLink('actor one')}${queryLink('actor two')}</div></div>` +
+            '</div></div>',
+    });
+    assertPreserved(h.document, 'cast');
+    h.close();
+});
+
+test('GC-8 hides survive vertical-page restore and are counted once across runs', () => {
+    const h = createHarness({
+        url: VIDEOS_URL,
+        html: `<div id="rso"><div id="block">${videoResult('v')}${relatedSearches('pasf')}</div></div>`,
+    });
+    h.run();
+    h.run();
+    assertHidden(h.document, 'pasf', 'related-searches');
+    assert.equal(h.api.stats.hidden, 1);
+    assert.deepEqual({ ...h.api.stats.reasons }, { 'related-searches': 1 });
+    h.close();
+});
+
+test('GC-8 does not double-count blocks already hidden as top-level query refinement', () => {
+    const h = createHarness({
+        html: withRoot(relatedSearches('pasf', ['alpha one', 'beta two'])),
+    });
+    h.run();
+    assertHidden(h.document, 'root', 'query-refinement');
+    assert.equal(hiddenReason(h.document.getElementById('pasf')), null);
+    assert.deepEqual({ ...h.api.stats.reasons }, { 'query-refinement': 1 });
     h.close();
 });
 

@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove unwanted Google result modules and unsolicited video autoplay.
 // @license      MIT
-// @version      140.0.13
+// @version      140.0.15
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -22,8 +22,8 @@
  *      Enter/Space on) that video or a small container holding at most 3
  *      videos. That permission ends when the video pauses, ends or empties.
  * GC-2 Explicit vertical pages. When the URL has a udm or tbm parameter,
- *      nothing is hidden and earlier hides are undone; only GC-1 and GC-5
- *      apply.
+ *      earlier hides other than GC-8 are undone and only GC-1, GC-5 and
+ *      GC-8 apply.
  * GC-3 Result modules (All results). Each top-level block of the results
  *      areas (#rso, #botstuff, #bres, and Google's asynchronously loaded
  *      result slots) is hidden, marked with its reason, when it is:
@@ -52,6 +52,16 @@
  *      News tab, Forums results and knowledge panels. Destination-domain
  *      filtering is not this script's job (uBlacklist is).
  * GC-7 Timing. Runs at page start and every 0.3 s.
+ * GC-8 Related searches ("People also search for"). On every search page,
+ *      explicit vertical tabs included, the outermost element inside a
+ *      results area (#rso, #botstuff, #bres or an asynchronously loaded
+ *      query context) whose links are all Google searches for queries other
+ *      than the current one, covering at least 2 distinct such queries, with
+ *      no knowledge-panel data in or around it and no navigation landmark,
+ *      is hidden
+ *      (related-searches). A News or Forums link counts as such a search
+ *      only when the page is already on that tab. The rest of a mixed block
+ *      stays visible.
  * Test marker: #google-interface-cleanup-style[data-google-cleanup-version]
  * = @version; each hidden block carries data-google-cleanup-hidden=reason.
  */
@@ -59,9 +69,20 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.13';
+    const VERSION = '140.0.15';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
+    const RELATED_SEARCHES = 'related-searches';
+    const RESULT_SCOPES = '#rso, #botstuff, #bres, [data-async-context^="query:"]';
+    const KNOWLEDGE_SELECTOR = [
+        '.kp-wholepage',
+        '[data-kpid]',
+        '[data-mcpr]',
+        '[data-attrid="title"]',
+        '[data-attrid="subtitle"]',
+        '[data-attrid^="kc:"]',
+        '[data-attrid^="lab/fact/"]',
+    ].join(',');
     const stats = {
         scans: 0,
         hidden: 0,
@@ -258,16 +279,7 @@
     }
 
     function hasKnowledgeSemantics(root) {
-        const selector = [
-            '.kp-wholepage',
-            '[data-kpid]',
-            '[data-mcpr]',
-            '[data-attrid="title"]',
-            '[data-attrid="subtitle"]',
-            '[data-attrid^="kc:"]',
-            '[data-attrid^="lab/fact/"]',
-        ].join(',');
-        return root.matches?.(selector) || Boolean(root.querySelector(selector));
+        return root.matches?.(KNOWLEDGE_SELECTOR) || Boolean(root.querySelector(KNOWLEDGE_SELECTOR));
     }
 
     function hasProtectedImageSemantics(root) {
@@ -389,6 +401,56 @@
         }
     }
 
+    function normalizedQuery(value) {
+        return (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    function verticalRoute(url) {
+        if (url.searchParams.get('tbm') === 'nws') return 'news';
+        const udm = url.searchParams.get('udm');
+        return udm === '18' || udm === 'forums' ? 'forums' : null;
+    }
+
+    function isOtherQueryLink(url, currentQuery) {
+        const route = verticalRoute(url);
+        return isGoogleHost(url.hostname) &&
+            url.pathname === '/search' &&
+            url.searchParams.has('q') &&
+            normalizedQuery(url.searchParams.get('q')) !== currentQuery &&
+            (!route || route === verticalRoute(new URL(location.href)));
+    }
+
+    function isRelatedSearchesOnly(node, currentQuery) {
+        if (node.matches('[role="navigation"]') || node.querySelector('[role="navigation"]')) return false;
+        if (hasKnowledgeSemantics(node)) return false;
+        const urls = linksFor(node);
+        return urls.length > 0 && urls.every(url => isOtherQueryLink(url, currentQuery));
+    }
+
+    function hideRelatedSearches() {
+        const currentQuery = normalizedQuery(new URL(location.href).searchParams.get('q'));
+        for (const scope of document.querySelectorAll(RESULT_SCOPES)) {
+            for (const anchor of scope.querySelectorAll('a[href]')) {
+                if (anchor.closest(RESULT_SCOPES) !== scope) continue;
+                if (anchor.closest('[data-google-cleanup-hidden]')) continue;
+                const knowledge = anchor.closest(KNOWLEDGE_SELECTOR);
+                if (knowledge && scope.contains(knowledge)) continue;
+                const url = parseURL(anchor);
+                if (!url || !isOtherQueryLink(url, currentQuery)) continue;
+
+                let module = null;
+                for (let node = anchor.parentElement; node && node !== scope; node = node.parentElement) {
+                    if (!isRelatedSearchesOnly(node, currentQuery)) break;
+                    module = node;
+                }
+                if (!module) continue;
+
+                const queries = new Set(linksFor(module).map(link => normalizedQuery(link.searchParams.get('q'))));
+                if (queries.size >= 2) hide(module, RELATED_SEARCHES);
+            }
+        }
+    }
+
     function resultRoots() {
         const roots = new Set();
         for (const region of document.querySelectorAll('#rso, #botstuff, #bres')) {
@@ -426,6 +488,7 @@
 
     function restoreCleanupHides() {
         for (const node of document.querySelectorAll('[data-google-cleanup-hidden]')) {
+            if (node.dataset.googleCleanupHidden === RELATED_SEARCHES) continue;
             node.style.removeProperty('display');
             delete node.dataset.googleCleanupHidden;
         }
@@ -464,12 +527,14 @@
         if (isExplicitVerticalPage()) {
             restoreCleanupHides();
             removeSearchSuggestions();
+            hideRelatedSearches();
             return;
         }
 
         structuralCleanup();
         removeSearchSuggestions();
         hideVisualDigest();
+        hideRelatedSearches();
     }
 
     window.__GOOGLE_INTERFACE_CLEANUP__ = {

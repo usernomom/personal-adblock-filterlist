@@ -230,6 +230,45 @@ const recordExpression = elementExpression => `(() => {
   };
 })()`;
 
+const RELATED_SEARCHES_AUDIT = `(async () => {
+  const visible = el => {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0' && r.width > 0 && r.height > 0;
+  };
+  const measure = () => {
+    const labels = Array.from(document.querySelectorAll('body *')).filter(el =>
+      !el.children.length && /^people also search for$/i.test((el.textContent || '').trim()));
+    const hidden = Array.from(document.querySelectorAll('[data-google-cleanup-hidden="related-searches"]'));
+    const headings = Array.from(document.querySelectorAll('#rso h3, #rso [role="heading"][aria-level="3"]'))
+      .filter(el => visible(el) && !el.closest('[data-google-cleanup-hidden]'));
+    return {
+      labels: labels.length,
+      visibleLabels: labels.filter(visible).length,
+      relatedHidden: hidden.length,
+      relatedHiddenVisible: hidden.filter(visible).length,
+      visibleResultHeadings: headings.length,
+      hiddenReasons: Array.from(document.querySelectorAll('[data-google-cleanup-hidden]'))
+        .map(el => el.getAttribute('data-google-cleanup-hidden')),
+    };
+  };
+  // Async result chunks can land between the 0.3 s cleanup passes; audit the settled page.
+  let result = measure();
+  for (let i = 0; i < 16 && (result.visibleLabels || result.relatedHiddenVisible || !result.relatedHidden); i++) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    result = measure();
+  }
+  return result;
+})()`;
+
+function assertRelatedSearchesGone(result, label) {
+  if (!result) fail(`${label}: audit returned nothing`);
+  if (!result.labels && !result.relatedHidden) fail(`${label}: Google served no related-searches module to audit`, result);
+  if (result.visibleLabels || result.relatedHiddenVisible) fail(`${label}: related searches are still visible`, result);
+  if (!result.relatedHidden) fail(`${label}: no GC-8 related-searches hide was recorded`, result);
+  if (!result.visibleResultHeadings) fail(`${label}: no ordinary results remained visible`, result);
+}
+
 async function runCase(client, name, url, auditExpression, verify) {
   await navigate(client, url);
   const result = await evaluate(client, auditExpression);
@@ -624,13 +663,22 @@ try {
       !a.closest('[data-google-cleanup-hidden]'))`),
     result => assertVisible(result, 'YouTube result on Videos tab'),
   );
-  const videosCleanupHiddenCount = await evaluate(
+  const videosHiddenReasons = await evaluate(
     client,
-    `document.querySelectorAll('[data-google-cleanup-hidden]').length`,
+    `Array.from(document.querySelectorAll('[data-google-cleanup-hidden]')).map(el => el.getAttribute('data-google-cleanup-hidden'))`,
   );
-  if (videosCleanupHiddenCount !== 0) {
-    fail('Explicit Videos tab should contain no cleanup-hidden elements', { videosCleanupHiddenCount });
+  if (videosHiddenReasons.some(reason => reason !== 'related-searches')) {
+    fail('Explicit Videos tab may only contain GC-8 related-searches hides', { videosHiddenReasons });
   }
+  await assertInstalledVersion();
+
+  const mobileVideosRelated = await runCase(
+    client,
+    'mobile People also search for removal on Videos tab',
+    'https://www.google.com/search?q=funny+cats&udm=7',
+    RELATED_SEARCHES_AUDIT,
+    result => assertRelatedSearchesGone(result, 'Mobile Videos tab'),
+  );
   await assertInstalledVersion();
 
   await addTemporaryLinkedInBlock();
@@ -720,6 +768,15 @@ try {
   );
   await assertInstalledVersion();
 
+  const desktopVideosRelated = await runCase(
+    client,
+    'desktop People also search for removal on Videos tab',
+    'https://www.google.com/search?q=funny+cats&udm=7',
+    RELATED_SEARCHES_AUDIT,
+    result => assertRelatedSearchesGone(result, 'Desktop Videos tab'),
+  );
+  await assertInstalledVersion();
+
   await navigate(client, linkedInQuery);
   await assertInstalledVersion();
   await assertBridgeInstalledVersion();
@@ -801,6 +858,17 @@ try {
   }
   console.log('PASS explicit Images navigation is outside the result firewall');
 
+  // Forums results stay behind the bridge's result firewall until uBlacklist
+  // classifies them, which needs ublacklist_serpinfo.yml subscribed in uBlacklist.
+  const desktopForumsRelated = await runCase(
+    client,
+    'desktop People also search for removal on Forums tab',
+    'https://www.google.com/search?q=funny+cats&udm=18',
+    RELATED_SEARCHES_AUDIT,
+    result => assertRelatedSearchesGone(result, 'Desktop Forums tab'),
+  );
+  await assertInstalledVersion();
+
   console.log(`\nLive Google smoke passed against cleanup ${expectedVersion} and bridge ${expectedBridgeVersion}`);
   console.log(JSON.stringify({
     columbus,
@@ -811,7 +879,10 @@ try {
     junk,
     youtubeAll,
     youtubeVideos,
+    mobileVideosRelated,
     webResult,
+    desktopVideosRelated,
+    desktopForumsRelated,
     firewallAudit,
     isolationProbe,
     imagesProbe,
