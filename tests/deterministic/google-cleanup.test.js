@@ -530,6 +530,66 @@ test('GC-8 ignores same-query links such as pagination and see-more links', () =
     h.close();
 });
 
+const AUTOCORRECTED_URL = 'https://www.google.com/search?q=genini+argon&hl=en';
+const CORRECTED_PAGER = '<a role="button" href="/search?q=gemini+argon&hl=en&start=10">More search results</a>';
+const CORRECTED_PASF = ['Gemini 4 argon', 'Gemini 4 argon reddit'];
+
+test('GC-8 keeps mobile "More search results" when Google autocorrected the query (live 2026-10-03 shape)', () => {
+    const h = createHarness({
+        url: AUTOCORRECTED_URL,
+        html: '<div id="botstuff"><div id="outer"><div><div id="bres">' +
+            `${relatedSearches('pasf', CORRECTED_PASF)}</div>` +
+            `<h1>Page Navigation</h1><div id="pager">${CORRECTED_PAGER}</div></div></div></div>`,
+    });
+    h.run();
+    assert.ok(hiddenReason(h.document.getElementById('pasf')), 'related searches should still be hidden');
+    assertPreserved(h.document, 'outer');
+    assertPreserved(h.document, 'pager');
+    assert.equal(h.document.querySelector('#pager a').closest('[data-google-cleanup-hidden]'), null);
+    h.close();
+});
+
+test('GC-8 hides only the related searches beside an autocorrected pager in a mixed block', () => {
+    const h = createHarness({
+        url: AUTOCORRECTED_URL,
+        html: `<div id="rso"><div id="block">${externalLink()}<div id="wrap">` +
+            `${relatedSearches('pasf', CORRECTED_PASF)}<div id="pager">${CORRECTED_PAGER}</div></div></div></div>`,
+    });
+    h.run();
+    assertHidden(h.document, 'pasf', 'related-searches');
+    assertPreserved(h.document, 'wrap');
+    assertPreserved(h.document, 'pager');
+    h.close();
+});
+
+test('GC-6 no rule hides a top-level block containing pagination', () => {
+    const h = createHarness({
+        html: withRoot(`${relatedSearches('pasf', ['alpha one', 'beta two'])}` +
+            '<div id="pager"><a href="/search?q=regression&start=10">More results</a></div>'),
+    });
+    h.run();
+    assertPreserved(h.document, 'root');
+    assertPreserved(h.document, 'pager');
+    assertHidden(h.document, 'pasf', 'related-searches');
+    h.close();
+});
+
+test('GC-6 an earlier hide is undone when pagination is later inserted into it', () => {
+    const h = createHarness({
+        url: AUTOCORRECTED_URL,
+        html: `<div id="rso"><div id="block">${externalLink()}<div id="wrap">` +
+            `${relatedSearches('pasf', CORRECTED_PASF)}</div></div></div>`,
+    });
+    h.run();
+    assertHidden(h.document, 'wrap', 'related-searches');
+    h.document.getElementById('wrap').insertAdjacentHTML('beforeend', `<div id="pager">${CORRECTED_PAGER}</div>`);
+    h.run();
+    assertPreserved(h.document, 'wrap');
+    assertPreserved(h.document, 'pager');
+    assertHidden(h.document, 'pasf', 'related-searches');
+    h.close();
+});
+
 test('GC-8 keeps blocks shielded by News or Forums routes on the All tab', () => {
     const h = createHarness({
         html: `<div id="rso"><div id="mix"><h3>Result</h3>${externalLink()}` +

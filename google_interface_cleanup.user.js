@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove unwanted Google result modules and unsolicited video autoplay.
 // @license      MIT
-// @version      140.0.15
+// @version      140.0.16
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -51,12 +51,18 @@
  * GC-6 Must stay visible: ordinary organic results, results linking to the
  *      News tab, Forums results and knowledge panels. Destination-domain
  *      filtering is not this script's job (uBlacklist is).
+ *      Pagination (Google-search links with a start parameter, such as the
+ *      mobile "More search results" button and desktop page numbers) is
+ *      never hidden: no rule hides an element containing it, and an
+ *      earlier hide that comes to contain it is undone.
  * GC-7 Timing. Runs at page start and every 0.3 s.
  * GC-8 Related searches ("People also search for"). On every search page,
  *      explicit vertical tabs included, the outermost element inside a
  *      results area (#rso, #botstuff, #bres or an asynchronously loaded
  *      query context) whose links are all Google searches for queries other
- *      than the current one, covering at least 2 distinct such queries, with
+ *      than the current one (the URL's query, or the query Google's
+ *      pagination links use when it autocorrected or rewrote the typed
+ *      query), covering at least 2 distinct such queries, with
  *      no knowledge-panel data in or around it and no navigation landmark,
  *      is hidden
  *      (related-searches). A News or Forums link counts as such a search
@@ -69,7 +75,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.15';
+    const VERSION = '140.0.16';
     const CLEANUP_INTERVAL_MS = 300;
     const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
     const RELATED_SEARCHES = 'related-searches';
@@ -216,7 +222,7 @@
     }
 
     function hide(node, reason) {
-        if (!node) return false;
+        if (!node || containsPagination(node)) return false;
 
         const firstHide = !node.dataset.googleCleanupHidden;
         node.dataset.googleCleanupHidden = reason;
@@ -241,6 +247,34 @@
         return hostname === 'google.com' ||
             hostname.startsWith('google.') ||
             hostname.includes('.google.');
+    }
+
+    function isPaginationURL(url) {
+        return isGoogleHost(url.hostname) &&
+            url.pathname === '/search' &&
+            url.searchParams.has('q') &&
+            url.searchParams.has('start');
+    }
+
+    function paginationURLs(root) {
+        const anchors = [...root.querySelectorAll('a[href*="start="]')];
+        if (root.matches?.('a[href*="start="]')) anchors.push(root);
+        return anchors.map(parseURL).filter(url => url && isPaginationURL(url));
+    }
+
+    function containsPagination(node) {
+        return paginationURLs(node).length > 0;
+    }
+
+    function unhide(node) {
+        node.style.removeProperty('display');
+        delete node.dataset.googleCleanupHidden;
+    }
+
+    function restorePaginationHides() {
+        for (const node of document.querySelectorAll('[data-google-cleanup-hidden]')) {
+            if (containsPagination(node)) unhide(node);
+        }
     }
 
     function linksFor(root) {
@@ -411,24 +445,32 @@
         return udm === '18' || udm === 'forums' ? 'forums' : null;
     }
 
-    function isOtherQueryLink(url, currentQuery) {
+    // Pagination always pages the query the results are for, which differs from
+    // the URL's q when Google autocorrects or rewrites the typed query.
+    function currentQueries() {
+        const queries = new Set([normalizedQuery(new URL(location.href).searchParams.get('q'))]);
+        for (const url of paginationURLs(document)) queries.add(normalizedQuery(url.searchParams.get('q')));
+        return queries;
+    }
+
+    function isOtherQueryLink(url, current) {
         const route = verticalRoute(url);
         return isGoogleHost(url.hostname) &&
             url.pathname === '/search' &&
             url.searchParams.has('q') &&
-            normalizedQuery(url.searchParams.get('q')) !== currentQuery &&
+            !current.has(normalizedQuery(url.searchParams.get('q'))) &&
             (!route || route === verticalRoute(new URL(location.href)));
     }
 
-    function isRelatedSearchesOnly(node, currentQuery) {
+    function isRelatedSearchesOnly(node, current) {
         if (node.matches('[role="navigation"]') || node.querySelector('[role="navigation"]')) return false;
         if (hasKnowledgeSemantics(node)) return false;
         const urls = linksFor(node);
-        return urls.length > 0 && urls.every(url => isOtherQueryLink(url, currentQuery));
+        return urls.length > 0 && urls.every(url => isOtherQueryLink(url, current));
     }
 
     function hideRelatedSearches() {
-        const currentQuery = normalizedQuery(new URL(location.href).searchParams.get('q'));
+        const current = currentQueries();
         for (const scope of document.querySelectorAll(RESULT_SCOPES)) {
             for (const anchor of scope.querySelectorAll('a[href]')) {
                 if (anchor.closest(RESULT_SCOPES) !== scope) continue;
@@ -436,11 +478,11 @@
                 const knowledge = anchor.closest(KNOWLEDGE_SELECTOR);
                 if (knowledge && scope.contains(knowledge)) continue;
                 const url = parseURL(anchor);
-                if (!url || !isOtherQueryLink(url, currentQuery)) continue;
+                if (!url || !isOtherQueryLink(url, current)) continue;
 
                 let module = null;
                 for (let node = anchor.parentElement; node && node !== scope; node = node.parentElement) {
-                    if (!isRelatedSearchesOnly(node, currentQuery)) break;
+                    if (!isRelatedSearchesOnly(node, current)) break;
                     module = node;
                 }
                 if (!module) continue;
@@ -489,8 +531,7 @@
     function restoreCleanupHides() {
         for (const node of document.querySelectorAll('[data-google-cleanup-hidden]')) {
             if (node.dataset.googleCleanupHidden === RELATED_SEARCHES) continue;
-            node.style.removeProperty('display');
-            delete node.dataset.googleCleanupHidden;
+            unhide(node);
         }
     }
 
@@ -523,6 +564,7 @@
 
     function cleanup() {
         enforceVideoAutoplayGuard();
+        restorePaginationHides();
 
         if (isExplicitVerticalPage()) {
             restoreCleanupHides();
