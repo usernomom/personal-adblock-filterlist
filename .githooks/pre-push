@@ -1,16 +1,23 @@
 #!/bin/sh
-# Any push that changes a userscript or the filter list must pass the full
+# Any push that changes userscripts, the filter list, tests, packages or hooks must pass the full
 # suite (deterministic + live Neon + live iPhone) on exactly what is pushed.
 zero=0000000000000000000000000000000000000000
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ "$local_sha" = "$zero" ] && continue
   if [ "$remote_sha" = "$zero" ]; then
-    range_base=$(git merge-base "$local_sha" origin/main 2>/dev/null || echo origin/main)
+    range_base=$(git merge-base "$local_sha" origin/main 2>/dev/null) || {
+      echo 'pre-push: cannot determine the comparison base; fetch origin/main before pushing.' >&2
+      exit 1
+    }
   else
     range_base=$remote_sha
   fi
-  if git diff --name-only "$range_base" "$local_sha" | grep -Eq '\.user\.js$|^adguard-personal\.txt$'; then
-    if [ "$(git rev-parse HEAD)" != "$local_sha" ] || [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  changed_files=$(git diff --name-only "$range_base" "$local_sha") || {
+    echo 'pre-push: cannot compare the pushed and remote commits; fetch the remote before pushing.' >&2
+    exit 1
+  }
+  if printf '%s\n' "$changed_files" | grep -Eq '\.user\.js$|^adguard-personal\.txt$|^tests/|^package(-lock)?\.json$|^\.githooks/'; then
+    if [ "$(git rev-parse HEAD)" != "$local_sha" ] || [ -n "$(git status --porcelain)" ]; then
       echo 'pre-push: check out the pushed commit with a clean tree so the full suite tests exactly what is pushed.' >&2
       exit 1
     fi
