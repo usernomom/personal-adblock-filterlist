@@ -18,6 +18,7 @@
  * Environment: IPHONE_TOOLKIT (default ../iphone-safari-toolkit), PYTHON
  * (default python), NEON_DEBUG_HOST (default http://127.0.0.1:9223).
  */
+import { runScriptBatch, verifyNeonScript } from './full-suite-support.mjs';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
@@ -197,27 +198,14 @@ await step('Install changed userscripts into Neon (Violentmonkey)', async () => 
   await fetch(`${DEBUG_HOST}/json/version`).catch(() => {
     throw new Error(`Opera Neon DevTools endpoint ${DEBUG_HOST} is not reachable`);
   });
-  const report = [];
-  for (const script of changed) {
-    const installed = (await installedInNeon()).find(row => row.name === script.name);
-    if (!installed) { report.push(`${script.file}: not installed in Neon (skipped)`); continue; }
-    const button = await installIntoNeon(script);
-    const after = (await installedInNeon()).find(row => row.name === script.name);
-    if (!after?.lines.includes(script.version)) {
-      throw new Error(`${script.file}: Neon shows ${JSON.stringify(after?.lines)} after ${button}, expected ${script.version}`);
-    }
-    report.push(`${script.file}: ${script.version} installed (${button})`);
-  }
-  return report;
+  return runScriptBatch(changed, script => verifyNeonScript(script, { installedInNeon, installIntoNeon }));
 });
 
 await step('Deploy changed userscripts into Macaque (iPhone)', async () => {
-  const report = [];
-  for (const script of changed) {
+  return runScriptBatch(changed, async script => {
     await mustRun(python, ['tests/ios/iphone.py', 'deploy', script.file], { cwd: toolkit });
-    report.push(`${script.file}: ${script.version} deployed`);
-  }
-  return report;
+    return `${script.file}: ${script.version} deployed`;
+  });
 });
 
 await step('Live Neon suite', () => mustRun(process.execPath, ['tests/live/google-smoke.mjs']));
