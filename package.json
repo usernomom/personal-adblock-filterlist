@@ -6,6 +6,8 @@
   "scripts": {
     "test": "node --test --test-reporter=spec tests/deterministic/*.test.js",
     "test:live": "node tests/live/google-smoke.mjs",
+    "test:full": "node tests/run-full-suite.mjs",
+    "prepare": "git config core.hooksPath .githooks",
     "serve:google-userscript": "node tests/live/serve-userscript.mjs",
     "serve:userscripts:lan": "node tests/live/serve-userscripts-lan.mjs"
   },

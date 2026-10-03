@@ -9,9 +9,23 @@ npm test
 
 The jsdom tests in tests/deterministic/ exercise the actual .user.js packages, metadata, and behavior. These tests are useful for fast regressions but do not establish what an installed script does on a current website.
 
+## Full suite: required for every change
+
+Every change to any userscript or to `adguard-personal.txt` must pass the whole suite before it is pushed or called done:
+
+~~~powershell
+npm run test:full
+~~~
+
+[`tests/run-full-suite.mjs`](run-full-suite.mjs) runs the deterministic suite, the iphone-safari-toolkit unit suite, installs every changed userscript into Violentmonkey in Opera Neon (served unmodified from the working tree, installed version verified), deploys every changed userscript into Macaque on the iPhone, then runs the live Neon suite (`tests/live/google-smoke.mjs`) and the live iPhone Safari suite (`google_regression.py`). All steps run and failures are reported together; any failure fails the run. Pass `--base <ref>` to change what counts as changed (default `origin/main`).
+
+It is enforced by tracked Git hooks in `.githooks/`, activated by `npm ci`/`npm install` (`prepare` sets `core.hooksPath`): `pre-commit` runs the deterministic suite for any staged userscript, filter-list or test change, and `pre-push` runs the full suite on exactly the pushed commit whenever the push changes a userscript or the filter list. Never bypass them with `--no-verify`. If the iPhone or Neon cannot be reached, the change is not done.
+
+Every user-reported regression also gets a live case in the relevant live suite, not only a deterministic test, so the same failure cannot pass the full suite again.
+
 ## iPhone troubleshooting
 
-There is no routine live testing. When a problem shows up while browsing, it is troubleshot once on the phone with the private [iphone-safari-toolkit](https://github.com/usernomom/iphone-safari-toolkit) (see its README and site notes), against the installed Macaque script on the real site. Each fix adds a deterministic test here and updates the script's `BEHAVIOUR SPEC` comment in the same change. Captured Google DOM is **not** an acceptable physical validation method.
+When a problem shows up while browsing, it is troubleshot on the phone with the private [iphone-safari-toolkit](https://github.com/usernomom/iphone-safari-toolkit) (see its README and site notes), against the installed Macaque script on the real site. Each fix adds a deterministic test here and updates the script's `BEHAVIOUR SPEC` comment in the same change. Captured Google DOM is **not** an acceptable physical validation method.
 
 For an already-installed Macaque script, deploy the current working-tree source through the private toolkit rather than using Safari's native `.user.js` interception path:
 

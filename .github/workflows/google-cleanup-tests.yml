@@ -1,16 +1,18 @@
-name: Google cleanup deterministic tests
+name: Userscript deterministic tests
 
 on:
   push:
     paths:
-      - 'google_interface_cleanup.user.js'
+      - '*.user.js'
+      - 'adguard-personal.txt'
       - 'tests/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/google-cleanup-tests.yml'
   pull_request:
     paths:
-      - 'google_interface_cleanup.user.js'
+      - '*.user.js'
+      - 'adguard-personal.txt'
       - 'tests/**'
       - 'package.json'
       - 'package-lock.json'

@@ -294,6 +294,20 @@ const scriptSource = await (await import('node:fs/promises')).readFile(
 const versionMatch = scriptSource.match(/^\/\/ @version\s+(.+)$/m);
 if (!versionMatch) fail('Local userscript has no @version metadata');
 const expectedVersion = versionMatch[1].trim();
+const unwantedUdmMatch = scriptSource.match(/const UNWANTED_UDM = new Set\((\[[^\]]*\])\)/);
+if (!unwantedUdmMatch) fail('Local userscript has no UNWANTED_UDM definition');
+const UNWANTED_UDM = JSON.parse(unwantedUdmMatch[1].replace(/'/g, '"'));
+const paginationMatch = scriptSource.match(/const PAGINATION_PARAMS = (\[[^\]]*\]);/);
+if (!paginationMatch) fail('Local userscript has no PAGINATION_PARAMS definition');
+const PAGINATION_PARAMS = JSON.parse(paginationMatch[1].replace(/'/g, '"'));
+// Page-side expression listing the visible pagination controls as "param=value" keys.
+const VISIBLE_PAGERS_JS = `Array.from(document.querySelectorAll('a[href]')).filter(a => {
+    if (!a.getClientRects().length) return false;
+    try {
+      const u = new URL(a.href);
+      return u.pathname === '/search' && u.searchParams.has('q') && ${JSON.stringify(PAGINATION_PARAMS)}.some(p => u.searchParams.has(p));
+    } catch { return false; }
+  })`;
 const bridgeSource = await (await import('node:fs/promises')).readFile(
   new URL('../../google_news_ublacklist_bridge.user.js', import.meta.url),
   'utf8',
@@ -613,6 +627,51 @@ try {
   return paa;
   });
 
+  await checks.run("Autocorrected query: pagination visible, video carousels hidden before and after More results", async () => {
+  const audit = `(() => {
+    const isVisible = el => {
+      for (let n = el; n; n = n.parentElement) {
+        const s = getComputedStyle(n);
+        if (s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') return false;
+      }
+      return el.getClientRects().length > 0;
+    };
+    const pagers = ${VISIBLE_PAGERS_JS};
+    const labels = Array.from(document.querySelectorAll('#rso div, #rso span, #botstuff div, #botstuff span, [data-async-context^="query:"] div, [data-async-context^="query:"] span'))
+      .filter(el => el.children.length === 0 && !el.closest('a') && /^(Videos|Short videos)$/.test((el.textContent || '').trim()));
+    return {
+      url: location.href,
+      pagerStarts: pagers.filter(isVisible).map(a => a.href),
+      videoModulesVisible: labels.filter(isVisible).map(el => el.textContent.trim()),
+    };
+  })()`;
+  const check = (state, label) => {
+    if (!state.pagerStarts.length) fail(`${label}: More search results / pagination is not visible`, state);
+    if (state.videoModulesVisible.length) fail(`${label}: Videos / Short videos carousel is visible on the All tab`, state);
+  };
+  // Google autocorrects this query, and its pagination links use the corrected query.
+  const initial = await runCase(client, 'autocorrected query', 'https://www.google.com/search?q=genini+argon',
+    audit, state => check(state, 'Autocorrected query'));
+  const clicked = await evaluate(client, `(() => {
+    const a = ${VISIBLE_PAGERS_JS}[0];
+    if (!a) return false;
+    a.click();
+    return true;
+  })()`);
+  if (!clicked) fail('Could not click More search results', initial);
+  const before = JSON.stringify(initial.pagerStarts);
+  await waitFor(client, `document.readyState === 'complete' && (location.hash.includes('ip=') ||
+    JSON.stringify(${VISIBLE_PAGERS_JS}.map(a => a.href)) !== ${JSON.stringify(before)})`,
+    'Google to load more results after More search results');
+  // Let the 0.3 s cleanup interval process the newly rendered blocks.
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  const after = await evaluate(client, audit);
+  check(after, 'After More search results');
+  await assertInstalledVersion();
+  console.log('PASS autocorrected query keeps pagination and video carousels stay hidden after More results');
+  return { initial, after };
+  });
+
   await checks.run("Video/refinement junk removal", async () => {
   const junk = await runCase(
     client,
@@ -623,7 +682,7 @@ try {
       const el = candidates.find(root => Array.from(root.querySelectorAll('a[href]')).some(a => {
         try {
           const udm = new URL(a.href, location.href).searchParams.get('udm');
-          return ['2', '7', 'vids', '28', '39', '54'].includes(udm);
+          return ${JSON.stringify(UNWANTED_UDM)}.includes(udm);
         } catch { return false; }
       }));
       if (!el) return null;

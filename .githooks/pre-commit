@@ -1,0 +1,6 @@
+#!/bin/sh
+# Any staged change to a userscript, the filter list, tests or test tooling
+# must pass the deterministic suite before it can be committed.
+if git diff --cached --name-only | grep -Eq '\.user\.js$|^adguard-personal\.txt$|^tests/|^package(-lock)?\.json$'; then
+  npm test || { echo 'pre-commit: deterministic suite failed; commit blocked.' >&2; exit 1; }
+fi

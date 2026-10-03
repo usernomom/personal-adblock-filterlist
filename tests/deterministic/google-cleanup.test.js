@@ -242,6 +242,17 @@ test('protected image semantics do not save a root that also links another unwan
     h.close();
 });
 
+test('Short videos carousel linked by the named udm=short_vids vertical is removed (live 2026-10-03 shape)', () => {
+    const h = createHarness({
+        url: 'https://www.google.com/search?q=genini+argon&hl=en#ip=1',
+        html: withRoot('<span>Short videos</span>' +
+            '<a href="https://www.reddit.com/"></a><a href="/goto?url=CAES1">0:23</a><a href="/goto?url=CAES2"></a>' +
+            '<a href="/search?q=gemini+argon&hl=en&udm=short_vids&sa=X">More short videos</a>'),
+    });
+    assertHidden(h.document, 'root', 'unwanted-vertical');
+    h.close();
+});
+
 test('non-image unwanted vertical is removed', () => {
     const h = createHarness({
         html: withRoot('<a href="/search?q=cats&udm=7">Videos</a>'),
@@ -559,6 +570,35 @@ test('GC-8 hides only the related searches beside an autocorrected pager in a mi
     assertHidden(h.document, 'pasf', 'related-searches');
     assertPreserved(h.document, 'wrap');
     assertPreserved(h.document, 'pager');
+    h.close();
+});
+
+const CORRECTED_AOMD_PAGER = '<a role="button" aria-label="More search results" ' +
+    'href="https://www.google.com/search?q=gemini+argon&aomd=1&sxsrf=x">More search results</a>';
+
+test('GC-8 keeps the aomd=1 "More search results" button when Google autocorrected the query (live 2026-10-03 shape)', () => {
+    const h = createHarness({
+        url: AUTOCORRECTED_URL,
+        html: '<div id="botstuff"><div id="outer"><div><div id="bres">' +
+            `${relatedSearches('pasf', CORRECTED_PASF)}</div>` +
+            `<h1>Page Navigation</h1><div id="pager">${CORRECTED_AOMD_PAGER}</div></div></div></div>`,
+    });
+    h.run();
+    assert.ok(hiddenReason(h.document.getElementById('pasf')), 'related searches should still be hidden');
+    assertPreserved(h.document, 'outer');
+    assertPreserved(h.document, 'pager');
+    h.close();
+});
+
+test('GC-6 no rule hides a top-level block containing the aomd=1 pager', () => {
+    const h = createHarness({
+        url: AUTOCORRECTED_URL,
+        html: withRoot(`${relatedSearches('pasf', CORRECTED_PASF)}<div id="pager">${CORRECTED_AOMD_PAGER}</div>`),
+    });
+    h.run();
+    assertPreserved(h.document, 'root');
+    assertPreserved(h.document, 'pager');
+    assertHidden(h.document, 'pasf', 'related-searches');
     h.close();
 });
 

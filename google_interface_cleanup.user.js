@@ -2,7 +2,7 @@
 // @name         Google interface cleanup
 // @description  Remove unwanted Google result modules and unsolicited video autoplay.
 // @license      MIT
-// @version      140.0.16
+// @version      140.0.18
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_interface_cleanup.user.js
 // @match        https://*.google.com/search*
@@ -38,8 +38,8 @@
  *        embedded-news-cluster);
  *      question-accordion - no News/Forums links, no Google-search links,
  *        at least 2 progress bars and 2 buttons;
- *      unwanted-vertical - links to Google verticals udm=2, 7, vids, 28, 39
- *        or 54 and no Forums link (an Images-only block carrying other
+ *      unwanted-vertical - links to Google verticals udm=2, 7, vids, 28, 39,
+ *        short_vids or 54 and no Forums link (an Images-only block carrying other
  *        knowledge-panel data is kept);
  *      query-refinement - no News/Forums links, no knowledge-panel data, no
  *        external links, and at least 2 Google-search links.
@@ -51,8 +51,8 @@
  * GC-6 Must stay visible: ordinary organic results, results linking to the
  *      News tab, Forums results and knowledge panels. Destination-domain
  *      filtering is not this script's job (uBlacklist is).
- *      Pagination (Google-search links with a start parameter, such as the
- *      mobile "More search results" button and desktop page numbers) is
+ *      Pagination (Google-search links with a start or aomd parameter, such
+ *      as the mobile "More search results" button and desktop page numbers) is
  *      never hidden: no rule hides an element containing it, and an
  *      earlier hide that comes to contain it is undone.
  * GC-7 Timing. Runs at page start and every 0.3 s.
@@ -75,10 +75,15 @@
 (() => {
     'use strict';
 
-    const VERSION = '140.0.16';
+    const VERSION = '140.0.18';
     const CLEANUP_INTERVAL_MS = 300;
-    const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', '54']);
+    // Google links some verticals by number or by name (7 = vids, 39 = short_vids).
+    const UNWANTED_UDM = new Set(['2', '7', 'vids', '28', '39', 'short_vids', '54']);
     const RELATED_SEARCHES = 'related-searches';
+    // Google's pagination links page the current results with start=N (page
+    // numbers, "More search results") or aomd=1 (mobile "More search results").
+    const PAGINATION_PARAMS = ['start', 'aomd'];
+    const PAGINATION_LINK = PAGINATION_PARAMS.map(param => `a[href*="${param}="]`).join(',');
     const RESULT_SCOPES = '#rso, #botstuff, #bres, [data-async-context^="query:"]';
     const KNOWLEDGE_SELECTOR = [
         '.kp-wholepage',
@@ -253,12 +258,12 @@
         return isGoogleHost(url.hostname) &&
             url.pathname === '/search' &&
             url.searchParams.has('q') &&
-            url.searchParams.has('start');
+            PAGINATION_PARAMS.some(param => url.searchParams.has(param));
     }
 
     function paginationURLs(root) {
-        const anchors = [...root.querySelectorAll('a[href*="start="]')];
-        if (root.matches?.('a[href*="start="]')) anchors.push(root);
+        const anchors = [...root.querySelectorAll(PAGINATION_LINK)];
+        if (root.matches?.(PAGINATION_LINK)) anchors.push(root);
         return anchors.map(parseURL).filter(url => url && isPaginationURL(url));
     }
 
