@@ -357,6 +357,7 @@ try {
   };
 
   const linkedInQuery = 'https://www.google.com/search?q=LinkedIn+senior+software+engineer';
+  const mixedJobsQuery = 'https://www.google.com/search?q=senior+software+engineer+jobs+toronto';
 
   const addTemporaryLinkedInBlock = async () => {
     await navigate(client, linkedInQuery);
@@ -913,13 +914,26 @@ try {
 
   await checks.run("Desktop blocked/allowed result timing", async () => {
   await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
-  await navigate(client, linkedInQuery);
+  // The LinkedIn query can return only LinkedIn results, leaving no allowed
+  // result to time. This one mixes LinkedIn with other job sites.
+  await navigate(client, mixedJobsQuery);
   await assertInstalledVersion();
   await assertBridgeInstalledVersion();
   await waitFor(
     client,
     `window.__UB_FIREWALL_AUDIT__?.events?.some(event => event.block === '1')`,
     'uBlacklist to classify at least one live blocked result',
+  );
+  // Allowed results can be classified after the first blocked one, so wait for
+  // one to be released before auditing instead of sampling the first frames.
+  await waitFor(
+    client,
+    `(() => {
+      const events = window.__UB_FIREWALL_AUDIT__?.events || [];
+      const allowed = new Set(events.filter(event => event.result === '1' && event.block !== '1').map(event => event.id));
+      return events.some(event => event.visible && allowed.has(event.id));
+    })()`,
+    'uBlacklist to release at least one live allowed result',
   );
   const firewallEvents = await evaluate(
     client,
@@ -936,7 +950,15 @@ try {
   if (!firewallAudit.allowed.length) {
     fail('Live firewall audit found no independently classified visible allowed result', firewallEvents.slice(-30));
   }
-  const slowAllowed = firewallAudit.allowed.filter(entry => entry.deltaFrames > 1);
+  // Opaque /goto results stay hidden by design (UB-4) until the bridge has
+  // resolved them, after uBlacklist's first provisional classification, so
+  // release timing applies to direct results only.
+  const directAllowed = firewallAudit.allowed.filter(entry =>
+    !entry.history.some(event => /\/goto\?/.test(event.href || '')));
+  if (!directAllowed.length) {
+    fail('Live firewall audit found no directly linked allowed result to time', firewallAudit.allowed);
+  }
+  const slowAllowed = directAllowed.filter(entry => entry.deltaFrames > 1);
   if (slowAllowed.length) {
     fail('Allowed Google result was released more than one animation frame after uBlacklist classification', slowAllowed);
   }
