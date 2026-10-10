@@ -854,6 +854,33 @@ try {
   return {dynamicBlockedCount:dynamicBlockedResults.length,visibleLeaks:dynamicBlockedLeaks.length};
   });
 
+  await checks.run("Mobile bridged result hidden until uBlacklist judges it", async () => {
+  // Regression: on iPhone, uBlacklist can take seconds to judge results. The
+  // firewall used to reveal a mobile result as soon as the bridge attached its
+  // proxy, so blocked sites showed and then vanished. Read the style
+  // synchronously, before uBlacklist's next-frame scan can classify the probe.
+  await emulate(client, { userAgent: MOBILE_UA, viewport: MOBILE_VIEWPORT });
+  await navigate(client, linkedInQuery);
+  await assertInstalledVersion();
+  await assertBridgeInstalledVersion();
+  const bridgedProbe = await evaluate(client, `(() => {
+    const host = document.createElement('div');
+    host.innerHTML =
+      '<div class="Ww4FFb vt6azd" data-ub-google-bridge-root="1">' +
+      '<span hidden data-ub-google-source-proxy="default"><a class="UBFage" href="https://bridged-probe.example/">x</a></span>' +
+      'bridged probe</div>';
+    document.body.appendChild(host);
+    const display = getComputedStyle(host.firstElementChild).display;
+    host.remove();
+    return {display};
+  })()`);
+  if (bridgedProbe.display !== 'none') {
+    fail('Mobile bridged result was visible before uBlacklist classified it', bridgedProbe);
+  }
+  console.log('PASS mobile bridged result stays hidden until uBlacklist classification');
+  return bridgedProbe;
+  });
+
   await checks.run("Desktop ordinary web results", async () => {
   await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   const webResult = await runCase(

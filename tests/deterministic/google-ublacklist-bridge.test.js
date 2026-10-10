@@ -60,7 +60,7 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.2\.8$/m);
+    assert.match(source, /^\/\/ @version\s+13\.2\.9$/m);
 });
 
 test('protected ordinary result is quarantined until uBlacklist classifies it', () => {
@@ -187,31 +187,46 @@ test('mobile ordinary result uses the mobile uBlacklist root contract', () => {
 });
 
 
-test('mobile bridge-managed opaque result does not remain hidden when uBlacklist misses classification', async () => {
+test('mobile bridged result stays hidden until uBlacklist classifies it, then follows its verdict', async () => {
     const goto = '/goto?url=opaque-massimo-mobile-race';
     const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
     const h = createHarness({
         html:
             '<div id="massimo" class="Ww4FFb vt6azd">' +
-            `<a href="${goto}"><h3>Massimo Dutti</h3></a></div>`,
+            `<a href="${goto}"><h3>Massimo Dutti</h3></a></div>` +
+            '<div id="direct" class="Ww4FFb vt6azd">' +
+            '<a href="https://www.blocked-example.com/page"><h3>Direct blocked</h3></a></div>',
         wjd: mapping(goto, target),
         userAgent:
             'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 ' +
             '(KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1',
     });
 
-    const root = h.document.getElementById('massimo');
+    const html = h.document.documentElement;
+    html.setAttribute('data-ub-hide-blocked-results', '1');
+    const massimo = h.document.getElementById('massimo');
+    const direct = h.document.getElementById('direct');
+    await new Promise((resolve) => setTimeout(resolve, 200));
     await new Promise((resolve) =>
         h.window.requestAnimationFrame(() => h.window.requestAnimationFrame(resolve)),
     );
 
-    assert.ok(root.querySelector(':scope > [data-ub-google-source-proxy] a'));
-    assert.equal(root.hasAttribute('data-ub-result'), false);
-    assert.notEqual(
-        h.window.getComputedStyle(root).display,
-        'none',
-        'a resolved bridge root must fail open instead of disappearing forever if uBlacklist misses classification',
-    );
+    for (const root of [massimo, direct]) {
+        assert.ok(root.querySelector(':scope > [data-ub-google-source-proxy] a'));
+        assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
+        assert.equal(
+            h.window.getComputedStyle(root).display,
+            'none',
+            'a bridged result must stay hidden while uBlacklist has not judged it yet (slow uBlacklist on iPhone)',
+        );
+    }
+
+    direct.setAttribute('data-ub-result', '1');
+    direct.setAttribute('data-ub-block', '1');
+    assert.equal(h.window.getComputedStyle(direct).display, 'none');
+
+    massimo.setAttribute('data-ub-result', '1');
+    assert.notEqual(h.window.getComputedStyle(massimo).display, 'none');
     h.close();
 });
 test('explicit Images page result roots are not quarantined by the ordinary-result firewall', () => {

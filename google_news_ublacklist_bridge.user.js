@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.2.8
+// @version      13.2.9
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -39,11 +39,12 @@
  *      bridge ignores its own proxies and uBlacklist's changes.
  * UB-4 Result firewall. On the Web, News, Videos and Forums tabs (never
  *      Images or other tabs), results uBlacklist classifies stay hidden
- *      until uBlacklist has processed them (on mobile Web, or until the
- *      bridge has attached a proxy); results awaiting network resolution
- *      stay hidden until their proxy exists; News-tab cards stay hidden
- *      until bridged. Results uBlacklist blocks are hidden when it hides
- *      blocked results.
+ *      until uBlacklist has processed them, on desktop and mobile alike;
+ *      attaching a bridge proxy never reveals a result on its own, and
+ *      there is no timer that reveals an unprocessed result. Results
+ *      awaiting network resolution stay hidden until their proxy exists;
+ *      News-tab cards stay hidden until bridged. Results uBlacklist blocks
+ *      are hidden when it hides blocked results.
  * UB-5 Gap collapse. When uBlacklist hides blocked results, result slots
  *      whose results are all blocked are hidden.
  * Test marker: html[data-ub-google-bridge-version] = @version.
@@ -52,7 +53,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.2.8';
+    const VERSION = '13.2.9';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const SEARCH_PARAMS = new URLSearchParams(location.search);
     const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
@@ -962,7 +963,7 @@
         style.setAttribute('data-ub-google-result-firewall-style', VERSION);
         style.textContent = roots ? `
 [${BRIDGE_PENDING_ATTRIBUTE}],
-${IS_MOBILE_LAYOUT && IS_WEB_TAB ? `:is(${roots}):not([data-ub-result]):not([${BRIDGE_ROOT_ATTRIBUTE}])` : `:is(${roots}):not([data-ub-result])`},
+:is(${roots}):not([data-ub-result]),
 [data-ub-hide-blocked-results] :is(${roots})[data-ub-block] {
     display: none !important;
 }` : (IS_IMAGES_TAB ? '' : `
