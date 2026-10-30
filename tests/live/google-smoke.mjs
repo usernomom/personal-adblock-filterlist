@@ -21,6 +21,13 @@ class CdpClient {
     this.ws = new WebSocket(webSocketDebuggerUrl);
     this.nextId = 1;
     this.pending = new Map();
+    this.eventListeners = new Set();
+  }
+
+  /** Calls listener(method, params) for every CDP event; returns an unsubscribe function. */
+  onEvent(listener) {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
   }
 
   async open() {
@@ -30,7 +37,10 @@ class CdpClient {
     });
     this.ws.addEventListener('message', event => {
       const message = JSON.parse(event.data);
-      if (!message.id) return;
+      if (!message.id) {
+        if (message.method) for (const listener of this.eventListeners) listener(message.method, message.params);
+        return;
+      }
       const waiter = this.pending.get(message.id);
       if (!waiter) return;
       this.pending.delete(message.id);
@@ -882,6 +892,44 @@ try {
   return bridgedProbe;
   });
 
+  await checks.run("Mobile name-only results make no /goto requests", async () => {
+  // Regression: 13.2.x resolved name-only cards by requesting Google's /goto
+  // redirector, which made Google show "Verifying your request" (2026-10-30).
+  // From 13.3.0 the bridge reads destinations from the page only (UB-6). This
+  // query showed only name-only Reddit cards on the iPhone; other markup may
+  // differ, so the checks hold for any page.
+  await emulate(client, { userAgent: MOBILE_UA, viewport: MOBILE_VIEWPORT });
+  const gotoRequests = [];
+  const stopRecording = client.onEvent((method, params) => {
+    if (method !== 'Network.requestWillBeSent') return;
+    try {
+      if (new URL(params.request.url).pathname.startsWith('/goto')) gotoRequests.push(params.request.url);
+    } catch {}
+  });
+  let state;
+  try {
+    await navigate(client, 'https://www.google.com/search?q=cast+iron+seasoning+reddit');
+    // Settle: the bridge releases unresolved cards once the page has parsed;
+    // give it and uBlacklist time without touching the page.
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    state = await evaluate(client, `({
+      bridge: document.documentElement.getAttribute('data-ub-google-bridge-version'),
+      pending: document.querySelectorAll('[data-ub-google-bridge-pending], [data-ub-google-news-pending]').length,
+      opaqueLinks: document.querySelectorAll('a[href*="/goto?"]').length,
+    })`);
+  } finally {
+    stopRecording();
+  }
+  const [major, minor, patch] = String(state.bridge || '').split('.').map(Number);
+  const atLeast = [major, minor, patch].every(Number.isFinite) &&
+    (major - 13 || minor - 3 || patch - 0) >= 0;
+  if (!atLeast) fail('Live bridge version marker is missing or older than 13.3.0', state);
+  if (gotoRequests.length) fail('The page requested /goto URLs without any interaction', { gotoRequests, state });
+  if (state.pending) fail('Results kept a bridge pending attribute after settle', state);
+  console.log(`PASS no /goto requests and nothing pending (${state.opaqueLinks} opaque links on the page)`);
+  return { ...state, gotoRequests: gotoRequests.length };
+  });
+
   await checks.run("Desktop ordinary web results", async () => {
   await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   const webResult = await runCase(
@@ -950,9 +998,9 @@ try {
   if (!firewallAudit.allowed.length) {
     fail('Live firewall audit found no independently classified visible allowed result', firewallEvents.slice(-30));
   }
-  // Opaque /goto results stay hidden by design (UB-4) until the bridge has
-  // resolved them, after uBlacklist's first provisional classification, so
-  // release timing applies to direct results only.
+  // Opaque /goto results wait for the bridge's page-data sources or are
+  // released unresolved once the page has parsed (UB-1, UB-4), not on
+  // uBlacklist's classification, so release timing applies to direct results only.
   const directAllowed = firewallAudit.allowed.filter(entry =>
     !entry.history.some(event => /\/goto\?/.test(event.href || '')));
   if (!directAllowed.length) {
