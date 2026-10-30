@@ -14,15 +14,16 @@ const MOBILE_UA =
     '(KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
 const SITE_HOSTS_KEY = 'siteHosts';
 
-// Persistent GM storage shared across harnesses, like one userscript's
-// storage across page loads.
+// GM storage shared across harnesses, like one userscript's storage across
+// page loads. The bridge may only delete 13.3.0's key from it.
 function createStorage(initial = {}) {
     const values = new Map(Object.entries(initial));
     return {
         values,
+        deleted: [],
         get(key, fallback) { return values.has(key) ? values.get(key) : fallback; },
         set(key, value) { values.set(key, value); },
-        siteHosts() { return JSON.parse(values.get(SITE_HOSTS_KEY) || '[]'); },
+        delete(key) { this.deleted.push(key); values.delete(key); },
     };
 }
 
@@ -66,8 +67,18 @@ function matchesUBlacklistPattern(pattern, url) {
     return schemeOk && hostOk && pathRe.test(target.pathname + target.search);
 }
 
+// The bridge's page-memory site names, as a plain object of this realm.
+function learned(h) {
+    return JSON.parse(JSON.stringify(h.api.learnedSites));
+}
+
 function proxyOf(root) {
     return root.querySelector(':scope > [data-ub-google-source-proxy] a');
+}
+
+// A later result batch: long enough for the bridge's 1 s release bound.
+async function settleBatch(h) {
+    await settle(h, 1100);
 }
 
 async function settle(h, ms = 50) {
@@ -126,6 +137,7 @@ function createHarness({
     };
     window.GM_getValue = (key, fallback) => storage.get(key, fallback);
     window.GM_setValue = (key, value) => storage.set(key, value);
+    window.GM_deleteValue = (key) => storage.delete(key);
     window.eval(source);
 
     return {
@@ -147,15 +159,19 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.3\.0$/m);
-    assert.match(source, /const VERSION = '13\.3\.0';/);
+    assert.match(source, /^\/\/ @version\s+13\.3\.1$/m);
+    assert.match(source, /const VERSION = '13\.3\.1';/);
 });
 
-test('bridge has no network request path and no @connect grant', () => {
+test('bridge has no network request path, no storage beyond deleting 13.3.0 data, and pinned metadata', () => {
     const metadata = source.slice(0, source.indexOf('// ==/UserScript=='));
-    assert.doesNotMatch(metadata, /@connect/);
-    assert.doesNotMatch(metadata, /xmlhttprequest/i);
-    for (const pattern of [/GM_xmlhttpRequest/, /GM\.xml[hH]ttpRequest/, /\bfetch\s*\(/, /XMLHttpRequest/, /sendBeacon/]) {
+    const grants = [...metadata.matchAll(/^\/\/ @grant\s+(\S+)\s*$/gm)].map((match) => match[1]).sort();
+    assert.deepEqual(grants, ['GM_deleteValue', 'unsafeWindow']);
+    for (const key of ['@connect', '@require', '@resource']) assert.equal(metadata.includes(key), false, key);
+    for (const pattern of [
+        /GM_xmlhttpRequest/, /GM\.xml[hH]ttpRequest/, /\bfetch\s*\(/, /XMLHttpRequest/, /sendBeacon/,
+        /GM_setValue/, /GM_getValue/, /new Image\b/, /WebSocket/, /EventSource/,
+    ]) {
         assert.doesNotMatch(source, pattern, `bridge source must not contain ${pattern}`);
     }
 });
@@ -502,21 +518,19 @@ test('inline data captured at document start and tied by token still resolves af
     h.close();
 });
 
-test('captured video result without an inline domain uses the site name learned from an inline-data card', async () => {
-    const storage = createStorage();
+test('captured video result without an inline domain takes the built-in Reddit entry once the page is parsed', async () => {
     const h = createHarness({
         userAgent: MOBILE_UA,
-        storage,
         html: `<div id="rso">${capture.videoRoot}${capture.webRoot}</div>${inlineDataScript(capture.entries)}`,
     });
     await settle(h);
 
     const video = h.document.querySelector('#rso > .tRkSqb');
     const proxy = proxyOf(video);
-    assert.ok(proxy, 'the earlier video card is bridged once a later web card teaches "Reddit"');
+    assert.ok(proxy);
     assert.equal(proxy.href, 'https://reddit.com/r/castiron/');
-    assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name-path');
-    assert.deepEqual(storage.siteHosts(), [['reddit', 'https://reddit.com']]);
+    assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-list-path');
+    assert.deepEqual(learned(h), {}, 'a known site name is never learned');
     assert.deepEqual(h.requests, []);
     h.close();
 });
@@ -524,13 +538,11 @@ test('captured video result without an inline domain uses the site name learned 
 test('the site-name line is parsed by text, never taken for the heading or the citation', async () => {
     // .GkAmnd (web) is in HEADING_SELECTOR and .Aozhyc (video) is not; the
     // span.ob9lvb citation holds "N comments · age" on forum cards.
-    const storage = createStorage({ [SITE_HOSTS_KEY]: JSON.stringify([['reddit', 'https://reddit.com']]) });
     const h = createHarness({
         userAgent: MOBILE_UA,
-        storage,
         html: `<div id="rso">${capture.webRoot}${capture.videoRoot}` +
             organicCard({ id: 'heading-site', goto: '/goto?url=heading-site', site: 'Reddit · r/Cooking', title: 'Massimo Dutti · r/notasub' }) +
-            '</div>',
+            `</div>${inlineDataScript(capture.entries)}`,
     });
     await settle(h);
 
@@ -538,7 +550,7 @@ test('the site-name line is parsed by text, never taken for the heading or the c
     assert.equal(proxyOf(web).href, 'https://reddit.com/r/castiron/');
     assert.equal(proxyOf(video).href, 'https://reddit.com/r/castiron/');
     assert.equal(proxyOf(h.document.getElementById('heading-site')).href, 'https://reddit.com/r/Cooking/');
-    assert.deepEqual(storage.siteHosts(), [['reddit', 'https://reddit.com']], 'comment counts are never learned as site names');
+    assert.deepEqual(learned(h), {}, 'comment counts are never learned as site names');
     h.close();
 });
 
@@ -607,10 +619,8 @@ test('unresolved News-tab and Top stories cards are released whether or not uBla
 });
 
 test('a site name learned from a cited card on the same page bridges name-only cards of that site', async () => {
-    const storage = createStorage();
     const h = createHarness({
         userAgent: MOBILE_UA,
-        storage,
         html: '<div id="rso">' +
             organicCard({ id: 'name-only', goto: '/goto?url=massimo-name-only', site: 'Massimo Dutti', meta: 'Leather jackets' }) +
             organicCard({ id: 'cited', goto: '/goto?url=massimo-cited', site: 'Massimo Dutti', meta: 'https://www.massimodutti.com › ca › men' }) +
@@ -631,30 +641,29 @@ test('a site name learned from a cited card on the same page bridges name-only c
     );
     nameOnly.setAttribute('data-ub-result', '1');
     assert.notEqual(h.window.getComputedStyle(nameOnly).display, 'none');
-    assert.deepEqual(storage.siteHosts(), [['massimo dutti', 'https://massimodutti.com']]);
+    assert.deepEqual(learned(h), { 'massimo dutti': 'https://massimodutti.com' });
 
     const holder = h.document.createElement('div');
     holder.innerHTML = organicCard({ id: 'more', goto: '/goto?url=massimo-more', site: 'Massimo Dutti', meta: 'Coats' });
     h.document.getElementById('rso').appendChild(holder.firstElementChild);
-    await settle(h);
+    await settleBatch(h);
     assert.equal(proxyOf(h.document.getElementById('more')).href, 'https://massimodutti.com/');
     assert.equal(hasPendingAttribute(h.document), false);
     assert.deepEqual(h.requests, []);
     h.close();
 });
 
-test('a site name learned on an earlier page bridges later name-only cards, with r/<name> as a subreddit path', async () => {
+test('learned site names stay on their page; listed names resolve from the built-in list on any page', async () => {
     const storage = createStorage();
     const first = createHarness({
         storage,
-        html:
-            '<div id="group" class="Ww4FFb">' +
-            '<div class="xYkm8c"><a class="zReHs" href="https://www.reddit.com/r/Kombucha/">Reddit</a></div>' +
-            '<div class="xYkm8c"><a class="zReHs" href="https://www.quora.com/What-is-kombucha">Quora</a></div>' +
-            '</div>' +
-            organicCard({ id: 'instagram-cited', goto: '/goto?url=instagram-cited', site: 'Instagram', meta: 'https://www.instagram.com › breakingbad' }),
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' +
+            organicCard({ id: 'cited', goto: '/goto?url=first-cited', site: 'Serious Eats', meta: 'https://www.seriouseats.com › pans' }) +
+            '</div>',
     });
     await settle(first);
+    assert.deepEqual(learned(first), { 'serious eats': 'https://seriouseats.com' });
     first.close();
 
     const second = createHarness({
@@ -670,93 +679,78 @@ test('a site name learned on an earlier page bridges later name-only cards, with
 
     const reddit = proxyOf(second.document.getElementById('reddit'));
     assert.equal(reddit.href, 'https://reddit.com/r/castiron/');
-    assert.equal(reddit.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name-path');
+    assert.equal(reddit.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-list-path');
     const instagram = proxyOf(second.document.getElementById('instagram'));
     assert.equal(instagram.href, 'https://instagram.com/taylorswift/', 'an Instagram username qualifier is the profile path');
-    assert.equal(instagram.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name-path');
+    assert.equal(instagram.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-list-path');
     const unknown = second.document.getElementById('unknown');
-    assert.equal(proxyOf(unknown), null);
+    assert.equal(proxyOf(unknown), null, 'nothing learned on the first page carries over');
     assert.notEqual(second.window.getComputedStyle(unknown).display, 'none');
+    assert.deepEqual([...storage.values.keys()], [], 'nothing is stored');
     assert.deepEqual(second.requests, []);
     second.close();
 });
 
-test('learned site names live under one bounded storage key, oldest out first', async () => {
-    const preload = Array.from({ length: 500 }, (_, i) => [`site ${i}`, `https://site${i}.example`]);
-    const storage = createStorage({ [SITE_HOSTS_KEY]: JSON.stringify(preload) });
+test('13.3.0 learned-site storage is deleted on load and never read', async () => {
+    const poisoned = JSON.stringify([['instagram', 'https://instagram-viewer.net'], ['serious eats', 'https://seriouseats.com']]);
+    const storage = createStorage({ [SITE_HOSTS_KEY]: poisoned });
     const h = createHarness({
         storage,
         userAgent: MOBILE_UA,
         html: '<div id="rso">' +
-            organicCard({ id: 'cited', goto: '/goto?url=bound-cited', site: 'Massimo Dutti', meta: 'https://www.massimodutti.com › ca' }) +
-            organicCard({ id: 'stored', goto: '/goto?url=bound-stored', site: 'Site 499 · Forum', meta: 'Thread' }) +
+            organicCard({ id: 'instagram', goto: '/goto?url=storage-instagram', site: 'Instagram · nasa', meta: 'Profile' }) +
+            organicCard({ id: 'unknown', goto: '/goto?url=storage-unknown', site: 'Serious Eats', meta: 'Recipes' }) +
             '</div>',
     });
     await settle(h);
 
-    const stored = storage.siteHosts();
-    assert.deepEqual([...storage.values.keys()], [SITE_HOSTS_KEY]);
-    assert.equal(stored.length, 500);
-    assert.deepEqual(stored.at(-1), ['massimo dutti', 'https://massimodutti.com']);
-    assert.equal(stored.some(([name]) => name === 'site 0'), false, 'the oldest entry is evicted');
-    assert.ok(stored.some(([name]) => name === 'site 1'));
-    assert.equal(proxyOf(h.document.getElementById('stored')).href, 'https://site499.example/');
+    assert.deepEqual(storage.deleted, [SITE_HOSTS_KEY]);
+    assert.equal(storage.values.has(SITE_HOSTS_KEY), false);
+    assert.equal(proxyOf(h.document.getElementById('instagram')).href, 'https://instagram.com/nasa/');
+    assert.equal(proxyOf(h.document.getElementById('unknown')), null);
     h.close();
+});
 
-    const corrupt = createStorage({ [SITE_HOSTS_KEY]: '{not json' });
-    const c = createHarness({
-        storage: corrupt,
+test('one name with hosts of different registrable domains is dropped; hosts of one domain keep that domain', async () => {
+    const h = createHarness({
         userAgent: MOBILE_UA,
-        html: organicCard({ id: 'cited', goto: '/goto?url=corrupt-cited', site: 'Massimo Dutti', meta: 'https://www.massimodutti.com › ca' }),
+        html: '<div id="rso">' +
+            organicCard({ id: 'globe-a', goto: '/goto?url=globe-a', site: 'The Globe', meta: 'https://www.theglobe.com › news' }) +
+            organicCard({ id: 'globe-b', goto: '/goto?url=globe-b', site: 'The Globe', meta: 'https://theglobe.net.au › story' }) +
+            organicCard({ id: 'globe-name-only', goto: '/goto?url=globe-name-only', site: 'The Globe · Opinion', meta: 'Column' }) +
+            organicCard({ id: 'wiki-en', goto: '/goto?url=wiki-en', site: 'Wikipedia', meta: 'https://en.wikipedia.org › wiki › NASA' }) +
+            organicCard({ id: 'wiki-fr', goto: '/goto?url=wiki-fr', site: 'Wikipedia', meta: 'https://fr.wikipedia.org › wiki › NASA' }) +
+            organicCard({ id: 'wiki-name-only', goto: '/goto?url=wiki-name-only', site: 'Wikipedia', meta: 'Encyclopedia' }) +
+            organicCard({ id: 'bbc', goto: '/goto?url=bbc-cited', site: 'BBC', meta: 'https://www.bbc.co.uk › news' }) +
+            organicCard({ id: 'bbc-name-only', goto: '/goto?url=bbc-name-only', site: 'BBC', meta: 'News' }) +
+            '</div>',
     });
-    await settle(c);
-    assert.deepEqual(corrupt.siteHosts(), [['massimo dutti', 'https://massimodutti.com']]);
-    c.close();
+    await settle(h);
+
+    const globe = h.document.getElementById('globe-name-only');
+    assert.equal(proxyOf(globe), null, 'an ambiguous site name must not pick a host');
+    assert.notEqual(h.window.getComputedStyle(globe).display, 'none');
+    assert.equal(proxyOf(h.document.getElementById('wiki-name-only')).href, 'https://wikipedia.org/');
+    assert.equal(proxyOf(h.document.getElementById('bbc-name-only')).href, 'https://bbc.co.uk/', 'co.uk is a two-level suffix');
+    assert.deepEqual(learned(h), { 'the globe': '', wikipedia: 'https://wikipedia.org', bbc: 'https://bbc.co.uk' });
+    h.close();
 });
 
-test('a site name seen with unrelated hosts is never used, while www. and m. hosts give one domain in any order', async () => {
-    const youtubeCards = [
-        '<div class="Ww4FFb vt6azd"><a class="zReHs" href="https://m.youtube.com/watch?v=one">YouTube · Vacuum Wars</a></div>',
-        '<div class="Ww4FFb vt6azd"><a class="zReHs" href="https://www.youtube.com/watch?v=two">YouTube · Project Farm</a></div>',
-    ];
-    for (const order of [youtubeCards, [...youtubeCards].reverse()]) {
-        const storage = createStorage();
-        const h = createHarness({
-            storage,
-            userAgent: MOBILE_UA,
-            html: '<div id="rso">' +
-                organicCard({ id: 'globe-a', goto: '/goto?url=globe-a', site: 'The Globe', meta: 'https://www.theglobe.com › news' }) +
-                organicCard({ id: 'globe-b', goto: '/goto?url=globe-b', site: 'The Globe', meta: 'https://theglobe.net.au › story' }) +
-                organicCard({ id: 'globe-name-only', goto: '/goto?url=globe-name-only', site: 'The Globe · Opinion', meta: 'Column' }) +
-                order.join('') +
-                organicCard({ id: 'youtube-name-only', goto: '/goto?url=youtube-name-only', site: 'YouTube · Taylor Swift', meta: '2 years ago' }) +
-                '</div>',
-        });
-        await settle(h);
+test('the bridge gives a name-only YouTube card a host that a youtube.com whole-site rule matches', async () => {
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' +
+            '<div class="Ww4FFb vt6azd"><a class="zReHs" href="https://m.youtube.com/watch?v=one">YouTube · Vacuum Wars</a></div>' +
+            organicCard({ id: 'youtube-name-only', goto: '/goto?url=youtube-name-only', site: 'YouTube · Taylor Swift', meta: '2 years ago' }) +
+            '</div>',
+    });
+    await settle(h);
 
-        const globe = h.document.getElementById('globe-name-only');
-        assert.equal(proxyOf(globe), null, 'an ambiguous site name must not pick a host');
-        assert.notEqual(h.window.getComputedStyle(globe).display, 'none');
-        const youtube = proxyOf(h.document.getElementById('youtube-name-only')).href;
-        assert.equal(youtube, 'https://youtube.com/', 'the inferred host does not depend on which card came first');
-        assert.ok(matchesUBlacklistPattern('*://*.youtube.com/*', youtube));
-        assert.deepEqual(
-            Object.fromEntries(storage.siteHosts()),
-            { 'the globe': '', youtube: 'https://youtube.com' },
-            'the conflict is remembered so a later page cannot pick either host',
-        );
-        h.close();
-    }
-});
-
-test('a youtube.com whole-site rule matches the bare, www. and m. forms; an exact www. host rule matches only www.', () => {
-    for (const url of ['https://youtube.com/', 'https://www.youtube.com/watch?v=1', 'https://m.youtube.com/watch?v=1']) {
-        assert.equal(matchesUBlacklistPattern('*://*.youtube.com/*', url), true, url);
-    }
-    assert.equal(matchesUBlacklistPattern('*://www.youtube.com/*', 'https://www.youtube.com/watch?v=1'), true);
-    assert.equal(matchesUBlacklistPattern('*://www.youtube.com/*', 'https://youtube.com/'), false);
-    assert.equal(matchesUBlacklistPattern('*://www.youtube.com/*', 'https://m.youtube.com/watch?v=1'), false);
-    assert.equal(matchesUBlacklistPattern('*://*.youtube.com/*', 'https://notyoutube.com/'), false);
+    const href = proxyOf(h.document.getElementById('youtube-name-only')).href;
+    assert.equal(href, 'https://youtube.com/');
+    assert.equal(matchesUBlacklistPattern('*://*.youtube.com/*', href), true);
+    assert.equal(matchesUBlacklistPattern('*://www.youtube.com/*', href), false, 'exact www. host rules do not match inferred hosts');
+    h.close();
 });
 
 test('malformed inline result data is ignored without throwing', async () => {
@@ -784,11 +778,34 @@ test('malformed inline result data is ignored without throwing', async () => {
     h.close();
 });
 
+
+test('a throwing inline entry never breaks Google\'s W_jd assignment, and each entry key is processed once', async () => {
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' + organicCard({ id: 'mapped', goto: '/goto?url=once', site: 'Serious Eats', meta: 'Pans' }) + '</div>',
+    });
+    const hostile = [];
+    Object.defineProperty(hostile, 0, { enumerable: true, get() { throw new Error('hostile getter'); } });
+    assert.doesNotThrow(() => { h.window.W_jd.hostile = hostile; }, 'the direct W_jd hook must not throw into Google');
+    assert.doesNotThrow(() => { h.window.W_jd = { hostile2: hostile }; }, 'the W_jd setter must not throw into Google');
+    const entry = ['/goto?url=once', 'https://www.seriouseats.com/pans'];
+    h.window.W_jd.good = entry;
+    h.window.dispatchEvent(new h.window.CustomEvent('__UB_GOOGLE_WJD_UPDATE__', { detail: JSON.stringify({ good: entry }) }));
+    await settle(h);
+
+    assert.equal(proxyOf(h.document.getElementById('mapped')).href, 'https://www.seriouseats.com/pans');
+    assert.equal(h.api.stats.inlineEntries, 3, 'hostile, hostile2 and good, each once');
+    h.close();
+});
+
 const social = require('../fixtures/google-mobile-social-cards.json');
 
 test('captured profile card takes its host from the thumbnail alt and its Instagram username as the path', async () => {
-    const storage = createStorage();
-    const h = createHarness({ userAgent: MOBILE_UA, storage, html: `<div id="rso">${social.profileRoot}</div>` });
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        url: 'https://www.google.com/search?q=taylor+swift',
+        html: `<div id="rso">${social.profileRoot}</div>`,
+    });
     await settle(h);
 
     const root = h.document.querySelector('#rso > .Ww4FFb');
@@ -796,44 +813,42 @@ test('captured profile card takes its host from the thumbnail alt and its Instag
     assert.ok(proxy, 'the alt "taylor swift from www.instagram.com" names the host');
     assert.equal(proxy.href, 'https://instagram.com/taylorswift/');
     assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'page-host-path');
-    assert.deepEqual(storage.siteHosts(), [['instagram', 'https://instagram.com']], 'the alt host teaches the site name');
+    assert.deepEqual(learned(h), {}, 'a known site name is never learned');
     assert.equal(h.window.getComputedStyle(root).display, 'none', 'bridged, so it waits for uBlacklist');
     assert.deepEqual(h.requests, []);
     h.close();
 });
 
-test('thumbnail alt hosts are taken only from an anchored trailing host that is not Google', async () => {
+test('a thumbnail alt gives a host only in Google\'s "<query> <word> <host>" template', async () => {
     const cases = [
-        { id: 'facebook', site: 'Facebook · Taylor Swift', alt: 'taylor swift from www.facebook.com', href: 'https://facebook.com/' },
-        { id: 'no-host', site: 'Serious Eats · Forum', alt: 'pictures from my trip', href: null },
-        { id: 'google', site: 'Serious Eats · Forum', alt: 'maps from www.google.com', href: null },
-        { id: 'mid-host', site: 'Serious Eats · Forum', alt: 'www.seriouseats.com photo of a pan', href: null },
-        { id: 'trailing-dot', site: 'Serious Eats · Forum', alt: 'pan from www.seriouseats.com.', href: null },
-        { id: 'long', site: 'Serious Eats · Forum', alt: `${'a1b2-'.repeat(4000)}x from `, href: null },
+        { id: 'facebook', site: 'Facebook · Taylor Swift', alt: 'Taylor  Swift from www.facebook.com', href: 'https://facebook.com/', source: 'page-host' },
+        { id: 'aspnet', site: 'Reddit · r/dotnet', alt: 'Tutorial for ASP.NET', href: 'https://reddit.com/r/dotnet/', source: 'site-list-path' },
+        { id: 'stlouis', site: 'YouTube · Cardinals', alt: 'Cardinals win in St.Louis', href: 'https://youtube.com/', source: 'site-list' },
+        { id: 'nodejs', site: 'Serious Eats · Forum', alt: 'Node.js', href: null },
+        { id: 'extra-word', site: 'Serious Eats · Forum', alt: 'taylor swift photo from www.seriouseats.com', href: null },
+        { id: 'no-host', site: 'Serious Eats · Forum', alt: 'taylor swift from my trip', href: null },
+        { id: 'google', site: 'Serious Eats · Forum', alt: 'taylor swift from www.google.com', href: null },
+        { id: 'trailing-dot', site: 'Serious Eats · Forum', alt: 'taylor swift from www.seriouseats.com.', href: null },
     ];
     const h = createHarness({
         userAgent: MOBILE_UA,
+        url: 'https://www.google.com/search?q=taylor+swift',
         html: '<div id="rso">' +
             cases.map(({ id, site, alt }) => organicCard({ id, goto: `/goto?url=alt-${id}`, site, meta: 'Profile', thumbAlt: alt })).join('') +
             '</div>',
     });
     await settle(h);
 
-    for (const { id, href } of cases) {
+    for (const { id, href, source } of cases) {
         const proxy = proxyOf(h.document.getElementById(id));
         assert.equal(proxy ? proxy.href : null, href, id);
+        if (proxy) assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), source, id);
     }
-    assert.equal(
-        proxyOf(h.document.getElementById('facebook')).parentElement.getAttribute('data-ub-google-bridge-inferred'),
-        'page-host',
-        'a display name is not a username, so only the host is used',
-    );
     h.close();
 });
 
-test('captured video result uses its data-curl destination exactly and teaches its site name', async () => {
-    const storage = createStorage();
-    const h = createHarness({ userAgent: MOBILE_UA, storage, html: `<div id="rso">${social.videoRoot}</div>` });
+test('captured video result uses its data-curl destination exactly', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: `<div id="rso">${social.videoRoot}</div>` });
     await settle(h);
 
     const root = h.document.querySelector('#rso > .sHEJob');
@@ -841,7 +856,7 @@ test('captured video result uses its data-curl destination exactly and teaches i
     assert.ok(proxy);
     assert.equal(proxy.href, 'https://www.youtube.com/watch?v=X-i7bPSbbQ0', 'the full URL, so path rules match');
     assert.equal(proxy.parentElement.hasAttribute('data-ub-google-bridge-inferred'), false);
-    assert.deepEqual(storage.siteHosts(), [['youtube', 'https://youtube.com']]);
+    assert.deepEqual(learned(h), {}, 'a known site name is never learned');
     assert.deepEqual(h.requests, []);
     h.close();
 });
@@ -866,9 +881,11 @@ test('data-surl also gives a destination, while Google or conflicting data URLs 
     h.close();
 });
 
-test('a carousel inline entry with a site text and one host teaches the site name', async () => {
-    // Derived from capture-social-1 type-A entries ("Billboard" with
-    // www.billboard.com); the entry layout itself was not captured raw.
+test('a card\'s own inline entry naming exactly one plain host resolves that card and teaches its name', async () => {
+    // SYNTHETIC entries: the strings come from capture-social-1 type-A entries
+    // ("Billboard" with www.billboard.com), but their array layout is invented,
+    // because the capture kept only a summary of each entry. Real entries may
+    // hold more strings; this proves the scanner, not first-page coverage.
     const entry = (token, strings) => {
         const value = new Array(33).fill(null);
         value[17] = `/goto?url=${token}`;
@@ -876,30 +893,27 @@ test('a carousel inline entry with a site text and one host teaches the site nam
         return value;
     };
     const entries = {
-        one: entry('carousel-one', ['Billboard', 'Taylor Swift tops the chart', 'Billboard chart history: Taylor Swift', 'https://www.billboard.com/music/chart-beat/taylor-swift/', 'MSAF - SRP']),
-        two: entry('carousel-two', ['Castanet', 'https://www.castanet.net/news/1', 'https://www.kelownanow.com/story']),
-        image: entry('carousel-image', ['People', 'https://people.com/taylor/', 'https://i.ytimg.com/vi/abc/hqdefault.jpg']),
+        one: entry('billboard-card', ['Billboard', 'Taylor Swift tops the chart', 'www.billboard.com', 'MSAF - SRP']),
+        two: entry('castanet-card', ['Castanet', 'www.castanet.net', 'www.kelownanow.com']),
     };
-    const storage = createStorage();
     const h = createHarness({
         userAgent: MOBILE_UA,
-        storage,
         html: '<div id="rso">' +
-            organicCard({ id: 'billboard', goto: '/goto?url=billboard-name-only', site: 'Billboard · Gary Trust', meta: 'Charts' }) +
-            organicCard({ id: 'castanet', goto: '/goto?url=castanet-name-only', site: 'Castanet · News', meta: 'Local' }) +
+            organicCard({ id: 'billboard', goto: '/goto?url=billboard-card', site: 'Billboard · Gary Trust', meta: 'Charts' }) +
+            organicCard({ id: 'castanet', goto: '/goto?url=castanet-card', site: 'Castanet · News', meta: 'Local' }) +
+            organicCard({ id: 'billboard-more', goto: '/goto?url=billboard-more', site: 'Billboard · Hot 100', meta: 'Charts' }) +
             `</div>${inlineDataScript(entries)}`,
     });
     await settle(h);
 
     const billboard = proxyOf(h.document.getElementById('billboard'));
     assert.equal(billboard.href, 'https://billboard.com/');
-    assert.equal(billboard.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name');
-    assert.equal(proxyOf(h.document.getElementById('castanet')), null, 'an entry with two hosts teaches nothing');
-    assert.deepEqual(
-        Object.fromEntries(storage.siteHosts()),
-        { billboard: 'https://billboard.com', people: 'https://people.com' },
-        'image URLs do not count as a second host; unrelated or title-length strings are not learned',
-    );
+    assert.equal(billboard.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'inline-host');
+    assert.equal(proxyOf(h.document.getElementById('castanet')), null, 'an entry with two hosts names none');
+    const more = proxyOf(h.document.getElementById('billboard-more'));
+    assert.equal(more.href, 'https://billboard.com/');
+    assert.equal(more.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name');
+    assert.deepEqual(learned(h), { billboard: 'https://billboard.com' });
     h.close();
 });
 
@@ -935,50 +949,36 @@ test('the built-in site list resolves listed social sites as a last resort, with
         if (proxy) assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), source, id);
     }
     assert.notEqual(h.window.getComputedStyle(h.document.getElementById('unlisted')).display, 'none');
-    assert.deepEqual(storage.siteHosts(), [], 'list hosts are not written to the learned map');
+    assert.deepEqual(learned(h), {}, 'list hosts are not learned');
     assert.deepEqual(h.requests, []);
     h.close();
 });
 
-test('page data beats the learned map, the learned map beats the site list, and an ambiguous name falls to the list', async () => {
-    const storage = createStorage({
-        [SITE_HOSTS_KEY]: JSON.stringify([['reddit', 'https://old.reddit.com'], ['youtube', ''], ['instagram', 'https://instagram.net']]),
-    });
+test('page data beats the site list, and lookalike or short-name hosts never teach or override a listed name', async () => {
     const h = createHarness({
         userAgent: MOBILE_UA,
-        storage,
+        url: 'https://www.google.com/search?q=nasa',
         html: '<div id="rso">' +
-            organicCard({ id: 'reddit', goto: '/goto?url=order-reddit', site: 'Reddit · r/castiron' }) +
-            organicCard({ id: 'youtube', goto: '/goto?url=order-youtube', site: 'YouTube · NASA', meta: '15M+ followers' }) +
-            organicCard({ id: 'instagram', goto: '/goto?url=order-instagram', site: 'Instagram · nasa', meta: 'Profile', thumbAlt: 'nasa from www.instagram.com' }) +
+            organicCard({ id: 'viewer', goto: '/goto?url=order-viewer', site: 'Instagram · nasa', meta: 'https://www.instagram-viewer.net › u › nasa' }) +
+            organicCard({ id: 'netflix', goto: '/goto?url=order-netflix', site: 'X', meta: 'https://www.netflix.com › title' }) +
+            organicCard({ id: 'mirror', goto: '/goto?url=order-mirror', site: 'Serious Eats', meta: 'https://www.seriouseats-mirror.net › pans' }) +
+            organicCard({ id: 'instagram', goto: '/goto?url=order-instagram', site: 'Instagram · taylorswift', meta: 'Profile' }) +
+            organicCard({ id: 'x', goto: '/goto?url=order-x', site: 'X · @nasa', meta: 'Posts' }) +
+            organicCard({ id: 'eats', goto: '/goto?url=order-eats', site: 'Serious Eats', meta: 'Recipes' }) +
+            organicCard({ id: 'thumb', goto: '/goto?url=order-thumb', site: 'Instagram · nasa', meta: 'Profile', thumbAlt: 'nasa from www.instagram.com' }) +
             '</div>',
     });
     await settle(h);
 
-    assert.equal(proxyOf(h.document.getElementById('reddit')).href, 'https://old.reddit.com/r/castiron/', 'learned before listed');
-    assert.equal(proxyOf(h.document.getElementById('youtube')).href, 'https://youtube.com/', 'ambiguous learned name uses the list');
-    assert.equal(proxyOf(h.document.getElementById('instagram')).href, 'https://instagram.com/nasa/', 'page data before learned');
+    assert.equal(proxyOf(h.document.getElementById('instagram')).href, 'https://instagram.com/taylorswift/');
+    assert.equal(proxyOf(h.document.getElementById('x')).href, 'https://x.com/nasa');
+    assert.equal(proxyOf(h.document.getElementById('eats')), null, 'a lookalike host teaches nothing');
+    const thumb = proxyOf(h.document.getElementById('thumb'));
+    assert.equal(thumb.href, 'https://instagram.com/nasa/');
+    assert.equal(thumb.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'page-host-path', 'page data first');
+    assert.deepEqual(learned(h), {});
     h.close();
 });
-
-test('the site list waits until the page is parsed, so same-page data and learning come first', async () => {
-    const storage = createStorage();
-    const h = createHarness({
-        userAgent: MOBILE_UA,
-        storage,
-        html: '<div id="rso">' +
-            organicCard({ id: 'early', goto: '/goto?url=wait-early', site: 'YouTube · Taylor Swift', meta: '2 years ago' }) +
-            '<div class="Ww4FFb vt6azd"><a class="zReHs" href="https://music.youtube.com/channel/abc">YouTube · Taylor Swift</a></div>' +
-            '</div>',
-    });
-    await settle(h);
-
-    const proxy = proxyOf(h.document.getElementById('early'));
-    assert.equal(proxy.href, 'https://music.youtube.com/');
-    assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name');
-    h.close();
-});
-
 
 test('mobile opaque result uses its displayed destination URL without any request', async () => {
     const goto = '/goto?url=opaque-massimo-displayed-url';

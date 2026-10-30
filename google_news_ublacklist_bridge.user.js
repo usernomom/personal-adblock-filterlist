@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.3.0
+// @version      13.3.1
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -12,8 +12,7 @@
 // @match        https://*.google.fr/search*
 // @match        https://*.google.co.uk/search*
 // @run-at       document-start
-// @grant        GM_getValue
-// @grant        GM_setValue
+// @grant        GM_deleteValue
 // @grant        unsafeWindow
 // ==/UserScript==
 
@@ -26,34 +25,36 @@
  *      URL, its real destination is found and a hidden proxy link to it
  *      (a.UBFage inside span[data-ub-google-source-proxy]) is prepended to
  *      the result, so uBlacklist can match the destination. Sources, in
- *      order: a destination URL in Google's embedded result data, a
- *      destination URL displayed in the result or held in its data-curl or
- *      data-surl attribute (video results; one URL per result), then, for a
- *      single-result root or the primary or nested link of a multi-result
- *      module: (1) the result's own page data: its domain in Google's inline
- *      result data, else the host ending a thumbnail's alt text ("<query>
- *      from <host>", profile cards; one host per result, never Google);
- *      (2) the host learned for the result's site name ("Site · qualifier"
- *      line); (3) once the page has been parsed, the built-in site list
- *      KNOWN_SITES (Instagram, Facebook, X, YouTube, TikTok, LinkedIn,
- *      Pinterest, Threads, Reddit; owner-approved 2026-10-30); else the
- *      result is released (UB-4). A site name is learned, when the name
- *      matches the host, from results whose destination the page shows
- *      (displayed or data-curl URL, direct link, inline domain, thumbnail
- *      host) and from Google inline entries that name exactly one
- *      non-Google host besides images (strings of up to 30 characters).
- *      Learned and inferred hosts drop a leading www. or m.; a name seen
- *      with unrelated hosts is never used, and list hosts are never stored.
- *      Learned names persist across pages under one bounded storage key. A
- *      qualifier adds a path only where KNOWN_SITES marks it as certainly a
- *      handle: Instagram lowercase username -> /<handle>/, X @handle ->
- *      /<handle>, TikTok @handle -> /@<handle>, Reddit r/<name> ->
- *      /r/<name>/; anything else is host-only. Inferred proxies carry
- *      data-ub-google-bridge-inferred = their source (inline-data, page-host,
- *      site-name, site-list, with -path when a path was added). Whole-site
- *      rules (*://*.<domain>/*) and handle or subreddit rules therefore
- *      match name-only results once their domain or site name is known;
- *      exact-host rules for www. or m. and other exact-path rules do not.
+ *      order, all bound to the result itself: a destination URL in Google's
+ *      embedded result data, a destination URL displayed in the result or
+ *      held in its data-curl or data-surl attribute (one URL per result);
+ *      then, for a single-result root or the primary or nested link of a
+ *      multi-result module, the result's inline entry (tied by its jsdata
+ *      key, else its /goto token): its [22][12] domain, else the one plain
+ *      host it names; else the host in a thumbnail alt of Google's form
+ *      "<q> <word> <host>", where <q> is the page's query. Once the page has
+ *      been parsed: the built-in site list KNOWN_SITES (Instagram, Facebook,
+ *      X, YouTube, TikTok, LinkedIn, Pinterest, Threads, Reddit;
+ *      owner-approved 2026-10-30) for those names; for other names, the
+ *      domain learned on this page; else the result is released (UB-4). A
+ *      name is learned, in page memory only, from a result resolved by one
+ *      of the result-bound sources above (embedded data, displayed or
+ *      data-curl URL, inline domain or host, thumbnail host) whose site line
+ *      ("Site · qualifier") names it, when the compacted name equals the
+ *      host's registrable label (the label left of the public suffix; a
+ *      two-letter TLD after co, com, org, net, gov, ac or edu is a two-level
+ *      suffix; names under four characters must match exactly). Listed names
+ *      are never learned. The learned value is the registrable domain; a name
+ *      seen with two registrable domains on one page is dropped. A qualifier
+ *      adds a path only where KNOWN_SITES marks it as certainly a handle:
+ *      Instagram lowercase username -> /<handle>/, X @handle -> /<handle>,
+ *      TikTok @handle -> /@<handle>, Reddit r/<name> -> /r/<name>/; anything
+ *      else is host-only. Inferred hosts drop a leading www. or m. Inferred
+ *      proxies carry data-ub-google-bridge-inferred = their source
+ *      (inline-data, inline-host, page-host, site-list, site-name, with -path
+ *      when a path was added). Whole-site rules (*://*.<domain>/*) and
+ *      handle or subreddit rules therefore match name-only results; exact-host
+ *      rules for www. or m. and other exact-path rules do not.
  * UB-2 Direct results. A result whose external links all point to one host
  *      gets a proxy with the best of those URLs, unless uBlacklist's own
  *      readable URL is already as good.
@@ -72,15 +73,17 @@
  *      uBlacklist blocks are hidden when it hides blocked results.
  * UB-5 Gap collapse. When uBlacklist hides blocked results, result slots
  *      whose results are all blocked are hidden.
- * UB-6 No network. The bridge makes no network request of any kind (no
- *      /goto resolution); it reads only the page and its own storage.
+ * UB-6 No requests. The bridge itself requests nothing (no /goto
+ *      resolution) and stores nothing: it reads only the page, and on load
+ *      deletes the learned-site key 13.3.0 stored. (Its page-context W_jd
+ *      hook could make the page's CSP report an inline script; untested.)
  * Test marker: html[data-ub-google-bridge-version] = @version.
  */
 
 (() => {
     'use strict';
 
-    const VERSION = '13.3.0';
+    const VERSION = '13.3.1';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const SEARCH_PARAMS = new URLSearchParams(location.search);
     const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
@@ -110,8 +113,8 @@
     // Each result root holds Google's "About this result" control, whose
     // jsdata names the result's inline data entry.
     const RESULT_ENTRY_JSDATA_PREFIX = 'l7Bhpb;_;';
-    const SITE_HOSTS_KEY = 'siteHosts';
-    const SITE_HOSTS_LIMIT = 500;
+    // 13.3.0 stored learned site names under this key; 13.3.1 deletes it.
+    const LEGACY_SITE_HOSTS_KEY = 'siteHosts';
     const SITE_NAME_MAX_LENGTH = 60;
     // Last resort for name-only cards of these sites, approved by the owner on
     // 2026-10-30. Hosts verified that day by following each home page's
@@ -133,13 +136,19 @@
     const pendingRootByLink = new WeakMap();
     const inlineDomainByEntry = new Map();
     const inlineDomainByGoto = new Map();
+    const inlineHostByEntry = new Map();
+    const inlineHostByGoto = new Map();
+    const processedEntryKeys = new Set();
     const unresolvedRoots = new Map();
-    const siteHosts = loadSiteHosts();
+    // Learned site name -> https://<registrable domain>, or '' when dropped.
+    // Page memory only.
+    const siteHosts = new Map();
     let retryingUnresolved = false;
     let retryUnresolvedAgain = false;
     const scannedScripts = new WeakSet();
     const scannedComments = new WeakSet();
     const stats = {
+        inlineEntries: 0,
         proxyAdds: 0,
         inferredProxies: 0,
         observerCallbacks: 0,
@@ -471,34 +480,78 @@
         }
     }
 
+    // The one plain host an inline entry names (a bare host string such as
+    // "www.billboard.com", lowercase, not a file name), or '' when it names
+    // none or several, URL hosts included.
+    function inlineHostOf(entry) {
+        const strings = [];
+        const collect = (node, depth) => {
+            if (strings.length >= 400 || depth > 12) return;
+            if (typeof node === 'string') strings.push(node);
+            else if (Array.isArray(node)) for (const item of node) collect(item, depth + 1);
+            else if (node && typeof node === 'object') for (const item of Object.values(node)) collect(item, depth + 1);
+        };
+        collect(entry, 0);
+        const plain = new Set();
+        const all = new Set();
+        for (const value of strings) {
+            if (value.length > 2048) continue;
+            if (/^https?:\/\//i.test(value)) {
+                const url = externalURL(value);
+                if (url && !isImageURL(url)) all.add(siteOriginOf(url));
+            } else if (
+                value === value.toLowerCase() && isHostShaped(value) &&
+                !/\.(?:png|jpe?g|gif|webp|svg|js|css|json|html?|php|mp4|pdf)$/.test(value)
+            ) {
+                const origin = siteOriginOf(`https://${value}`);
+                plain.add(origin);
+                all.add(origin);
+            }
+        }
+        all.delete('');
+        plain.delete('');
+        return plain.size === 1 && all.size === 1 ? [...plain][0] : '';
+    }
+
     function captureInlineDomains(data) {
         let added = false;
+        const remember = (map, key, value) => {
+            if (!key || !value || map.get(key) === value) return;
+            map.set(key, value);
+            added = true;
+        };
         for (const [entryKey, entry] of Object.entries(data)) {
-            const domain = inlineDomainOf(entry);
-            if (!domain) {
-                learnFromEntry(entry);
-                continue;
-            }
-            if (inlineDomainByEntry.get(entryKey) !== domain) {
-                inlineDomainByEntry.set(entryKey, domain);
-                added = true;
-            }
-            const gotoKey = typeof entry[17] === 'string' ? normalizeGoto(entry[17]) : '';
-            if (gotoKey && inlineDomainByGoto.get(gotoKey) !== domain) {
-                inlineDomainByGoto.set(gotoKey, domain);
-                added = true;
-            }
+            try {
+                const gotoKey = typeof entry[17] === 'string' ? normalizeGoto(entry[17]) : '';
+                const domain = inlineDomainOf(entry);
+                remember(inlineDomainByEntry, entryKey, domain);
+                remember(inlineDomainByGoto, gotoKey, domain);
+                const host = domain ? '' : inlineHostOf(entry);
+                remember(inlineHostByEntry, entryKey, host);
+                remember(inlineHostByGoto, gotoKey, host);
+            } catch (_) {}
         }
         if (added) retryUnresolved();
     }
 
+    // Each entry key is processed once, whichever path delivers it first
+    // (document-start hook, page-context trampoline, inline script text).
     function processWjdData(data) {
         if (!data || typeof data !== 'object') return;
-        captureInlineDomains(data);
-        for (const entry of Object.values(data)) {
-            if (!entry || typeof entry !== 'object') continue;
-            mapContainer(entry);
-            scanDataTree(entry);
+        const fresh = {};
+        for (const [key, entry] of Object.entries(data)) {
+            if (!entry || typeof entry !== 'object' || processedEntryKeys.has(key)) continue;
+            if (Array.isArray(entry) && !entry.length) continue;
+            processedEntryKeys.add(key);
+            stats.inlineEntries += 1;
+            fresh[key] = entry;
+        }
+        captureInlineDomains(fresh);
+        for (const entry of Object.values(fresh)) {
+            try {
+                mapContainer(entry);
+                scanDataTree(entry);
+            } catch (_) {}
         }
     }
 
@@ -519,7 +572,7 @@
                 set(obj, prop, value) {
                     obj[prop] = value;
                     if (typeof prop === 'string' && Array.isArray(value)) {
-                        processWjdData({ [prop]: value });
+                        try { processWjdData({ [prop]: value }); } catch (_) {}
                     }
                     return true;
                 }
@@ -532,7 +585,7 @@
                 set(value) {
                     if (value && typeof value === 'object') {
                         Object.assign(store, value);
-                        processWjdData(value);
+                        try { processWjdData(value); } catch (_) {}
                         proxy = proxify();
                     }
                 }
@@ -843,7 +896,6 @@
 
         const best = pickBestURL(targets);
         if (!best) return;
-        learnSiteHost(root, best);
 
         if (link.matches(UBLACKLIST_NATIVE_URL_SELECTOR) || root.querySelector(PROXY_WRAPPER_SELECTOR)) return;
         const native = nativeReadableURL(root);
@@ -900,116 +952,51 @@
         }
     }
 
-    // A learned pair must look related: the host contains the compacted name
-    // or one of its words of four or more letters. This keeps titles and
-    // comment counts from being learned as site names.
-    function siteNameMatchesHost(name, host) {
-        const compactHost = host.replace(/[^a-z0-9]/g, '');
-        const compactName = name.replace(/[^\p{L}\p{N}]/gu, '');
-        if (compactName && compactHost.includes(compactName)) return true;
-        return name.split(/[^\p{L}\p{N}]+/u).some((word) => word.length >= 4 && compactHost.includes(word));
+    // The registrable domain of a host and its label: the label left of the
+    // public suffix, where a two-letter TLD after co, com, org, net, gov, ac
+    // or edu is a two-level suffix (bbc.co.uk -> bbc).
+    function registrableDomain(host) {
+        const labels = String(host || '').toLowerCase().split('.');
+        const suffix = labels.length >= 3 && /^[a-z]{2}$/.test(labels.at(-1)) &&
+            /^(?:co|com|org|net|gov|ac|edu)$/.test(labels.at(-2)) ? 2 : 1;
+        if (labels.length < suffix + 1) return null;
+        const domain = labels.slice(-(suffix + 1)).join('.');
+        return isHostShaped(domain) ? { domain, label: labels.at(-(suffix + 1)) } : null;
     }
 
-    function isValidSiteHostEntry(entry) {
-        if (!Array.isArray(entry) || entry.length !== 2) return false;
-        const [name, origin] = entry;
-        if (typeof name !== 'string' || !name || name.length > SITE_NAME_MAX_LENGTH) return false;
-        if (origin === '') return true;
-        if (typeof origin !== 'string') return false;
-        try {
-            const url = new URL(origin);
-            return url.origin === origin && /^https?:$/.test(url.protocol) && isHostShaped(url.hostname);
-        } catch (_) {
-            return false;
-        }
-    }
-
-    function loadSiteHosts() {
-        const map = new Map();
-        try {
-            if (typeof GM_getValue !== 'function') return map;
-            const raw = GM_getValue(SITE_HOSTS_KEY, '[]');
-            const entries = typeof raw === 'string' ? JSON.parse(raw) : raw;
-            if (!Array.isArray(entries)) return map;
-            for (const entry of entries.slice(-SITE_HOSTS_LIMIT)) {
-                if (isValidSiteHostEntry(entry)) map.set(entry[0], entry[1]);
-            }
-        } catch (_) {}
-        return map;
-    }
-
-    function saveSiteHosts() {
-        try {
-            if (typeof GM_setValue === 'function') GM_setValue(SITE_HOSTS_KEY, JSON.stringify([...siteHosts]));
-        } catch (_) {}
-    }
-
-    function rememberSiteHost(name, origin) {
-        siteHosts.delete(name);
-        siteHosts.set(name, origin);
-        while (siteHosts.size > SITE_HOSTS_LIMIT) siteHosts.delete(siteHosts.keys().next().value);
-    }
-
-    // Learns name -> origin from a root whose destination the page shows.
-    // Same host: keep. One host a subdomain of the other: keep the parent.
-    // Unrelated hosts: the name becomes ambiguous ('') and is never used.
+    // Learns name -> registrable domain, in page memory, from a result a
+    // result-bound source resolved. Listed names are never learned; the
+    // compacted name must equal the registrable label (names under four
+    // characters exactly); a second registrable domain drops the name.
     function learnSiteHost(root, url) {
         const line = siteLine(root);
         if (line) learnSitePair(line.name, url);
     }
 
     function learnSitePair(name, url) {
-        const origin = siteOriginOf(url);
-        if (!origin || !siteNameMatchesHost(name, hostnameOf(origin))) return;
-
-        const known = siteHosts.get(name);
-        let next = origin;
-        if (known === '') return;
-        if (known) {
-            const knownBase = hostnameOf(known);
-            const newBase = hostnameOf(origin);
-            if (knownBase === newBase || newBase.endsWith(`.${knownBase}`)) next = known;
-            else if (!knownBase.endsWith(`.${newBase}`)) next = '';
+        if (KNOWN_SITES.some((site) => site.name === name)) return;
+        let reg;
+        try {
+            reg = registrableDomain(new URL(url).hostname);
+        } catch (_) {
+            return;
         }
-        rememberSiteHost(name, next);
-        if (next === known) return;
-        saveSiteHosts();
-        if (next) retryUnresolved();
+        if (!reg) return;
+        const matches = name.length < 4
+            ? name === reg.label
+            : name.replace(/[^\p{L}\p{N}]/gu, '') === reg.label.replace(/[^a-z0-9]/g, '');
+        if (!matches) return;
+        const origin = `https://${reg.domain}`;
+        const known = siteHosts.get(name);
+        if (known === origin || known === '') return;
+        siteHosts.set(name, known === undefined ? origin : '');
+        if (known === undefined) retryUnresolved();
     }
 
-    // A Google inline entry (for example a carousel post) whose strings name
-    // exactly one non-Google host, image URLs aside, teaches each of its short
-    // strings that matches that host as a site name ("Billboard" with
-    // www.billboard.com). Entry layout varies, so all strings are read; only
-    // strings of up to 30 characters are taken as names.
-    function learnFromEntry(entry) {
-        if (!entry || typeof entry !== 'object') return;
-        const strings = [];
-        const collect = (node, depth) => {
-            if (strings.length >= 400 || depth > 12) return;
-            if (typeof node === 'string') strings.push(node);
-            else if (Array.isArray(node)) for (const item of node) collect(item, depth + 1);
-            else if (node && typeof node === 'object') for (const item of Object.values(node)) collect(item, depth + 1);
-        };
-        collect(entry, 0);
-        const origins = new Set();
-        const names = [];
-        for (const value of strings) {
-            if (value.length > 2048) continue;
-            if (/^https?:\/\//i.test(value)) {
-                const url = externalURL(value);
-                if (url && !isImageURL(url)) origins.add(siteOriginOf(url));
-            } else if (isHostShaped(value)) {
-                origins.add(siteOriginOf(`https://${value}`));
-            } else if (value.length <= 30) {
-                const name = siteNameOf(value);
-                if (name) names.push(name);
-            }
-        }
-        origins.delete('');
-        if (origins.size !== 1) return;
-        const [origin] = origins;
-        for (const name of new Set(names)) learnSitePair(name, origin);
+    function clearLegacyStorage() {
+        try {
+            if (typeof GM_deleteValue === 'function') GM_deleteValue(LEGACY_SITE_HOSTS_KEY);
+        } catch (_) {}
     }
 
     // ---- Resolving opaque results without any request ----
@@ -1022,16 +1009,24 @@
         }) || null;
     }
 
-    // A profile thumbnail's alt reads "<query> from <host>"; only the last
-    // token is read, so the query text and the interface language do not matter.
+    function normalizedText(value) {
+        return String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    // A profile thumbnail's alt follows Google's template "<q> from <host>":
+    // it starts with the page's query and exactly two tokens follow, the last
+    // being the host. The middle word is not checked, so the interface
+    // language does not matter.
     function thumbnailOrigin(root) {
+        const query = normalizedText(SEARCH_PARAMS.get('q'));
+        if (!query) return '';
         const origins = new Set();
         for (const image of root.querySelectorAll('img[alt]')) {
             if (image.closest('[data-ub-google-source-proxy]')) continue;
-            const alt = String(image.getAttribute('alt') || '').trim();
-            if (!alt || alt.length > 512) continue;
-            const host = alt.slice(alt.lastIndexOf(' ') + 1).toLowerCase();
-            if (host !== alt.toLowerCase() && isHostShaped(host)) origins.add(siteOriginOf(`https://${host}`));
+            const alt = normalizedText(image.getAttribute('alt'));
+            if (alt.length > 512 || !alt.startsWith(`${query} `)) continue;
+            const rest = alt.slice(query.length + 1).split(' ');
+            if (rest.length === 2 && isHostShaped(rest[1])) origins.add(siteOriginOf(`https://${rest[1]}`));
         }
         origins.delete('');
         return origins.size === 1 ? [...origins][0] : '';
@@ -1063,41 +1058,43 @@
             isPrimaryNestedLink(link) || Boolean(link.closest(NESTED_RESULT_SELECTOR));
     }
 
-    function inlineDataDomain(root, key) {
+    // The value a result's inline entry gives: tied by the root's single
+    // jsdata entry key first, else by the link's /goto token.
+    function inlineValue(root, key, byEntry, byGoto) {
         const entryKeys = new Set();
         for (const node of root.querySelectorAll(`[jsdata^="${RESULT_ENTRY_JSDATA_PREFIX}"]`)) {
             entryKeys.add(node.getAttribute('jsdata').slice(RESULT_ENTRY_JSDATA_PREFIX.length));
         }
         if (entryKeys.size === 1) {
-            const domain = inlineDomainByEntry.get([...entryKeys][0]);
-            if (domain) return domain;
+            const value = byEntry.get([...entryKeys][0]);
+            if (value) return value;
         }
-        return inlineDomainByGoto.get(key) || '';
+        return byGoto.get(key) || '';
     }
 
-    // Order: the card's own page data (inline domain, thumbnail host), the
-    // learned site-name map, then, once the page has been parsed, the built-in
-    // site list. A qualifier adds a path only where KNOWN_SITES says it is
-    // certainly a handle of that site.
+    // Order: result-bound page data (inline domain, inline plain host,
+    // thumbnail host); once the page has been parsed, KNOWN_SITES for its
+    // names, else the name learned on this page. A qualifier adds a path only
+    // where KNOWN_SITES says it is certainly a handle of that site.
     function inferDestination(link, key, root) {
         if (!canInferForLink(link)) return null;
         const line = siteLine(root);
-        const inline = inlineDataDomain(root, key);
-        const thumbnail = inline ? '' : thumbnailOrigin(root);
-        const learned = line ? siteHosts.get(line.name) : '';
-        const listed = line && document.readyState !== 'loading'
-            ? KNOWN_SITES.find((site) => site.name === line.name)
-            : null;
+        const inline = inlineValue(root, key, inlineDomainByEntry, inlineDomainByGoto);
+        const inlineHost = inline ? '' : inlineValue(root, key, inlineHostByEntry, inlineHostByGoto);
+        const thumbnail = inline || inlineHost ? '' : thumbnailOrigin(root);
+        const parsed = document.readyState !== 'loading';
+        const listed = line ? KNOWN_SITES.find((site) => site.name === line.name) : null;
         let origin = '';
         let source = '';
         if (inline) [origin, source] = [`https://${inline}`, 'inline-data'];
+        else if (inlineHost) [origin, source] = [inlineHost, 'inline-host'];
         else if (thumbnail) [origin, source] = [thumbnail, 'page-host'];
-        else if (learned) [origin, source] = [learned, 'site-name'];
-        else if (listed) [origin, source] = [siteOriginOf(`https://${listed.host}`), 'site-list'];
+        else if (parsed && listed) [origin, source] = [siteOriginOf(`https://${listed.host}`), 'site-list'];
+        else if (parsed && line && siteHosts.get(line.name)) [origin, source] = [siteHosts.get(line.name), 'site-name'];
         if (!origin) return null;
         const site = knownSiteFor(origin);
         const handle = site?.handle && line ? line.qualifier.match(site.handle) : null;
-        const learnFrom = source === 'inline-data' || source === 'page-host';
+        const learnFrom = source === 'inline-data' || source === 'inline-host' || source === 'page-host';
         return handle
             ? { url: `${origin}${site.path(handle[1])}`, source: `${source}-path`, learnFrom }
             : { url: `${origin}/`, source, learnFrom };
@@ -1302,6 +1299,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
 
     function start() {
 
+        clearLegacyStorage();
         installResultFirewallStyle();
         window.addEventListener(WJD_EVENT, (event) => {
             try {
@@ -1370,6 +1368,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             return count;
         },
         get stats() { return { ...stats }; },
+        get learnedSites() { return Object.fromEntries(siteHosts); },
         resolveGoto(value) { return gotoMap.get(normalizeGoto(value)) || ''; },
     };
     if (document.documentElement) start();
