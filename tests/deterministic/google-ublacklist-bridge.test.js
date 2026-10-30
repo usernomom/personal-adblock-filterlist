@@ -30,7 +30,7 @@ function createStorage(initial = {}) {
 // (q=cast iron seasoning reddit): a name-only organic card carries only the
 // "Site · qualifier" line, a comments/age line and the heading, all inside one
 // /goto anchor. A cited card shows its host in the same span.ob9lvb slot.
-function organicCard({ id, goto, site, meta = '30+ comments · 8 years ago', title = 'Result title' }) {
+function organicCard({ id, goto, site, meta = '30+ comments · 8 years ago', title = 'Result title', thumbAlt = null }) {
     return `<div id="${id}" class="Ww4FFb vt6azd">` +
         `<a class="UBFage" href="${goto}" ping="/url?sa=t&amp;source=web&amp;url=${goto.split('url=')[1]}">` +
         '<div data-snf="tyjmbc"><div class="kb0PBd cvP2Ce">' +
@@ -38,7 +38,12 @@ function organicCard({ id, goto, site, meta = '30+ comments · 8 years ago', tit
         `<div class="GkAmnd ZaCDgb RES9jf">${site.replace(/ · /g, '&nbsp;·&nbsp;')}</div>` +
         `<span class="nC62wb VndCse ob9lvb" role="text">${meta}</span></div>` +
         `<div class="F0FGWb" aria-level="3" role="heading"><div role="link"><span>${title}</span></div></div>` +
-        '</div></a></div>';
+        '</div></a>' +
+        // Profile cards add a thumbnail link (its own /goto token) whose image
+        // alt reads "<query> from <host>" (capture-social-3).
+        (thumbAlt === null ? '' : `<a href="${goto}-thumb"><div class="uhHOwf ez24Df">` +
+            `<img alt="${thumbAlt}" src="data:image/gif;base64,AA=="></div></a>`) +
+        '</div>';
 }
 
 // uBlacklist match patterns follow WebExtension match patterns
@@ -543,7 +548,7 @@ test('name-only result with no page-revealed destination is released to uBlackli
     h.document.documentElement.setAttribute('data-ub-hide-blocked-results', '1');
 
     const holder = h.document.createElement('div');
-    holder.innerHTML = organicCard({ id: 'late', goto: '/goto?url=late-name-only', site: 'Reddit · r/castiron' });
+    holder.innerHTML = organicCard({ id: 'late', goto: '/goto?url=late-name-only', site: 'Serious Eats · Forum' });
     h.document.getElementById('rso').appendChild(holder.firstElementChild);
     await settle(h);
 
@@ -667,8 +672,8 @@ test('a site name learned on an earlier page bridges later name-only cards, with
     assert.equal(reddit.href, 'https://reddit.com/r/castiron/');
     assert.equal(reddit.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name-path');
     const instagram = proxyOf(second.document.getElementById('instagram'));
-    assert.equal(instagram.href, 'https://instagram.com/', 'a handle is not a reliable path, so only the host is used');
-    assert.equal(instagram.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name');
+    assert.equal(instagram.href, 'https://instagram.com/taylorswift/', 'an Instagram username qualifier is the profile path');
+    assert.equal(instagram.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name-path');
     const unknown = second.document.getElementById('unknown');
     assert.equal(proxyOf(unknown), null);
     assert.notEqual(second.window.getComputedStyle(unknown).display, 'none');
@@ -767,7 +772,7 @@ test('malformed inline result data is ignored without throwing', async () => {
     const h = createHarness({
         userAgent: MOBILE_UA,
         html: '<div id="rso">' +
-            organicCard({ id: 'malformed', goto, site: 'Reddit · r/castiron' }) +
+            organicCard({ id: 'malformed', goto, site: 'Serious Eats · Forum' }) +
             `</div>${inlineDataScript(entries)}`,
         wjd: entries,
     });
@@ -776,6 +781,201 @@ test('malformed inline result data is ignored without throwing', async () => {
     const root = h.document.getElementById('malformed');
     assert.equal(proxyOf(root), null);
     assert.notEqual(h.window.getComputedStyle(root).display, 'none');
+    h.close();
+});
+
+const social = require('../fixtures/google-mobile-social-cards.json');
+
+test('captured profile card takes its host from the thumbnail alt and its Instagram username as the path', async () => {
+    const storage = createStorage();
+    const h = createHarness({ userAgent: MOBILE_UA, storage, html: `<div id="rso">${social.profileRoot}</div>` });
+    await settle(h);
+
+    const root = h.document.querySelector('#rso > .Ww4FFb');
+    const proxy = proxyOf(root);
+    assert.ok(proxy, 'the alt "taylor swift from www.instagram.com" names the host');
+    assert.equal(proxy.href, 'https://instagram.com/taylorswift/');
+    assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'page-host-path');
+    assert.deepEqual(storage.siteHosts(), [['instagram', 'https://instagram.com']], 'the alt host teaches the site name');
+    assert.equal(h.window.getComputedStyle(root).display, 'none', 'bridged, so it waits for uBlacklist');
+    assert.deepEqual(h.requests, []);
+    h.close();
+});
+
+test('thumbnail alt hosts are taken only from an anchored trailing host that is not Google', async () => {
+    const cases = [
+        { id: 'facebook', site: 'Facebook · Taylor Swift', alt: 'taylor swift from www.facebook.com', href: 'https://facebook.com/' },
+        { id: 'no-host', site: 'Serious Eats · Forum', alt: 'pictures from my trip', href: null },
+        { id: 'google', site: 'Serious Eats · Forum', alt: 'maps from www.google.com', href: null },
+        { id: 'mid-host', site: 'Serious Eats · Forum', alt: 'www.seriouseats.com photo of a pan', href: null },
+        { id: 'trailing-dot', site: 'Serious Eats · Forum', alt: 'pan from www.seriouseats.com.', href: null },
+        { id: 'long', site: 'Serious Eats · Forum', alt: `${'a1b2-'.repeat(4000)}x from `, href: null },
+    ];
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' +
+            cases.map(({ id, site, alt }) => organicCard({ id, goto: `/goto?url=alt-${id}`, site, meta: 'Profile', thumbAlt: alt })).join('') +
+            '</div>',
+    });
+    await settle(h);
+
+    for (const { id, href } of cases) {
+        const proxy = proxyOf(h.document.getElementById(id));
+        assert.equal(proxy ? proxy.href : null, href, id);
+    }
+    assert.equal(
+        proxyOf(h.document.getElementById('facebook')).parentElement.getAttribute('data-ub-google-bridge-inferred'),
+        'page-host',
+        'a display name is not a username, so only the host is used',
+    );
+    h.close();
+});
+
+test('captured video result uses its data-curl destination exactly and teaches its site name', async () => {
+    const storage = createStorage();
+    const h = createHarness({ userAgent: MOBILE_UA, storage, html: `<div id="rso">${social.videoRoot}</div>` });
+    await settle(h);
+
+    const root = h.document.querySelector('#rso > .sHEJob');
+    const proxy = proxyOf(root);
+    assert.ok(proxy);
+    assert.equal(proxy.href, 'https://www.youtube.com/watch?v=X-i7bPSbbQ0', 'the full URL, so path rules match');
+    assert.equal(proxy.parentElement.hasAttribute('data-ub-google-bridge-inferred'), false);
+    assert.deepEqual(storage.siteHosts(), [['youtube', 'https://youtube.com']]);
+    assert.deepEqual(h.requests, []);
+    h.close();
+});
+
+test('data-surl also gives a destination, while Google or conflicting data URLs give none', async () => {
+    const video = (id, site, attrs) => `<div id="${id}" class="sHEJob"><div ${attrs}></div>` +
+        `<a class="rIRoqf" href="/goto?url=video-${id}"><div role="heading" aria-level="3">Clip</div>` +
+        `<div class="SPa6uf">${site}&nbsp;·&nbsp;Someone</div></a></div>`;
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' +
+            video('surl', 'Vimeo', 'data-surl="https://vimeo.com/12345"') +
+            video('google', 'Dailymotion', 'data-curl="https://www.google.com/search?q=clip"') +
+            video('two', 'Rumble', 'data-curl="https://vimeo.com/1"></div><div data-curl="https://vimeo.com/2"') +
+            '</div>',
+    });
+    await settle(h);
+
+    assert.equal(proxyOf(h.document.getElementById('surl')).href, 'https://vimeo.com/12345');
+    assert.equal(proxyOf(h.document.getElementById('google')), null);
+    assert.equal(proxyOf(h.document.getElementById('two')), null, 'two destinations in one root say nothing about either link');
+    h.close();
+});
+
+test('a carousel inline entry with a site text and one host teaches the site name', async () => {
+    // Derived from capture-social-1 type-A entries ("Billboard" with
+    // www.billboard.com); the entry layout itself was not captured raw.
+    const entry = (token, strings) => {
+        const value = new Array(33).fill(null);
+        value[17] = `/goto?url=${token}`;
+        value[30] = strings;
+        return value;
+    };
+    const entries = {
+        one: entry('carousel-one', ['Billboard', 'Taylor Swift tops the chart', 'Billboard chart history: Taylor Swift', 'https://www.billboard.com/music/chart-beat/taylor-swift/', 'MSAF - SRP']),
+        two: entry('carousel-two', ['Castanet', 'https://www.castanet.net/news/1', 'https://www.kelownanow.com/story']),
+        image: entry('carousel-image', ['People', 'https://people.com/taylor/', 'https://i.ytimg.com/vi/abc/hqdefault.jpg']),
+    };
+    const storage = createStorage();
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        storage,
+        html: '<div id="rso">' +
+            organicCard({ id: 'billboard', goto: '/goto?url=billboard-name-only', site: 'Billboard · Gary Trust', meta: 'Charts' }) +
+            organicCard({ id: 'castanet', goto: '/goto?url=castanet-name-only', site: 'Castanet · News', meta: 'Local' }) +
+            `</div>${inlineDataScript(entries)}`,
+    });
+    await settle(h);
+
+    const billboard = proxyOf(h.document.getElementById('billboard'));
+    assert.equal(billboard.href, 'https://billboard.com/');
+    assert.equal(billboard.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name');
+    assert.equal(proxyOf(h.document.getElementById('castanet')), null, 'an entry with two hosts teaches nothing');
+    assert.deepEqual(
+        Object.fromEntries(storage.siteHosts()),
+        { billboard: 'https://billboard.com', people: 'https://people.com' },
+        'image URLs do not count as a second host; unrelated or title-length strings are not learned',
+    );
+    h.close();
+});
+
+test('the built-in site list resolves listed social sites as a last resort, with certain handle paths only', async () => {
+    const cards = [
+        ['x-handle', 'X · @taylorswift13', 'https://x.com/taylorswift13', 'site-list-path'],
+        ['x-name', 'X · Taylor Swift', 'https://x.com/', 'site-list'],
+        ['tiktok-handle', 'TikTok · @taylorswift', 'https://tiktok.com/@taylorswift', 'site-list-path'],
+        ['tiktok-name', 'TikTok · Taylor Swift', 'https://tiktok.com/', 'site-list'],
+        ['instagram-handle', 'Instagram · taylorswift', 'https://instagram.com/taylorswift/', 'site-list-path'],
+        ['instagram-name', 'Instagram · NASA', 'https://instagram.com/', 'site-list'],
+        ['facebook', 'Facebook · Taylor Swift', 'https://facebook.com/', 'site-list'],
+        ['youtube', 'YouTube · NASA', 'https://youtube.com/', 'site-list'],
+        ['linkedin', 'LinkedIn · NASA', 'https://linkedin.com/', 'site-list'],
+        ['pinterest', 'Pinterest · Recipes', 'https://pinterest.com/', 'site-list'],
+        ['threads', 'Threads · taylorswift', 'https://threads.com/', 'site-list'],
+        ['reddit', 'Reddit · r/castiron', 'https://reddit.com/r/castiron/', 'site-list-path'],
+        ['unlisted', 'Serious Eats · Forum', null, null],
+    ];
+    const storage = createStorage();
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        storage,
+        html: '<div id="rso">' +
+            cards.map(([id, site]) => organicCard({ id, goto: `/goto?url=list-${id}`, site, meta: '1M+ followers' })).join('') +
+            '</div>',
+    });
+    await settle(h);
+
+    for (const [id, , href, source] of cards) {
+        const proxy = proxyOf(h.document.getElementById(id));
+        assert.equal(proxy ? proxy.href : null, href, id);
+        if (proxy) assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), source, id);
+    }
+    assert.notEqual(h.window.getComputedStyle(h.document.getElementById('unlisted')).display, 'none');
+    assert.deepEqual(storage.siteHosts(), [], 'list hosts are not written to the learned map');
+    assert.deepEqual(h.requests, []);
+    h.close();
+});
+
+test('page data beats the learned map, the learned map beats the site list, and an ambiguous name falls to the list', async () => {
+    const storage = createStorage({
+        [SITE_HOSTS_KEY]: JSON.stringify([['reddit', 'https://old.reddit.com'], ['youtube', ''], ['instagram', 'https://instagram.net']]),
+    });
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        storage,
+        html: '<div id="rso">' +
+            organicCard({ id: 'reddit', goto: '/goto?url=order-reddit', site: 'Reddit · r/castiron' }) +
+            organicCard({ id: 'youtube', goto: '/goto?url=order-youtube', site: 'YouTube · NASA', meta: '15M+ followers' }) +
+            organicCard({ id: 'instagram', goto: '/goto?url=order-instagram', site: 'Instagram · nasa', meta: 'Profile', thumbAlt: 'nasa from www.instagram.com' }) +
+            '</div>',
+    });
+    await settle(h);
+
+    assert.equal(proxyOf(h.document.getElementById('reddit')).href, 'https://old.reddit.com/r/castiron/', 'learned before listed');
+    assert.equal(proxyOf(h.document.getElementById('youtube')).href, 'https://youtube.com/', 'ambiguous learned name uses the list');
+    assert.equal(proxyOf(h.document.getElementById('instagram')).href, 'https://instagram.com/nasa/', 'page data before learned');
+    h.close();
+});
+
+test('the site list waits until the page is parsed, so same-page data and learning come first', async () => {
+    const storage = createStorage();
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        storage,
+        html: '<div id="rso">' +
+            organicCard({ id: 'early', goto: '/goto?url=wait-early', site: 'YouTube · Taylor Swift', meta: '2 years ago' }) +
+            '<div class="Ww4FFb vt6azd"><a class="zReHs" href="https://music.youtube.com/channel/abc">YouTube · Taylor Swift</a></div>' +
+            '</div>',
+    });
+    await settle(h);
+
+    const proxy = proxyOf(h.document.getElementById('early'));
+    assert.equal(proxy.href, 'https://music.youtube.com/');
+    assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name');
     h.close();
 });
 

@@ -27,20 +27,33 @@
  *      (a.UBFage inside span[data-ub-google-source-proxy]) is prepended to
  *      the result, so uBlacklist can match the destination. Sources, in
  *      order: a destination URL in Google's embedded result data, a
- *      destination URL displayed in the result, then, for a single-result
- *      root or the primary or nested link of a multi-result module, the
- *      result's domain from Google's inline result data, else the host
- *      learned for the result's site name ("Site · qualifier" line). A
- *      site name is learned from results whose destination the page shows
- *      (displayed URL, direct link, inline domain) when the name matches the
- *      host, without a leading www. or m.; a name seen with unrelated hosts
- *      is never used. Learned names persist across pages under one bounded
- *      storage key. A qualifier r/<name> adds the path /r/<name>/; other
- *      qualifiers add nothing. Inferred proxies carry
- *      data-ub-google-bridge-inferred = their source. Whole-site rules
- *      (*://*.<domain>/*) and subreddit rules therefore keep matching
- *      name-only results once their domain or site name is known; exact-host
- *      rules for www. or m. and exact-path rules no longer match them.
+ *      destination URL displayed in the result or held in its data-curl or
+ *      data-surl attribute (video results; one URL per result), then, for a
+ *      single-result root or the primary or nested link of a multi-result
+ *      module: (1) the result's own page data: its domain in Google's inline
+ *      result data, else the host ending a thumbnail's alt text ("<query>
+ *      from <host>", profile cards; one host per result, never Google);
+ *      (2) the host learned for the result's site name ("Site · qualifier"
+ *      line); (3) once the page has been parsed, the built-in site list
+ *      KNOWN_SITES (Instagram, Facebook, X, YouTube, TikTok, LinkedIn,
+ *      Pinterest, Threads, Reddit; owner-approved 2026-10-30); else the
+ *      result is released (UB-4). A site name is learned, when the name
+ *      matches the host, from results whose destination the page shows
+ *      (displayed or data-curl URL, direct link, inline domain, thumbnail
+ *      host) and from Google inline entries that name exactly one
+ *      non-Google host besides images (strings of up to 30 characters).
+ *      Learned and inferred hosts drop a leading www. or m.; a name seen
+ *      with unrelated hosts is never used, and list hosts are never stored.
+ *      Learned names persist across pages under one bounded storage key. A
+ *      qualifier adds a path only where KNOWN_SITES marks it as certainly a
+ *      handle: Instagram lowercase username -> /<handle>/, X @handle ->
+ *      /<handle>, TikTok @handle -> /@<handle>, Reddit r/<name> ->
+ *      /r/<name>/; anything else is host-only. Inferred proxies carry
+ *      data-ub-google-bridge-inferred = their source (inline-data, page-host,
+ *      site-name, site-list, with -path when a path was added). Whole-site
+ *      rules (*://*.<domain>/*) and handle or subreddit rules therefore
+ *      match name-only results once their domain or site name is known;
+ *      exact-host rules for www. or m. and other exact-path rules do not.
  * UB-2 Direct results. A result whose external links all point to one host
  *      gets a proxy with the best of those URLs, unless uBlacklist's own
  *      readable URL is already as good.
@@ -100,6 +113,21 @@
     const SITE_HOSTS_KEY = 'siteHosts';
     const SITE_HOSTS_LIMIT = 500;
     const SITE_NAME_MAX_LENGTH = 60;
+    // Last resort for name-only cards of these sites, approved by the owner on
+    // 2026-10-30. Hosts verified that day by following each home page's
+    // redirects (desktop user agent). handle/path: the qualifier shapes that
+    // are certainly a profile handle, and that profile's URL path.
+    const KNOWN_SITES = [
+        { name: 'instagram', host: 'www.instagram.com', handle: /^([a-z0-9._]{1,30})$/, path: (h) => `/${h}/` },
+        { name: 'facebook', host: 'www.facebook.com' },
+        { name: 'x', host: 'x.com', handle: /^@([A-Za-z0-9_]{1,15})$/, path: (h) => `/${h}` },
+        { name: 'youtube', host: 'www.youtube.com' },
+        { name: 'tiktok', host: 'www.tiktok.com', handle: /^@([a-z0-9._]{2,24})$/, path: (h) => `/@${h}` },
+        { name: 'linkedin', host: 'www.linkedin.com' },
+        { name: 'pinterest', host: 'www.pinterest.com' },
+        { name: 'threads', host: 'www.threads.com' },
+        { name: 'reddit', host: 'www.reddit.com', handle: /^r\/([A-Za-z0-9_]{2,21})(?:\s|$)/, path: (h) => `/r/${h}/` },
+    ];
     const gotoMap = new Map();
     const pendingByGoto = new Map();
     const pendingRootByLink = new WeakMap();
@@ -447,7 +475,10 @@
         let added = false;
         for (const [entryKey, entry] of Object.entries(data)) {
             const domain = inlineDomainOf(entry);
-            if (!domain) continue;
+            if (!domain) {
+                learnFromEntry(entry);
+                continue;
+            }
             if (inlineDomainByEntry.get(entryKey) !== domain) {
                 inlineDomainByEntry.set(entryKey, domain);
                 added = true;
@@ -842,16 +873,31 @@
                 continue;
             }
             const [name, ...rest] = text.split(/\s·\s/);
-            const key = siteNameKey(name);
-            if (
-                !key || key.length > SITE_NAME_MAX_LENGTH ||
-                !/\p{L}/u.test(key) || /[/›]|:\/\//.test(key)
-            ) {
-                return null;
-            }
-            return { name: key, qualifier: rest.join(' · ').trim() };
+            const key = siteNameOf(name);
+            return key ? { name: key, qualifier: rest.join(' · ').trim() } : null;
         }
         return null;
+    }
+
+    function siteNameOf(text) {
+        const key = siteNameKey(text);
+        return key && key.length <= SITE_NAME_MAX_LENGTH && /\p{L}/u.test(key) && !/[/›]|:\/\//.test(key)
+            ? key
+            : '';
+    }
+
+    // The learned and inferred host drops a leading www. or m., so it does not
+    // depend on which of a site's cards was seen first and has the same
+    // domain-level form as Google's inline data domains.
+    function siteOriginOf(url) {
+        try {
+            const parsed = new URL(url);
+            if (!/^https?:$/.test(parsed.protocol)) return '';
+            const host = parsed.hostname.toLowerCase().replace(/^(?:www|m)\.(?=[^.]+\.[^.]+)/, '');
+            return isHostShaped(host) ? `${parsed.protocol}//${host}` : '';
+        } catch (_) {
+            return '';
+        }
     }
 
     // A learned pair must look related: the host contains the compacted name
@@ -909,22 +955,14 @@
     // Unrelated hosts: the name becomes ambiguous ('') and is never used.
     function learnSiteHost(root, url) {
         const line = siteLine(root);
-        if (!line) return;
-        // The learned host drops a leading www. or m., so the inferred host
-        // does not depend on which of a site's cards was seen first and has
-        // the same domain-level form as Google's inline data domains.
-        let origin;
-        try {
-            const parsed = new URL(url);
-            const host = parsed.hostname.toLowerCase().replace(/^(?:www|m)\.(?=[^.]+\.[^.]+)/, '');
-            if (!isHostShaped(host)) return;
-            origin = `${parsed.protocol}//${host}`;
-        } catch (_) {
-            return;
-        }
-        if (!siteNameMatchesHost(line.name, hostnameOf(origin))) return;
+        if (line) learnSitePair(line.name, url);
+    }
 
-        const known = siteHosts.get(line.name);
+    function learnSitePair(name, url) {
+        const origin = siteOriginOf(url);
+        if (!origin || !siteNameMatchesHost(name, hostnameOf(origin))) return;
+
+        const known = siteHosts.get(name);
         let next = origin;
         if (known === '') return;
         if (known) {
@@ -933,13 +971,85 @@
             if (knownBase === newBase || newBase.endsWith(`.${knownBase}`)) next = known;
             else if (!knownBase.endsWith(`.${newBase}`)) next = '';
         }
-        rememberSiteHost(line.name, next);
+        rememberSiteHost(name, next);
         if (next === known) return;
         saveSiteHosts();
         if (next) retryUnresolved();
     }
 
+    // A Google inline entry (for example a carousel post) whose strings name
+    // exactly one non-Google host, image URLs aside, teaches each of its short
+    // strings that matches that host as a site name ("Billboard" with
+    // www.billboard.com). Entry layout varies, so all strings are read; only
+    // strings of up to 30 characters are taken as names.
+    function learnFromEntry(entry) {
+        if (!entry || typeof entry !== 'object') return;
+        const strings = [];
+        const collect = (node, depth) => {
+            if (strings.length >= 400 || depth > 12) return;
+            if (typeof node === 'string') strings.push(node);
+            else if (Array.isArray(node)) for (const item of node) collect(item, depth + 1);
+            else if (node && typeof node === 'object') for (const item of Object.values(node)) collect(item, depth + 1);
+        };
+        collect(entry, 0);
+        const origins = new Set();
+        const names = [];
+        for (const value of strings) {
+            if (value.length > 2048) continue;
+            if (/^https?:\/\//i.test(value)) {
+                const url = externalURL(value);
+                if (url && !isImageURL(url)) origins.add(siteOriginOf(url));
+            } else if (isHostShaped(value)) {
+                origins.add(siteOriginOf(`https://${value}`));
+            } else if (value.length <= 30) {
+                const name = siteNameOf(value);
+                if (name) names.push(name);
+            }
+        }
+        origins.delete('');
+        if (origins.size !== 1) return;
+        const [origin] = origins;
+        for (const name of new Set(names)) learnSitePair(name, origin);
+    }
+
     // ---- Resolving opaque results without any request ----
+
+    function knownSiteFor(origin) {
+        const host = hostnameOf(origin);
+        return KNOWN_SITES.find((site) => {
+            const siteHost = hostnameOf(siteOriginOf(`https://${site.host}`));
+            return host === siteHost || host.endsWith(`.${siteHost}`);
+        }) || null;
+    }
+
+    // A profile thumbnail's alt reads "<query> from <host>"; only the last
+    // token is read, so the query text and the interface language do not matter.
+    function thumbnailOrigin(root) {
+        const origins = new Set();
+        for (const image of root.querySelectorAll('img[alt]')) {
+            if (image.closest('[data-ub-google-source-proxy]')) continue;
+            const alt = String(image.getAttribute('alt') || '').trim();
+            if (!alt || alt.length > 512) continue;
+            const host = alt.slice(alt.lastIndexOf(' ') + 1).toLowerCase();
+            if (host !== alt.toLowerCase() && isHostShaped(host)) origins.add(siteOriginOf(`https://${host}`));
+        }
+        origins.delete('');
+        return origins.size === 1 ? [...origins][0] : '';
+    }
+
+    // Video results carry their destination in data-curl or data-surl.
+    function pageDataURL(root) {
+        if (!isElement(root)) return '';
+        const urls = new Set();
+        for (const node of root.querySelectorAll('[data-curl], [data-surl]')) {
+            if (node.closest('[data-ub-google-source-proxy]')) continue;
+            for (const name of ['data-curl', 'data-surl']) {
+                const url = externalURL(node.getAttribute(name) || '');
+                if (url) urls.add(url);
+            }
+        }
+        return urls.size === 1 ? [...urls][0] : '';
+    }
 
     // Single-result roots, or the primary or nested link of a multi-result
     // module; other links of a module say nothing about the root as a whole.
@@ -965,24 +1075,32 @@
         return inlineDomainByGoto.get(key) || '';
     }
 
+    // Order: the card's own page data (inline domain, thumbnail host), the
+    // learned site-name map, then, once the page has been parsed, the built-in
+    // site list. A qualifier adds a path only where KNOWN_SITES says it is
+    // certainly a handle of that site.
     function inferDestination(link, key, root) {
         if (!canInferForLink(link)) return null;
         const line = siteLine(root);
+        const inline = inlineDataDomain(root, key);
+        const thumbnail = inline ? '' : thumbnailOrigin(root);
+        const learned = line ? siteHosts.get(line.name) : '';
+        const listed = line && document.readyState !== 'loading'
+            ? KNOWN_SITES.find((site) => site.name === line.name)
+            : null;
         let origin = '';
         let source = '';
-        const domain = inlineDataDomain(root, key);
-        if (domain) {
-            origin = `https://${domain}`;
-            source = 'inline-data';
-        } else if (line && siteHosts.get(line.name)) {
-            origin = siteHosts.get(line.name);
-            source = 'site-name';
-        }
+        if (inline) [origin, source] = [`https://${inline}`, 'inline-data'];
+        else if (thumbnail) [origin, source] = [thumbnail, 'page-host'];
+        else if (learned) [origin, source] = [learned, 'site-name'];
+        else if (listed) [origin, source] = [siteOriginOf(`https://${listed.host}`), 'site-list'];
         if (!origin) return null;
-        const subreddit = line?.qualifier.match(/^r\/([A-Za-z0-9_]{2,21})(?:\s|$)/);
-        return subreddit
-            ? { url: `${origin}/r/${subreddit[1]}/`, source: `${source}-path`, learnFrom: source === 'inline-data' }
-            : { url: `${origin}/`, source, learnFrom: source === 'inline-data' };
+        const site = knownSiteFor(origin);
+        const handle = site?.handle && line ? line.qualifier.match(site.handle) : null;
+        const learnFrom = source === 'inline-data' || source === 'page-host';
+        return handle
+            ? { url: `${origin}${site.path(handle[1])}`, source: `${source}-path`, learnFrom }
+            : { url: `${origin}/`, source, learnFrom };
     }
 
     function markUnresolved(root) {
@@ -1146,7 +1264,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         links.add(link);
         if (bridgeRoot) pendingRootByLink.set(link, bridgeRoot);
 
-        const displayed = displayedResultURL(link, bridgeRoot);
+        const displayed = displayedResultURL(link, bridgeRoot) || pageDataURL(bridgeRoot);
         if (displayed) {
             maybeSetGoto(key, displayed);
             return;
