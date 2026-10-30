@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.2.9
+// @version      13.3.0
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -12,11 +12,9 @@
 // @match        https://*.google.fr/search*
 // @match        https://*.google.co.uk/search*
 // @run-at       document-start
-// @grant        GM_xmlhttpRequest
-// @grant        GM.xmlHttpRequest
-// @grant        GM.xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @grant        unsafeWindow
-// @connect      *
 // ==/UserScript==
 
 /*
@@ -28,10 +26,21 @@
  *      URL, its real destination is found and a hidden proxy link to it
  *      (a.UBFage inside span[data-ub-google-source-proxy]) is prepended to
  *      the result, so uBlacklist can match the destination. Sources, in
- *      order: Google's embedded result data, a destination URL displayed in
- *      the result, then network resolution of the /goto URL (single-result
- *      roots, or the primary or nested link of a multi-result module; News
- *      tab cards are resolved 4 at a time).
+ *      order: a destination URL in Google's embedded result data, a
+ *      destination URL displayed in the result, then, for a single-result
+ *      root or the primary or nested link of a multi-result module, the
+ *      result's domain from Google's inline result data, else the host
+ *      learned for the result's site name ("Site · qualifier" line). A
+ *      site name is learned from results whose destination the page shows
+ *      (displayed URL, direct link, inline domain) when the name matches the
+ *      host, without a leading www. or m.; a name seen with unrelated hosts
+ *      is never used. Learned names persist across pages under one bounded
+ *      storage key. A qualifier r/<name> adds the path /r/<name>/; other
+ *      qualifiers add nothing. Inferred proxies carry
+ *      data-ub-google-bridge-inferred = their source. Whole-site rules
+ *      (*://*.<domain>/*) and subreddit rules therefore keep matching
+ *      name-only results once their domain or site name is known; exact-host
+ *      rules for www. or m. and exact-path rules no longer match them.
  * UB-2 Direct results. A result whose external links all point to one host
  *      gets a proxy with the best of those URLs, unless uBlacklist's own
  *      readable URL is already as good.
@@ -41,19 +50,24 @@
  *      Images or other tabs), results uBlacklist classifies stay hidden
  *      until uBlacklist has processed them, on desktop and mobile alike;
  *      attaching a bridge proxy never reveals a result on its own, and
- *      there is no timer that reveals an unprocessed result. Results
- *      awaiting network resolution stay hidden until their proxy exists;
- *      News-tab cards stay hidden until bridged. Results uBlacklist blocks
- *      are hidden when it hides blocked results.
+ *      there is no timer that reveals an unprocessed result. A result that
+ *      links only through /goto and has no source above once the page has
+ *      been parsed (or, for results added later, at once) is released:
+ *      marked data-ub-google-bridge-unresolved and shown without waiting
+ *      for uBlacklist, on every tab including News and Top stories, since
+ *      uBlacklist may never mark a root it cannot read a URL from. Results
+ *      uBlacklist blocks are hidden when it hides blocked results.
  * UB-5 Gap collapse. When uBlacklist hides blocked results, result slots
  *      whose results are all blocked are hidden.
+ * UB-6 No network. The bridge makes no network request of any kind (no
+ *      /goto resolution); it reads only the page and its own storage.
  * Test marker: html[data-ub-google-bridge-version] = @version.
  */
 
 (() => {
     'use strict';
 
-    const VERSION = '13.2.9';
+    const VERSION = '13.3.0';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const SEARCH_PARAMS = new URLSearchParams(location.search);
     const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
@@ -67,14 +81,6 @@
     const IS_WEB_TAB = !/[?&](udm=(?!14|web(&|$))|tbm=(?!&|$))/.test(location.search);
     const IS_FORUMS_TAB = /[?&]udm=(18|forums)(&|$)/.test(location.search);
     const IS_VIDEOS_TAB = /[?&]udm=(7|vids)(&|$)/.test(location.search);
-    const NEWS_NETWORK_CONCURRENCY = 4;
-    const NEWS_NETWORK_RETRIES = 2;
-    const NEWS_NETWORK_RETRY_DELAY_MS = 100;
-    const NEWS_NETWORK_TIMEOUT_MS = 1500;
-    const ORDINARY_NETWORK_RETRIES = 4;
-    const ORDINARY_NETWORK_RETRY_DELAY_MS = 150;
-    const ORDINARY_NETWORK_TIMEOUT_MS = 2500;
-    const NEWS_PENDING_ATTRIBUTE = 'data-ub-google-news-pending';
     const NEWS_CARD_SELECTOR = '[data-news-cluster-id]';
     const VISUAL_DIGEST_VIDEO_SELECTOR = '[data-attrid="VisualDigestVideoResult"]';
     const KNOWN_ROOT_SELECTOR = `.vt6azd, .Ww4FFb, .sHEJob, ${NEWS_CARD_SELECTOR}, ${VISUAL_DIGEST_VIDEO_SELECTOR}, .eejeod`;
@@ -86,22 +92,30 @@
     const COLLAPSIBLE_SLOT_SELECTOR = '.Rb7Fnd, .dRzkFf';
     const PROXY_WRAPPER_SELECTOR = ':scope > [data-ub-google-source-proxy]';
     const BRIDGE_ROOT_ATTRIBUTE = 'data-ub-google-bridge-root';
-    const BRIDGE_PENDING_ATTRIBUTE = 'data-ub-google-bridge-pending';
+    const UNRESOLVED_ATTRIBUTE = 'data-ub-google-bridge-unresolved';
+    const INFERRED_ATTRIBUTE = 'data-ub-google-bridge-inferred';
+    // Each result root holds Google's "About this result" control, whose
+    // jsdata names the result's inline data entry.
+    const RESULT_ENTRY_JSDATA_PREFIX = 'l7Bhpb;_;';
+    const SITE_HOSTS_KEY = 'siteHosts';
+    const SITE_HOSTS_LIMIT = 500;
+    const SITE_NAME_MAX_LENGTH = 60;
     const gotoMap = new Map();
     const pendingByGoto = new Map();
     const pendingRootByLink = new WeakMap();
-    const networkFallbacks = new Map();
-    const newsNetworkQueue = [];
-    const queuedNewsGotoKeys = new Set();
-    let activeNewsNetworkRequests = 0;
+    const inlineDomainByEntry = new Map();
+    const inlineDomainByGoto = new Map();
+    const unresolvedRoots = new Map();
+    const siteHosts = loadSiteHosts();
+    let retryingUnresolved = false;
+    let retryUnresolvedAgain = false;
     const scannedScripts = new WeakSet();
     const scannedComments = new WeakSet();
     const stats = {
         proxyAdds: 0,
+        inferredProxies: 0,
         observerCallbacks: 0,
         observedAddedNodes: 0,
-        networkFallbacks: 0,
-        networkFallbackFailures: 0,
     };
 
     function isElement(node) {
@@ -255,7 +269,11 @@
         pendingByGoto.delete(key);
         for (const link of links) {
             const root = pendingRootByLink.get(link);
-            if (root?.isConnected) bridgeResolvedRoot(root, sourceURL);
+            if (root?.isConnected) {
+                if (bridgeResolvedRoot(root, sourceURL) && link?.isConnected && canInferForLink(link)) {
+                    learnSiteHost(root, sourceURL);
+                }
+            }
             else if (link?.isConnected) bridgeResolvedLink(link, sourceURL);
         }
     }
@@ -353,8 +371,99 @@
         }
     }
 
+    function isHostShaped(value) {
+        const host = String(value || '').toLowerCase();
+        return host.length <= 253 &&
+            /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/.test(host) &&
+            !isGoogleHost(host);
+    }
+
+    function base64UrlBytes(value) {
+        const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+        const binary = atob(base64.padEnd(base64.length + ((4 - base64.length % 4) % 4), '='));
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+    }
+
+    // Reads one protobuf varint; returns [value, next position] or null.
+    function readVarint(bytes, pos) {
+        let value = 0;
+        for (let shift = 0; shift < 70 && pos < bytes.length; shift += 7) {
+            const byte = bytes[pos++];
+            value += (byte & 0x7f) * 2 ** shift;
+            if (!(byte & 0x80)) return [value, pos];
+        }
+        return null;
+    }
+
+    // Returns the first length-delimited payload of field `field`, or null.
+    // Only varint and length-delimited fields are understood; anything else,
+    // or any out-of-bounds length, ends the search.
+    function protobufField(bytes, field) {
+        let pos = 0;
+        while (bytes && pos < bytes.length) {
+            const tag = readVarint(bytes, pos);
+            if (!tag) return null;
+            pos = tag[1];
+            const wireType = tag[0] % 8;
+            if (wireType === 0) {
+                const value = readVarint(bytes, pos);
+                if (!value) return null;
+                pos = value[1];
+            } else if (wireType === 2) {
+                const length = readVarint(bytes, pos);
+                if (!length || length[1] + length[0] > bytes.length) return null;
+                const start = length[1];
+                pos = start + length[0];
+                if (Math.floor(tag[0] / 8) === field) return bytes.subarray(start, pos);
+            } else {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    // Google's inline entry for a web result carries a base64url protobuf at
+    // [22][12] whose field 3.11.2 is the result's registrable domain
+    // (2026-10-30 iPhone capture). Anything else yields ''.
+    function inlineDomainOf(entry) {
+        try {
+            const blob = Array.isArray(entry) ? entry[22]?.[12] : null;
+            if (typeof blob !== 'string' || !blob || blob.length > 65536) return '';
+            const domainBytes = [3, 11, 2].reduce(
+                (bytes, field) => protobufField(bytes, field),
+                base64UrlBytes(blob),
+            );
+            if (!domainBytes || domainBytes.length > 253) return '';
+            const domain = String.fromCharCode(...domainBytes).toLowerCase();
+            return isHostShaped(domain) ? domain : '';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function captureInlineDomains(data) {
+        let added = false;
+        for (const [entryKey, entry] of Object.entries(data)) {
+            const domain = inlineDomainOf(entry);
+            if (!domain) continue;
+            if (inlineDomainByEntry.get(entryKey) !== domain) {
+                inlineDomainByEntry.set(entryKey, domain);
+                added = true;
+            }
+            const gotoKey = typeof entry[17] === 'string' ? normalizeGoto(entry[17]) : '';
+            if (gotoKey && inlineDomainByGoto.get(gotoKey) !== domain) {
+                inlineDomainByGoto.set(gotoKey, domain);
+                added = true;
+            }
+        }
+        if (added) retryUnresolved();
+    }
+
     function processWjdData(data) {
         if (!data || typeof data !== 'object') return;
+        captureInlineDomains(data);
         for (const entry of Object.values(data)) {
             if (!entry || typeof entry !== 'object') continue;
             mapContainer(entry);
@@ -541,7 +650,9 @@
         return true;
     }
 
-    function addProxyOnce(root, sourceURL, kind = 'default') {
+    // inferredSource names how a destination was inferred rather than read
+    // ('inline-data', 'site-name', with '-path' when a subreddit path was added).
+    function addProxyOnce(root, sourceURL, kind = 'default', inferredSource = '') {
         if (!isElement(root)) return false;
         const source = externalURL(sourceURL);
         if (!source) return false;
@@ -556,6 +667,10 @@
         wrapper.setAttribute('aria-hidden', 'true');
         wrapper.setAttribute('data-ub-google-source-proxy', kind);
         wrapper.className = 'yuRUbf';
+        if (inferredSource) {
+            wrapper.setAttribute(INFERRED_ATTRIBUTE, inferredSource);
+            stats.inferredProxies += 1;
+        }
 
         const proxy = document.createElement('a');
         proxy.className = 'UBFage';
@@ -684,13 +799,12 @@
 
     function registerDirectLink(link) {
         if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return;
-        if (link.matches(UBLACKLIST_NATIVE_URL_SELECTOR)) return;
 
         const source = externalURL(link.getAttribute('href') || link.href);
         if (!source) return;
 
         const root = rootForDirectLink(link);
-        if (!root || root.querySelector(PROXY_WRAPPER_SELECTOR)) return;
+        if (!root) return;
 
         const targets = directExternalTargets(root);
         const hosts = new Set(targets.map(hostnameOf).filter(Boolean));
@@ -698,238 +812,247 @@
 
         const best = pickBestURL(targets);
         if (!best) return;
+        learnSiteHost(root, best);
+
+        if (link.matches(UBLACKLIST_NATIVE_URL_SELECTOR) || root.querySelector(PROXY_WRAPPER_SELECTOR)) return;
         const native = nativeReadableURL(root);
         if (native && !betterURL(best, native)) return;
 
         addProxyOnce(root, best, 'direct');
     }
 
-    function parseLocationHeader(headers) {
-        const match = String(headers || '').match(/^location:\s*(.+)$/im);
-        return match ? match[1].trim() : '';
+    // ---- Site names: "Site · qualifier" lines, learned site-name hosts ----
+
+    function siteNameKey(value) {
+        return String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
     }
 
-    function parseRedirectBody(text) {
-        const body = String(text || '');
-        if (!/<title>302 moved<\/title>/i.test(body) || !/the document has moved/i.test(body)) {
-            return '';
-        }
-        const match = body.match(/<a\s+href=["']([^"']+)["'][^>]*>here<\/a>/i);
-        return match ? match[1] : '';
-    }
-
-    function gmRequest(details) {
-        const legacy =
-            typeof GM_xmlhttpRequest === 'function'
-                ? GM_xmlhttpRequest
-                : null;
-        const modern =
-            typeof GM === 'object' && GM
-                ? (typeof GM.xmlHttpRequest === 'function'
-                    ? GM.xmlHttpRequest.bind(GM)
-                    : (typeof GM.xmlhttpRequest === 'function'
-                        ? GM.xmlhttpRequest.bind(GM)
-                        : null))
-                : null;
-        const fn = legacy || modern;
-        if (!fn) return null;
-        try {
-            return fn(details);
-        } catch (_) {
-            return null;
-        }
-    }
-
-    function cleanResolvedTarget(raw) {
-        const target = externalURL(raw);
-        if (!target) return '';
-        try {
-            const url = new URL(target);
-            if (/^#VMxhr/i.test(url.hash)) url.hash = '';
-            return url.href;
-        } catch (_) {
-            return target;
-        }
-    }
-
-    function requestGotoTarget(url, timeout = 5000) {
-        return new Promise((resolve) => {
-            let settled = false;
-            let loadTimer = 0;
-            let latestResponse = null;
-
-            const targetFromResponse = (response, allowRedirectFallback = true) => {
-                const headerTarget = parseLocationHeader(response?.responseHeaders);
-                const finalTarget =
-                    response?.finalUrl ||
-                    response?.finalURL ||
-                    response?.responseURL ||
-                    response?.responseUrl ||
-                    '';
-                const bodyTarget = parseRedirectBody(
-                    response?.responseText ||
-                    (typeof response?.response === 'string' ? response.response : '')
-                );
-                return (
-                    cleanResolvedTarget(finalTarget) ||
-                    (allowRedirectFallback ? cleanResolvedTarget(headerTarget) : '') ||
-                    (allowRedirectFallback ? cleanResolvedTarget(bodyTarget) : '') ||
-                    ''
-                );
-            };
-
-            const settle = (target) => {
-                if (settled) return;
-                settled = true;
-                if (loadTimer) clearTimeout(loadTimer);
-                resolve(target || '');
-            };
-
-            const onload = (response) => {
-                latestResponse = response;
-
-                const target = targetFromResponse(response, false);
-                if (target) {
-                    settle(target);
-                    return;
-                }
-                if (loadTimer) clearTimeout(loadTimer);
-                loadTimer = setTimeout(() => {
-                    settle(targetFromResponse(latestResponse));
-                }, 50);
-            };
-
-            const onloadend = (response) => {
-                latestResponse = response || latestResponse;
-
-                settle(targetFromResponse(latestResponse));
-            };
-
-            const fail = () => settle('');
-
-            // Let the userscript manager follow redirects normally. Safari/iOS
-            // managers consistently expose the final destination through a
-            // response URL, while nonstandard manual-redirect handling varies
-            // between managers and can stall or fail.
-            const control = gmRequest({
-                method: 'GET',
-                url,
-                anonymous: true,
-                nocache: true,
-                timeout,
-                responseType: 'text',
-                onload,
-                onloadend,
-                onerror: fail,
-                ontimeout: fail,
-                onabort: fail,
-            });
-            if (!control) fail();
-        });
-    }
-
-    function resolveGotoViaNetwork(key, { retries = 0, retryDelayMs = 0, timeout = 5000 } = {}) {
-        if (!key) return Promise.resolve('');
-        const mapped = gotoMap.get(key);
-        if (mapped) return Promise.resolve(mapped);
-        const existing = networkFallbacks.get(key);
-        if (existing) return existing;
-
-        const url = `${location.origin}${key}`;
-        stats.networkFallbacks += 1;
-
-        const promise = (async () => {
-            for (let attempt = 0; attempt <= retries; attempt += 1) {
-                const alreadyMapped = gotoMap.get(key);
-                if (alreadyMapped) return alreadyMapped;
-
-                const target = await requestGotoTarget(url, timeout);
-                if (target) {
-                    maybeSetGoto(key, target);
-                    return target;
-                }
-                if (attempt < retries && retryDelayMs > 0) {
-                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-                }
-            }
-            stats.networkFallbackFailures += 1;
-            return '';
-        })().finally(() => {
-            networkFallbacks.delete(key);
-        });
-
-        networkFallbacks.set(key, promise);
-        return promise;
-    }
-
-    function pumpNewsNetworkQueue() {
-        while (activeNewsNetworkRequests < NEWS_NETWORK_CONCURRENCY && newsNetworkQueue.length) {
-            const key = newsNetworkQueue.shift();
-            if (!key) continue;
-            if (gotoMap.has(key)) {
-                queuedNewsGotoKeys.delete(key);
+    // The site line is the root's first text outside headings and the bridge's
+    // own proxy. It is found by text, not by class: Google uses div.GkAmnd on
+    // web results and div.Aozhyc on video results.
+    function siteLine(root) {
+        if (!isElement(root)) return null;
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+            const text = String(node.nodeValue || '').replace(/\s+/g, ' ').trim();
+            if (!text) continue;
+            const parent = node.parentElement;
+            if (parent?.closest('h1, h2, h3, h4, h5, h6, [role="heading"], script, style, [data-ub-google-source-proxy]')) {
                 continue;
             }
+            const [name, ...rest] = text.split(/\s·\s/);
+            const key = siteNameKey(name);
+            if (
+                !key || key.length > SITE_NAME_MAX_LENGTH ||
+                !/\p{L}/u.test(key) || /[/›]|:\/\//.test(key)
+            ) {
+                return null;
+            }
+            return { name: key, qualifier: rest.join(' · ').trim() };
+        }
+        return null;
+    }
 
-            activeNewsNetworkRequests += 1;
-            resolveGotoViaNetwork(key, {
-                retries: NEWS_NETWORK_RETRIES,
-                retryDelayMs: NEWS_NETWORK_RETRY_DELAY_MS,
-                timeout: NEWS_NETWORK_TIMEOUT_MS,
-            }).finally(() => {
-                activeNewsNetworkRequests -= 1;
-                queuedNewsGotoKeys.delete(key);
-                pumpNewsNetworkQueue();
-            });
+    // A learned pair must look related: the host contains the compacted name
+    // or one of its words of four or more letters. This keeps titles and
+    // comment counts from being learned as site names.
+    function siteNameMatchesHost(name, host) {
+        const compactHost = host.replace(/[^a-z0-9]/g, '');
+        const compactName = name.replace(/[^\p{L}\p{N}]/gu, '');
+        if (compactName && compactHost.includes(compactName)) return true;
+        return name.split(/[^\p{L}\p{N}]+/u).some((word) => word.length >= 4 && compactHost.includes(word));
+    }
+
+    function isValidSiteHostEntry(entry) {
+        if (!Array.isArray(entry) || entry.length !== 2) return false;
+        const [name, origin] = entry;
+        if (typeof name !== 'string' || !name || name.length > SITE_NAME_MAX_LENGTH) return false;
+        if (origin === '') return true;
+        if (typeof origin !== 'string') return false;
+        try {
+            const url = new URL(origin);
+            return url.origin === origin && /^https?:$/.test(url.protocol) && isHostShaped(url.hostname);
+        } catch (_) {
+            return false;
         }
     }
 
-    function enqueueNewsNetworkFallback(key) {
-        if (!key || gotoMap.has(key) || queuedNewsGotoKeys.has(key) || networkFallbacks.has(key)) return;
-        queuedNewsGotoKeys.add(key);
-        newsNetworkQueue.push(key);
-        pumpNewsNetworkQueue();
+    function loadSiteHosts() {
+        const map = new Map();
+        try {
+            if (typeof GM_getValue !== 'function') return map;
+            const raw = GM_getValue(SITE_HOSTS_KEY, '[]');
+            const entries = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (!Array.isArray(entries)) return map;
+            for (const entry of entries.slice(-SITE_HOSTS_LIMIT)) {
+                if (isValidSiteHostEntry(entry)) map.set(entry[0], entry[1]);
+            }
+        } catch (_) {}
+        return map;
     }
 
-    function scheduleNetworkFallback(link, key) {
+    function saveSiteHosts() {
+        try {
+            if (typeof GM_setValue === 'function') GM_setValue(SITE_HOSTS_KEY, JSON.stringify([...siteHosts]));
+        } catch (_) {}
+    }
+
+    function rememberSiteHost(name, origin) {
+        siteHosts.delete(name);
+        siteHosts.set(name, origin);
+        while (siteHosts.size > SITE_HOSTS_LIMIT) siteHosts.delete(siteHosts.keys().next().value);
+    }
+
+    // Learns name -> origin from a root whose destination the page shows.
+    // Same host: keep. One host a subdomain of the other: keep the parent.
+    // Unrelated hosts: the name becomes ambiguous ('') and is never used.
+    function learnSiteHost(root, url) {
+        const line = siteLine(root);
+        if (!line) return;
+        // The learned host drops a leading www. or m., so the inferred host
+        // does not depend on which of a site's cards was seen first and has
+        // the same domain-level form as Google's inline data domains.
+        let origin;
+        try {
+            const parsed = new URL(url);
+            const host = parsed.hostname.toLowerCase().replace(/^(?:www|m)\.(?=[^.]+\.[^.]+)/, '');
+            if (!isHostShaped(host)) return;
+            origin = `${parsed.protocol}//${host}`;
+        } catch (_) {
+            return;
+        }
+        if (!siteNameMatchesHost(line.name, hostnameOf(origin))) return;
+
+        const known = siteHosts.get(line.name);
+        let next = origin;
+        if (known === '') return;
+        if (known) {
+            const knownBase = hostnameOf(known);
+            const newBase = hostnameOf(origin);
+            if (knownBase === newBase || newBase.endsWith(`.${knownBase}`)) next = known;
+            else if (!knownBase.endsWith(`.${newBase}`)) next = '';
+        }
+        rememberSiteHost(line.name, next);
+        if (next === known) return;
+        saveSiteHosts();
+        if (next) retryUnresolved();
+    }
+
+    // ---- Resolving opaque results without any request ----
+
+    // Single-result roots, or the primary or nested link of a multi-result
+    // module; other links of a module say nothing about the root as a whole.
+    function canInferForLink(link) {
         const known = link.closest(KNOWN_ROOT_SELECTOR);
         if (!known) return false;
-        const isNewsCard = known.matches(NEWS_CARD_SELECTOR);
-        const isVisualDigestVideo = known.matches(VISUAL_DIGEST_VIDEO_SELECTOR);
-        const isSingleResultCard = isNewsCard || isVisualDigestVideo;
-        const nested = link.closest(NESTED_RESULT_SELECTOR);
+        const isSingleResultCard = known.matches(NEWS_CARD_SELECTOR) || known.matches(VISUAL_DIGEST_VIDEO_SELECTOR);
         const gotoCount = uniqueGotoCount(known);
-
-        // Google's mobile All tab now emits some ordinary single-result cards
-        // with only an opaque /goto URL and no usable W_jd mapping. A known
-        // result root containing exactly one opaque destination is safe to
-        // resolve directly. Multi-result modules keep the stricter nested-link
-        // guard so one fallback cannot be misapplied to a whole grouped result.
         if (!gotoCount) return false;
-        if (!isSingleResultCard && gotoCount > 1 && !isPrimaryNestedLink(link) && !nested) return false;
+        return isSingleResultCard || gotoCount === 1 ||
+            isPrimaryNestedLink(link) || Boolean(link.closest(NESTED_RESULT_SELECTOR));
+    }
 
+    function inlineDataDomain(root, key) {
+        const entryKeys = new Set();
+        for (const node of root.querySelectorAll(`[jsdata^="${RESULT_ENTRY_JSDATA_PREFIX}"]`)) {
+            entryKeys.add(node.getAttribute('jsdata').slice(RESULT_ENTRY_JSDATA_PREFIX.length));
+        }
+        if (entryKeys.size === 1) {
+            const domain = inlineDomainByEntry.get([...entryKeys][0]);
+            if (domain) return domain;
+        }
+        return inlineDomainByGoto.get(key) || '';
+    }
 
-        if (IS_NEWS_TAB && isNewsCard) {
-            enqueueNewsNetworkFallback(key);
+    function inferDestination(link, key, root) {
+        if (!canInferForLink(link)) return null;
+        const line = siteLine(root);
+        let origin = '';
+        let source = '';
+        const domain = inlineDataDomain(root, key);
+        if (domain) {
+            origin = `https://${domain}`;
+            source = 'inline-data';
+        } else if (line && siteHosts.get(line.name)) {
+            origin = siteHosts.get(line.name);
+            source = 'site-name';
+        }
+        if (!origin) return null;
+        const subreddit = line?.qualifier.match(/^r\/([A-Za-z0-9_]{2,21})(?:\s|$)/);
+        return subreddit
+            ? { url: `${origin}/r/${subreddit[1]}/`, source: `${source}-path`, learnFrom: source === 'inline-data' }
+            : { url: `${origin}/`, source, learnFrom: source === 'inline-data' };
+    }
+
+    function markUnresolved(root) {
+        if (document.readyState !== 'loading') root.setAttribute(UNRESOLVED_ATTRIBUTE, '1');
+    }
+
+    function forgetUnresolved(root) {
+        unresolvedRoots.delete(root);
+        root.removeAttribute(UNRESOLVED_ATTRIBUTE);
+    }
+
+    // Returns true once the root has a proxy.
+    function resolveWithoutRequest(link, key, root) {
+        if (root.querySelector(PROXY_WRAPPER_SELECTOR)) {
+            forgetUnresolved(root);
             return true;
         }
+        const inferred = inferDestination(link, key, root);
+        if (inferred && bridgeResolvedRoot(root, inferred.url, inferred.source)) {
+            if (inferred.learnFrom) learnSiteHost(root, inferred.url);
+            return true;
+        }
+        return false;
+    }
 
-        const bridgeRoot = rootForOpaqueLink(link);
-        setTimeout(() => {
-            const mapped = gotoMap.get(key);
-            if (mapped) {
-                if (bridgeRoot?.isConnected) bridgeResolvedRoot(bridgeRoot, mapped);
-                return;
-            }
-            resolveGotoViaNetwork(key, {
-                retries: ORDINARY_NETWORK_RETRIES,
-                retryDelayMs: ORDINARY_NETWORK_RETRY_DELAY_MS,
-                timeout: ORDINARY_NETWORK_TIMEOUT_MS,
-            }).then((target) => {
-                if (target && bridgeRoot?.isConnected) bridgeResolvedRoot(bridgeRoot, target);
-            });
-        }, 120);
-        return true;
+    function registerUnresolved(link, key, root) {
+        if (!root || nativeReadableURL(root)) return;
+        if (resolveWithoutRequest(link, key, root)) return;
+        let links = unresolvedRoots.get(root);
+        if (!links) {
+            links = new Set();
+            unresolvedRoots.set(root, links);
+        }
+        links.add(link);
+        markUnresolved(root);
+    }
+
+    // Runs whenever a new domain or site name is learned, and once when the
+    // document has been parsed, after which remaining roots are released.
+    function retryUnresolved() {
+        if (retryingUnresolved) {
+            retryUnresolvedAgain = true;
+            return;
+        }
+        retryingUnresolved = true;
+        try {
+            do {
+                retryUnresolvedAgain = false;
+                for (const [root, links] of [...unresolvedRoots]) {
+                    if (!root.isConnected) {
+                        unresolvedRoots.delete(root);
+                        continue;
+                    }
+                    for (const link of links) {
+                        if (!link.isConnected) continue;
+                        const key = normalizeGoto(link.getAttribute('href') || link.href);
+                        if (key && resolveWithoutRequest(link, key, root)) break;
+                    }
+                }
+            } while (retryUnresolvedAgain);
+        } finally {
+            retryingUnresolved = false;
+        }
+    }
+
+    function releaseUnresolvedAfterParse() {
+        retryUnresolved();
+        for (const root of unresolvedRoots.keys()) {
+            if (root.isConnected) root.setAttribute(UNRESOLVED_ATTRIBUTE, '1');
+        }
     }
 
     function firewallRootSelector() {
@@ -961,38 +1084,14 @@
         const roots = firewallRootSelector();
         const style = document.createElement('style');
         style.setAttribute('data-ub-google-result-firewall-style', VERSION);
+        // A root whose destination the page does not reveal is released
+        // (data-ub-google-bridge-unresolved) and left to uBlacklist's own reading.
         style.textContent = roots ? `
-[${BRIDGE_PENDING_ATTRIBUTE}],
-:is(${roots}):not([data-ub-result]),
+:is(${roots}):not([data-ub-result]):not([${UNRESOLVED_ATTRIBUTE}]),
 [data-ub-hide-blocked-results] :is(${roots})[data-ub-block] {
     display: none !important;
-}` : (IS_IMAGES_TAB ? '' : `
-[${BRIDGE_PENDING_ATTRIBUTE}] {
-    display: none !important;
-}`);
+}` : '';
         (document.head || document.documentElement).appendChild(style);
-    }
-
-    function installNewsPendingStyle() {
-        if (!IS_NEWS_TAB || document.querySelector('[data-ub-google-news-pending-style]')) return;
-        const style = document.createElement('style');
-        style.setAttribute('data-ub-google-news-pending-style', VERSION);
-        style.textContent = `${NEWS_CARD_SELECTOR}[${NEWS_PENDING_ATTRIBUTE}] { display: none !important; }`;
-        (document.head || document.documentElement).appendChild(style);
-    }
-
-    function releaseNewsPending(root) {
-        if (!IS_NEWS_TAB || !root?.matches?.(NEWS_CARD_SELECTOR)) return;
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => root.removeAttribute(NEWS_PENDING_ATTRIBUTE));
-        });
-    }
-
-    function releaseBridgePending(root) {
-        if (!isElement(root) || !root.hasAttribute(BRIDGE_PENDING_ATTRIBUTE)) return;
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => root.removeAttribute(BRIDGE_PENDING_ATTRIBUTE));
-        });
     }
 
     function installGapCollapseStyle() {
@@ -1006,37 +1105,31 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         (document.head || document.documentElement).appendChild(style);
     }
 
-    function bridgeResolvedRoot(root, sourceURL) {
+    // Returns true when the root has a proxy afterwards.
+    function bridgeResolvedRoot(root, sourceURL, inferredSource = '') {
         if (!isElement(root)) return false;
         const kind = root.matches(NEWS_CARD_SELECTOR)
             ? 'news'
             : (root.matches(VISUAL_DIGEST_VIDEO_SELECTOR) ? 'visual-digest-video' : 'default');
-        const added = addProxyOnce(root, sourceURL, kind);
-        const hasProxy = Boolean(added || root.querySelector(PROXY_WRAPPER_SELECTOR));
-
-
-
-        if (hasProxy) releaseBridgePending(root);
-        if (kind === 'news' && hasProxy) {
-            releaseNewsPending(root);
-        }
-        return added;
+        addProxyOnce(root, sourceURL, kind, inferredSource);
+        const hasProxy = Boolean(root.querySelector(PROXY_WRAPPER_SELECTOR));
+        if (hasProxy) forgetUnresolved(root);
+        return hasProxy;
     }
 
     function bridgeResolvedLink(link, sourceURL) {
         if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return false;
         const root = rootForOpaqueLink(link);
         if (!root) return false;
-        return bridgeResolvedRoot(root, sourceURL);
+        const resolved = bridgeResolvedRoot(root, sourceURL);
+        if (resolved && canInferForLink(link)) learnSiteHost(root, sourceURL);
+        return resolved;
     }
 
     function registerOpaqueLink(link) {
         if (!isElement(link) || link.closest('[data-ub-google-source-proxy]')) return;
         const key = normalizeGoto(link.getAttribute('href') || link.href);
         if (!key) return;
-
-        const newsRoot = IS_NEWS_TAB ? link.closest(NEWS_CARD_SELECTOR) : null;
-        if (newsRoot) newsRoot.setAttribute(NEWS_PENDING_ATTRIBUTE, '1');
 
         const mapped = gotoMap.get(key);
         if (mapped) {
@@ -1058,10 +1151,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             maybeSetGoto(key, displayed);
             return;
         }
-        if (scheduleNetworkFallback(link, key) && bridgeRoot) {
-            const root = bridgeRoot;
-            if (root) root.setAttribute(BRIDGE_PENDING_ATTRIBUTE, '1');
-        }
+        registerUnresolved(link, key, bridgeRoot);
     }
 
     function bridgeSubtree(root) {
@@ -1087,7 +1177,11 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             }
             if (!links.size) pendingByGoto.delete(key);
         }
+        for (const root of unresolvedRoots.keys()) {
+            if (!root.isConnected) unresolvedRoots.delete(root);
+        }
     }
+
     function start() {
 
         installResultFirewallStyle();
@@ -1103,8 +1197,12 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         // to uBlacklist's own mutations.
         installDirectWjdHook();
         installWjdTrampoline();
-        installNewsPendingStyle();
         installGapCollapseStyle();
+        // Google's inline result data follows the result HTML, so unresolved
+        // roots are released only once the document has been parsed.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', releaseUnresolvedAfterParse, { once: true });
+        }
 
         const observer = new MutationObserver((records) => {
             stats.observerCallbacks += 1;

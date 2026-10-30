@@ -9,12 +9,76 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 const scriptPath = path.join(repoRoot, 'google_news_ublacklist_bridge.user.js');
 const source = fs.readFileSync(scriptPath, 'utf8');
 
+const MOBILE_UA =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 ' +
+    '(KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
+const SITE_HOSTS_KEY = 'siteHosts';
+
+// Persistent GM storage shared across harnesses, like one userscript's
+// storage across page loads.
+function createStorage(initial = {}) {
+    const values = new Map(Object.entries(initial));
+    return {
+        values,
+        get(key, fallback) { return values.has(key) ? values.get(key) : fallback; },
+        set(key, value) { values.set(key, value); },
+        siteHosts() { return JSON.parse(values.get(SITE_HOSTS_KEY) || '[]'); },
+    };
+}
+
+// Trimmed from the 2026-10-30 iPhone Safari capture
+// (q=cast iron seasoning reddit): a name-only organic card carries only the
+// "Site · qualifier" line, a comments/age line and the heading, all inside one
+// /goto anchor. A cited card shows its host in the same span.ob9lvb slot.
+function organicCard({ id, goto, site, meta = '30+ comments · 8 years ago', title = 'Result title' }) {
+    return `<div id="${id}" class="Ww4FFb vt6azd">` +
+        `<a class="UBFage" href="${goto}" ping="/url?sa=t&amp;source=web&amp;url=${goto.split('url=')[1]}">` +
+        '<div data-snf="tyjmbc"><div class="kb0PBd cvP2Ce">' +
+        '<span class="fJCbT"><img class="XNo5Ab" src="data:image/png;base64,iVBORw0KGgo=" alt=""></span>' +
+        `<div class="GkAmnd ZaCDgb RES9jf">${site.replace(/ · /g, '&nbsp;·&nbsp;')}</div>` +
+        `<span class="nC62wb VndCse ob9lvb" role="text">${meta}</span></div>` +
+        `<div class="F0FGWb" aria-level="3" role="heading"><div role="link"><span>${title}</span></div></div>` +
+        '</div></a></div>';
+}
+
+// uBlacklist match patterns follow WebExtension match patterns
+// (developer.mozilla.org .../Match_patterns): scheme * is http or https, host
+// *.example.com is example.com or any subdomain, * in the path is any text.
+// uBlacklist's "Block this site" suggests *://*.<registrable domain>/* when
+// "block whole sites" is on (its default), else *://<exact host>/*
+// (iorate/ublacklist src/scripts/shared/interactive-ruleset.ts).
+function matchesUBlacklistPattern(pattern, url) {
+    const parts = pattern.match(/^(\*|https?):\/\/(\*|\*\.[^/*]+|[^/*]+)(\/.*)$/);
+    if (!parts) throw new Error(`not a match pattern: ${pattern}`);
+    const [, scheme, host, pathGlob] = parts;
+    const target = new URL(url);
+    const schemeOk = scheme === '*' ? /^https?:$/.test(target.protocol) : target.protocol === `${scheme}:`;
+    const hostOk = host === '*' ||
+        (host.startsWith('*.')
+            ? target.hostname === host.slice(2) || target.hostname.endsWith(host.slice(1))
+            : target.hostname === host);
+    const pathRe = new RegExp(`^${pathGlob.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
+    return schemeOk && hostOk && pathRe.test(target.pathname + target.search);
+}
+
+function proxyOf(root) {
+    return root.querySelector(':scope > [data-ub-google-source-proxy] a');
+}
+
+async function settle(h, ms = 50) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    await new Promise((resolve) =>
+        h.window.requestAnimationFrame(() => h.window.requestAnimationFrame(resolve)),
+    );
+}
+
 function createHarness({
     html,
     wjd = {},
     gmRequest = () => null,
     url = 'https://www.google.com/search?q=bridge-regression',
     userAgent = '',
+    storage = createStorage(),
 }) {
     const dom = new JSDOM(
         `<!doctype html><html><head></head><body>${html}</body></html>`,
@@ -39,14 +103,32 @@ function createHarness({
         set(value) { this.textContent = value; },
     });
 
+    // Record every request path a userscript could use; the bridge must use none.
+    const requests = [];
+    const record = (api) => (details) => {
+        requests.push({ api, url: details?.url ?? String(details) });
+        return gmRequest(details);
+    };
     window.W_jd = wjd;
-    window.GM_xmlhttpRequest = gmRequest;
+    window.GM_xmlhttpRequest = record('GM_xmlhttpRequest');
+    window.GM = { xmlHttpRequest: record('GM.xmlHttpRequest'), xmlhttpRequest: record('GM.xmlhttpRequest') };
+    window.fetch = (input) => { requests.push({ api: 'fetch', url: String(input) }); return new Promise(() => {}); };
+    window.navigator.sendBeacon = (target) => { requests.push({ api: 'sendBeacon', url: String(target) }); return true; };
+    const nativeOpen = window.XMLHttpRequest.prototype.open;
+    window.XMLHttpRequest.prototype.open = function open(method, target, ...rest) {
+        requests.push({ api: 'XMLHttpRequest', url: String(target) });
+        return nativeOpen.call(this, method, target, ...rest);
+    };
+    window.GM_getValue = (key, fallback) => storage.get(key, fallback);
+    window.GM_setValue = (key, value) => storage.set(key, value);
     window.eval(source);
 
     return {
         window,
         document: window.document,
         api: window.__UB_GOOGLE_BRIDGE__,
+        requests,
+        storage,
         close() { window.close(); },
     };
 }
@@ -60,7 +142,17 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.2\.9$/m);
+    assert.match(source, /^\/\/ @version\s+13\.3\.0$/m);
+    assert.match(source, /const VERSION = '13\.3\.0';/);
+});
+
+test('bridge has no network request path and no @connect grant', () => {
+    const metadata = source.slice(0, source.indexOf('// ==/UserScript=='));
+    assert.doesNotMatch(metadata, /@connect/);
+    assert.doesNotMatch(metadata, /xmlhttprequest/i);
+    for (const pattern of [/GM_xmlhttpRequest/, /GM\.xml[hH]ttpRequest/, /\bfetch\s*\(/, /XMLHttpRequest/, /sendBeacon/]) {
+        assert.doesNotMatch(source, pattern, `bridge source must not contain ${pattern}`);
+    }
 });
 
 test('protected ordinary result is quarantined until uBlacklist classifies it', () => {
@@ -310,59 +402,385 @@ test('unclassified protected result has no fail-open timer', async () => {
     h.close();
 });
 
-test('dynamic opaque result stays quarantined after provisional uBlacklist classification until bridge resolution', async () => {
-    const goto = '/goto?url=opaque-more-results';
-    const target = 'https://www.linkedin.com/in/example/';
-    const requests = [];
-    let resolveRequest = null;
-    const h = createHarness({
-        html: '<div id="rso"></div>',
-        gmRequest(details) {
-            requests.push(details.url);
-            resolveRequest = () => details.onload({ finalUrl: target, status: 200 });
-            return { abort() {} };
+function hasPendingAttribute(document) {
+    return Boolean(document.querySelector('[data-ub-google-bridge-pending], [data-ub-google-news-pending]'));
+}
+
+const capture = require('../fixtures/google-mobile-reddit-name-only.json');
+
+// Google's own inline script form, as it stays in the DOM after Google has
+// emptied the W_jd values.
+function inlineDataScript(entries) {
+    return `<script>(function(){var m=${JSON.stringify(entries)};var a=m;` +
+        'if(window.W_jd)for(var b in a)window.W_jd[b]=a[b];else window.W_jd=a;})();</script>';
+}
+
+test('name-only, News and mixed pages make no requests and leave no result pending', async () => {
+    const pages = [
+        {
+            name: 'All tab, captured name-only web and video results',
+            html: `<div id="rso">${capture.webRoot}${capture.videoRoot}</div>${inlineDataScript(capture.entries)}`,
         },
+        {
+            name: 'All tab, name-only thread card with "More" links',
+            html: '<div id="rso"><div id="thread" class="Ww4FFb vt6azd">' +
+                organicCard({ id: 'thread-post', goto: '/goto?url=castiron-thread', site: 'Reddit · r/castiron' })
+                    .replace(/^<div id="thread-post" class="Ww4FFb vt6azd">/, '').replace(/<\/div>$/, '') +
+                '<a class="ddkIM" href="/goto?url=castiron-thread-answer-1"><span class="EJjDE">More</span></a>' +
+                '<a class="ddkIM" href="/goto?url=castiron-thread-answer-2"><span class="EJjDE">More</span></a>' +
+                '</div></div>',
+        },
+        {
+            name: 'News tab',
+            url: 'https://www.google.com/search?q=intel+14a&tbm=nws',
+            html: '<div id="rso">' +
+                '<div data-news-cluster-id="c1"><a href="/goto?url=news-1"><div>CBC News</div>' +
+                '<div role="heading" aria-level="3">Story one</div></a></div>' +
+                '<div data-news-cluster-id="c2"><a href="/goto?url=news-2"><div>The Globe and Mail</div>' +
+                '<div role="heading" aria-level="3">Story two</div></a></div></div>',
+        },
+        {
+            name: 'mixed page: cited, name-only, metadata-mapped, Top stories and direct results',
+            wjd: mapping('/goto?url=mixed-mapped', 'https://finance.yahoo.com/article'),
+            html: '<div id="rso">' +
+                organicCard({ id: 'cited', goto: '/goto?url=mixed-cited', site: 'Massimo Dutti', meta: 'https://www.massimodutti.com › ca › men' }) +
+                organicCard({ id: 'name-only', goto: '/goto?url=mixed-name-only', site: 'Reddit · r/castiron' }) +
+                organicCard({ id: 'mapped', goto: '/goto?url=mixed-mapped', site: 'Yahoo Finance', meta: 'Markets' }) +
+                '<div data-news-cluster-id="top-1"><a href="/goto?url=mixed-top-story"><div>CBC News</div>' +
+                '<div role="heading" aria-level="3">Top story</div></a></div>' +
+                '<div class="Ww4FFb vt6azd"><a class="zReHs" href="https://www.youtube.com/watch?v=Ddu89kmaeTk">YouTube · Vacuum Wars</a></div>' +
+                '</div>',
+        },
+    ];
+
+    for (const page of pages) {
+        const h = createHarness({ ...page, userAgent: MOBILE_UA });
+        await settle(h, 300);
+        assert.deepEqual(h.requests, [], `${page.name}: the bridge must make no requests`);
+        assert.equal(hasPendingAttribute(h.document), false, `${page.name}: no result may wait on the bridge`);
+        h.close();
+    }
+});
+
+test('captured name-only web result gets its domain from Google inline data, tied by jsdata before token', async () => {
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: `<div id="rso">${capture.webRoot}</div>${inlineDataScript(capture.entries)}`,
     });
+    await settle(h);
 
-    const root = h.document.createElement('div');
-    root.id = 'late-result';
-    root.className = 'Ww4FFb vt6azd';
-    root.innerHTML = `<a class="UBFage" href="${goto}"><h3>Late opaque result</h3></a>`;
-    h.document.getElementById('rso').appendChild(root);
-
-    await new Promise((resolve) => h.window.requestAnimationFrame(resolve));
+    const root = h.document.querySelector('#rso > .Ww4FFb');
+    const proxy = proxyOf(root);
+    assert.ok(proxy, 'the first result ties to its entry by jsdata although its href token differs');
+    assert.equal(proxy.href, 'https://reddit.com/r/castiron/');
+    assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'inline-data-path');
+    assert.equal(h.window.getComputedStyle(root).display, 'none', 'bridged, so it waits for uBlacklist');
     root.setAttribute('data-ub-result', '1');
+    assert.notEqual(h.window.getComputedStyle(root).display, 'none');
+    h.close();
+});
 
-    assert.equal(
-        h.window.getComputedStyle(root).display,
-        'none',
-        'provisional uBlacklist processing must not release an opaque result before its real destination is bridged',
-    );
+test('inline data captured at document start and tied by token still resolves after Google empties W_jd', async () => {
+    const entry = capture.entries[capture.webEntryKey];
+    const webRoot = capture.webRoot
+        .replace(/ jsdata="l7Bhpb;_;[^"]+"/, '')
+        .replace(/\/goto\?url=[A-Za-z0-9_-]+/g, entry[17]);
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: `<div id="rso">${webRoot}</div>`,
+        wjd: { [capture.webEntryKey]: entry },
+    });
+    for (const key of Object.keys(h.window.W_jd)) h.window.W_jd[key] = [];
+    await settle(h);
 
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    assert.equal(requests.length, 1);
-    assert.equal(requests[0], `https://www.google.com${goto}`);
-    assert.equal(typeof resolveRequest, 'function');
+    assert.equal(proxyOf(h.document.querySelector('#rso > .Ww4FFb')).href, 'https://reddit.com/r/castiron/');
+    h.close();
+});
 
-    resolveRequest();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) =>
-        h.window.requestAnimationFrame(() => h.window.requestAnimationFrame(resolve)),
-    );
+test('captured video result without an inline domain uses the site name learned from an inline-data card', async () => {
+    const storage = createStorage();
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        storage,
+        html: `<div id="rso">${capture.videoRoot}${capture.webRoot}</div>${inlineDataScript(capture.entries)}`,
+    });
+    await settle(h);
 
-    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
-    assert.ok(proxy);
-    assert.equal(proxy.href, target);
+    const video = h.document.querySelector('#rso > .tRkSqb');
+    const proxy = proxyOf(video);
+    assert.ok(proxy, 'the earlier video card is bridged once a later web card teaches "Reddit"');
+    assert.equal(proxy.href, 'https://reddit.com/r/castiron/');
+    assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name-path');
+    assert.deepEqual(storage.siteHosts(), [['reddit', 'https://reddit.com']]);
+    assert.deepEqual(h.requests, []);
+    h.close();
+});
+
+test('the site-name line is parsed by text, never taken for the heading or the citation', async () => {
+    // .GkAmnd (web) is in HEADING_SELECTOR and .Aozhyc (video) is not; the
+    // span.ob9lvb citation holds "N comments · age" on forum cards.
+    const storage = createStorage({ [SITE_HOSTS_KEY]: JSON.stringify([['reddit', 'https://reddit.com']]) });
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        storage,
+        html: `<div id="rso">${capture.webRoot}${capture.videoRoot}` +
+            organicCard({ id: 'heading-site', goto: '/goto?url=heading-site', site: 'Reddit · r/Cooking', title: 'Massimo Dutti · r/notasub' }) +
+            '</div>',
+    });
+    await settle(h);
+
+    const [web, video] = h.document.querySelectorAll('#rso > .Ww4FFb');
+    assert.equal(proxyOf(web).href, 'https://reddit.com/r/castiron/');
+    assert.equal(proxyOf(video).href, 'https://reddit.com/r/castiron/');
+    assert.equal(proxyOf(h.document.getElementById('heading-site')).href, 'https://reddit.com/r/Cooking/');
+    assert.deepEqual(storage.siteHosts(), [['reddit', 'https://reddit.com']], 'comment counts are never learned as site names');
+    h.close();
+});
+
+test('name-only result with no page-revealed destination is released to uBlacklist, not held for the bridge', async () => {
+    const h = createHarness({ html: '<div id="rso"></div>', userAgent: MOBILE_UA });
+    await settle(h);
+    h.document.documentElement.setAttribute('data-ub-hide-blocked-results', '1');
+
+    const holder = h.document.createElement('div');
+    holder.innerHTML = organicCard({ id: 'late', goto: '/goto?url=late-name-only', site: 'Reddit · r/castiron' });
+    h.document.getElementById('rso').appendChild(holder.firstElementChild);
+    await settle(h);
+
+    const root = h.document.getElementById('late');
+    assert.equal(proxyOf(root), null, 'nothing on the page reveals this destination');
+    assert.equal(hasPendingAttribute(h.document), false);
     assert.notEqual(
         h.window.getComputedStyle(root).display,
         'none',
-        'allowed result should release after the bridge has resolved its destination',
+        'an unresolved result is visible even if uBlacklist never marks a URL-less root',
     );
+
+    root.setAttribute('data-ub-result', '1');
+    assert.notEqual(h.window.getComputedStyle(root).display, 'none');
+    root.setAttribute('data-ub-block', '1');
+    assert.equal(h.window.getComputedStyle(root).display, 'none', 'uBlacklist can still hide it');
+    assert.deepEqual(h.requests, []);
+    h.close();
+});
+
+test('unresolved News-tab and Top stories cards are released whether or not uBlacklist marks them', async () => {
+    const newsTab = createHarness({
+        url: 'https://www.google.com/search?q=intel+14a&tbm=nws',
+        userAgent: MOBILE_UA,
+        html: '<div id="rso"><div id="news" data-news-cluster-id="c1">' +
+            '<a href="/goto?url=news-unresolved"><div>CBC News</div>' +
+            '<div role="heading" aria-level="3">Story</div></a></div></div>',
+    });
+    await settle(newsTab);
+    const card = newsTab.document.getElementById('news');
+    assert.equal(hasPendingAttribute(newsTab.document), false);
+    assert.notEqual(newsTab.window.getComputedStyle(card).display, 'none');
+    newsTab.document.documentElement.setAttribute('data-ub-hide-blocked-results', '1');
+    card.setAttribute('data-ub-result', '1');
+    card.setAttribute('data-ub-block', '1');
+    assert.equal(newsTab.window.getComputedStyle(card).display, 'none');
+    newsTab.close();
+
+    const allTab = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso"><div id="story" data-news-cluster-id="top-1">' +
+            '<a href="/goto?url=top-story-unresolved"><div>CBC News</div>' +
+            '<div role="heading" aria-level="3">Top story</div></a></div></div>',
+    });
+    await settle(allTab);
+    const story = allTab.document.getElementById('story');
+    assert.equal(proxyOf(story), null);
+    assert.equal(hasPendingAttribute(allTab.document), false);
+    assert.notEqual(
+        allTab.window.getComputedStyle(story).display,
+        'none',
+        'the Top stories SERPINFO rule reads only the bridge proxy, so uBlacklist may never mark this card',
+    );
+    assert.deepEqual(allTab.requests, []);
+    allTab.close();
+});
+
+test('a site name learned from a cited card on the same page bridges name-only cards of that site', async () => {
+    const storage = createStorage();
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        storage,
+        html: '<div id="rso">' +
+            organicCard({ id: 'name-only', goto: '/goto?url=massimo-name-only', site: 'Massimo Dutti', meta: 'Leather jackets' }) +
+            organicCard({ id: 'cited', goto: '/goto?url=massimo-cited', site: 'Massimo Dutti', meta: 'https://www.massimodutti.com › ca › men' }) +
+            '</div>',
+    });
+    await settle(h);
+
+    const cited = h.document.getElementById('cited');
+    const nameOnly = h.document.getElementById('name-only');
+    assert.equal(proxyOf(cited).href, 'https://www.massimodutti.com/');
+    assert.ok(proxyOf(nameOnly), 'a name-only card earlier on the page is bridged once the name is learned');
+    assert.equal(proxyOf(nameOnly).href, 'https://massimodutti.com/');
+    assert.equal(proxyOf(nameOnly).parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name');
+    assert.equal(
+        h.window.getComputedStyle(nameOnly).display,
+        'none',
+        'a bridged name-only card waits for uBlacklist like any other bridged result',
+    );
+    nameOnly.setAttribute('data-ub-result', '1');
+    assert.notEqual(h.window.getComputedStyle(nameOnly).display, 'none');
+    assert.deepEqual(storage.siteHosts(), [['massimo dutti', 'https://massimodutti.com']]);
+
+    const holder = h.document.createElement('div');
+    holder.innerHTML = organicCard({ id: 'more', goto: '/goto?url=massimo-more', site: 'Massimo Dutti', meta: 'Coats' });
+    h.document.getElementById('rso').appendChild(holder.firstElementChild);
+    await settle(h);
+    assert.equal(proxyOf(h.document.getElementById('more')).href, 'https://massimodutti.com/');
+    assert.equal(hasPendingAttribute(h.document), false);
+    assert.deepEqual(h.requests, []);
+    h.close();
+});
+
+test('a site name learned on an earlier page bridges later name-only cards, with r/<name> as a subreddit path', async () => {
+    const storage = createStorage();
+    const first = createHarness({
+        storage,
+        html:
+            '<div id="group" class="Ww4FFb">' +
+            '<div class="xYkm8c"><a class="zReHs" href="https://www.reddit.com/r/Kombucha/">Reddit</a></div>' +
+            '<div class="xYkm8c"><a class="zReHs" href="https://www.quora.com/What-is-kombucha">Quora</a></div>' +
+            '</div>' +
+            organicCard({ id: 'instagram-cited', goto: '/goto?url=instagram-cited', site: 'Instagram', meta: 'https://www.instagram.com › breakingbad' }),
+    });
+    await settle(first);
+    first.close();
+
+    const second = createHarness({
+        storage,
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' +
+            organicCard({ id: 'reddit', goto: '/goto?url=reddit-name-only', site: 'Reddit · r/castiron' }) +
+            organicCard({ id: 'instagram', goto: '/goto?url=instagram-name-only', site: 'Instagram · taylorswift', meta: 'Taylor Swift (@taylorswift)' }) +
+            organicCard({ id: 'unknown', goto: '/goto?url=unknown-name-only', site: 'Serious Eats', meta: 'Recipes' }) +
+            '</div>',
+    });
+    await settle(second);
+
+    const reddit = proxyOf(second.document.getElementById('reddit'));
+    assert.equal(reddit.href, 'https://reddit.com/r/castiron/');
+    assert.equal(reddit.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name-path');
+    const instagram = proxyOf(second.document.getElementById('instagram'));
+    assert.equal(instagram.href, 'https://instagram.com/', 'a handle is not a reliable path, so only the host is used');
+    assert.equal(instagram.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-name');
+    const unknown = second.document.getElementById('unknown');
+    assert.equal(proxyOf(unknown), null);
+    assert.notEqual(second.window.getComputedStyle(unknown).display, 'none');
+    assert.deepEqual(second.requests, []);
+    second.close();
+});
+
+test('learned site names live under one bounded storage key, oldest out first', async () => {
+    const preload = Array.from({ length: 500 }, (_, i) => [`site ${i}`, `https://site${i}.example`]);
+    const storage = createStorage({ [SITE_HOSTS_KEY]: JSON.stringify(preload) });
+    const h = createHarness({
+        storage,
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' +
+            organicCard({ id: 'cited', goto: '/goto?url=bound-cited', site: 'Massimo Dutti', meta: 'https://www.massimodutti.com › ca' }) +
+            organicCard({ id: 'stored', goto: '/goto?url=bound-stored', site: 'Site 499 · Forum', meta: 'Thread' }) +
+            '</div>',
+    });
+    await settle(h);
+
+    const stored = storage.siteHosts();
+    assert.deepEqual([...storage.values.keys()], [SITE_HOSTS_KEY]);
+    assert.equal(stored.length, 500);
+    assert.deepEqual(stored.at(-1), ['massimo dutti', 'https://massimodutti.com']);
+    assert.equal(stored.some(([name]) => name === 'site 0'), false, 'the oldest entry is evicted');
+    assert.ok(stored.some(([name]) => name === 'site 1'));
+    assert.equal(proxyOf(h.document.getElementById('stored')).href, 'https://site499.example/');
+    h.close();
+
+    const corrupt = createStorage({ [SITE_HOSTS_KEY]: '{not json' });
+    const c = createHarness({
+        storage: corrupt,
+        userAgent: MOBILE_UA,
+        html: organicCard({ id: 'cited', goto: '/goto?url=corrupt-cited', site: 'Massimo Dutti', meta: 'https://www.massimodutti.com › ca' }),
+    });
+    await settle(c);
+    assert.deepEqual(corrupt.siteHosts(), [['massimo dutti', 'https://massimodutti.com']]);
+    c.close();
+});
+
+test('a site name seen with unrelated hosts is never used, while www. and m. hosts give one domain in any order', async () => {
+    const youtubeCards = [
+        '<div class="Ww4FFb vt6azd"><a class="zReHs" href="https://m.youtube.com/watch?v=one">YouTube · Vacuum Wars</a></div>',
+        '<div class="Ww4FFb vt6azd"><a class="zReHs" href="https://www.youtube.com/watch?v=two">YouTube · Project Farm</a></div>',
+    ];
+    for (const order of [youtubeCards, [...youtubeCards].reverse()]) {
+        const storage = createStorage();
+        const h = createHarness({
+            storage,
+            userAgent: MOBILE_UA,
+            html: '<div id="rso">' +
+                organicCard({ id: 'globe-a', goto: '/goto?url=globe-a', site: 'The Globe', meta: 'https://www.theglobe.com › news' }) +
+                organicCard({ id: 'globe-b', goto: '/goto?url=globe-b', site: 'The Globe', meta: 'https://theglobe.net.au › story' }) +
+                organicCard({ id: 'globe-name-only', goto: '/goto?url=globe-name-only', site: 'The Globe · Opinion', meta: 'Column' }) +
+                order.join('') +
+                organicCard({ id: 'youtube-name-only', goto: '/goto?url=youtube-name-only', site: 'YouTube · Taylor Swift', meta: '2 years ago' }) +
+                '</div>',
+        });
+        await settle(h);
+
+        const globe = h.document.getElementById('globe-name-only');
+        assert.equal(proxyOf(globe), null, 'an ambiguous site name must not pick a host');
+        assert.notEqual(h.window.getComputedStyle(globe).display, 'none');
+        const youtube = proxyOf(h.document.getElementById('youtube-name-only')).href;
+        assert.equal(youtube, 'https://youtube.com/', 'the inferred host does not depend on which card came first');
+        assert.ok(matchesUBlacklistPattern('*://*.youtube.com/*', youtube));
+        assert.deepEqual(
+            Object.fromEntries(storage.siteHosts()),
+            { 'the globe': '', youtube: 'https://youtube.com' },
+            'the conflict is remembered so a later page cannot pick either host',
+        );
+        h.close();
+    }
+});
+
+test('a youtube.com whole-site rule matches the bare, www. and m. forms; an exact www. host rule matches only www.', () => {
+    for (const url of ['https://youtube.com/', 'https://www.youtube.com/watch?v=1', 'https://m.youtube.com/watch?v=1']) {
+        assert.equal(matchesUBlacklistPattern('*://*.youtube.com/*', url), true, url);
+    }
+    assert.equal(matchesUBlacklistPattern('*://www.youtube.com/*', 'https://www.youtube.com/watch?v=1'), true);
+    assert.equal(matchesUBlacklistPattern('*://www.youtube.com/*', 'https://youtube.com/'), false);
+    assert.equal(matchesUBlacklistPattern('*://www.youtube.com/*', 'https://m.youtube.com/watch?v=1'), false);
+    assert.equal(matchesUBlacklistPattern('*://*.youtube.com/*', 'https://notyoutube.com/'), false);
+});
+
+test('malformed inline result data is ignored without throwing', async () => {
+    const goto = '/goto?url=malformed-inline';
+    const broken = ['', '!!!', 'Ct0BL2dvdG8', 'GgAiAA', 'CgQ', '////', 'Cv____8P'];
+    const entries = Object.fromEntries(broken.map((blob, i) => {
+        const entry = new Array(33).fill(null);
+        entry[17] = goto;
+        entry[22] = [...new Array(12).fill(null), blob];
+        return [`broken-${i}`, entry];
+    }));
+    entries['not-an-array'] = { 17: goto, 22: 'x' };
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' +
+            organicCard({ id: 'malformed', goto, site: 'Reddit · r/castiron' }) +
+            `</div>${inlineDataScript(entries)}`,
+        wjd: entries,
+    });
+    await settle(h);
+
+    const root = h.document.getElementById('malformed');
+    assert.equal(proxyOf(root), null);
+    assert.notEqual(h.window.getComputedStyle(root).display, 'none');
     h.close();
 });
 
 
-test('mobile opaque result uses its displayed destination URL before network fallback', async () => {
+test('mobile opaque result uses its displayed destination URL without any request', async () => {
     const goto = '/goto?url=opaque-massimo-displayed-url';
     let attempts = 0;
     const h = createHarness({
@@ -384,7 +802,7 @@ test('mobile opaque result uses its displayed destination URL before network fal
     assert.ok(proxy, 'visible result URL should bridge the result without waiting for /goto resolution');
     assert.equal(proxy.href, 'https://www.massimodutti.com/');
     assert.equal(h.api.resolveGoto(goto), 'https://www.massimodutti.com/');
-    assert.equal(attempts, 0, 'network fallback should not run when the displayed destination is available');
+    assert.equal(attempts, 0, 'the bridge makes no request when the displayed destination is available');
     h.close();
 });
 
@@ -410,157 +828,6 @@ test('opaque result does not mistake a snippet URL for the displayed destination
     h.close();
 });
 
-test('standalone mobile-style result resolves one opaque goto via network fallback', async () => {
-    const goto = '/goto?url=opaque-instagram';
-    const target = 'https://www.instagram.com/breakingbad/';
-    const requests = [];
-    const h = createHarness({
-        html:
-            '<div id="rso"><div class="MjjYud">' +
-            '<div id="instagram" class="Ww4FFb vt6azd">' +
-            `<a class="UBFage" href="${goto}">Instagram · breakingbad ` +
-            'Breaking Bad (@breakingbad) • Instagram photos and videos</a>' +
-            '</div></div></div>',
-        gmRequest(details) {
-            requests.push(details.url);
-            setTimeout(() => details.onload({ finalUrl: target }), 0);
-            return { abort() {} };
-        },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 180));
-
-    const root = h.document.getElementById('instagram');
-    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
-    assert.equal(requests.length, 1);
-    assert.equal(requests[0], `https://www.google.com${goto}`);
-    assert.ok(proxy, 'single opaque result should receive a resolved uBlacklist proxy');
-    assert.equal(proxy.href, target);
-    assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
-    assert.equal(h.api.resolveGoto(goto), target);
-    h.close();
-});
-
-test('opaque fallback follows redirects normally and accepts onloadend responseURL', async () => {
-    const goto = '/goto?url=opaque-worldnews';
-    const target = 'https://www.reddit.com/r/worldnews/comments/test/post/';
-    const requests = [];
-    const h = createHarness({
-        html:
-            '<div id="worldnews" class="Ww4FFb vt6azd">' +
-            `<a class="UBFage" href="${goto}">Reddit · r/worldnews</a>` +
-            '</div>',
-        gmRequest(details) {
-            requests.push(details);
-            setTimeout(() => details.onloadend({ responseURL: target, status: 200 }), 0);
-            return { abort() {} };
-        },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 180));
-
-    const proxy = h.document.querySelector('#worldnews > [data-ub-google-source-proxy] a');
-    assert.ok(proxy);
-    assert.equal(proxy.href, target);
-    assert.equal(requests.length, 1);
-    assert.equal('redirect' in requests[0], false, 'portable fallback must not request manual redirects');
-    h.close();
-});
-
-test('opaque fallback prefers the final response URL over an intermediate Location header', async () => {
-    const goto = '/goto?url=opaque-massimo';
-    const intermediate = 'https://intermediate.example/redirect';
-    const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
-    const h = createHarness({
-        html:
-            '<div id="massimo" class="Ww4FFb vt6azd">' +
-            `<a class="UBFage" href="${goto}">Massimo Dutti · Leather jacket</a>` +
-            '</div>',
-        gmRequest(details) {
-            setTimeout(() => details.onloadend({
-                responseHeaders: `Location: ${intermediate}\r\nContent-Type: text/html`,
-                responseURL: target,
-                finalUrl: target,
-                status: 200,
-            }), 0);
-            return { abort() {} };
-        },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 180));
-
-    const proxy = h.document.querySelector('#massimo > [data-ub-google-source-proxy] a');
-    assert.ok(proxy);
-    assert.equal(proxy.href, target);
-    assert.equal(h.api.resolveGoto(goto), target);
-    h.close();
-});
-
-test('opaque fallback waits for the final callback when onload only exposes an intermediate redirect', async () => {
-    const goto = '/goto?url=opaque-massimo-callback-order';
-    const intermediate = 'https://intermediate.example/redirect';
-    const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
-    const h = createHarness({
-        html:
-            '<div id="massimo-callback" class="Ww4FFb vt6azd">' +
-            `<a class="UBFage" href="${goto}">Massimo Dutti · Leather jacket</a>` +
-            '</div>',
-        gmRequest(details) {
-            setTimeout(() => {
-                details.onload({
-                    responseHeaders: `Location: ${intermediate}`,
-                    status: 302,
-                });
-                setTimeout(() => details.onloadend({
-                    responseURL: target,
-                    finalUrl: target,
-                    status: 200,
-                }), 5);
-            }, 0);
-            return { abort() {} };
-        },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 180));
-
-    const proxy = h.document.querySelector('#massimo-callback > [data-ub-google-source-proxy] a');
-    assert.ok(proxy);
-    assert.equal(proxy.href, target);
-    assert.equal(h.api.resolveGoto(goto), target);
-    h.close();
-});
-
-
-test('opaque fallback still resolves a result when Google replaces the original link before the delayed request', async () => {
-    const goto = '/goto?url=opaque-massimo-detached-link';
-    const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
-    let attempts = 0;
-    const h = createHarness({
-        html:
-            '<div id="massimo-detached" class="Ww4FFb vt6azd">' +
-            `<a id="massimo-detached-link" class="UBFage" href="${goto}">Massimo Dutti · Leather jacket</a>` +
-            '</div>',
-        gmRequest(details) {
-            attempts += 1;
-            setTimeout(() => details.onloadend({ responseURL: target, finalUrl: target, status: 200 }), 0);
-            return { abort() {} };
-        },
-    });
-
-    const root = h.document.getElementById('massimo-detached');
-    h.document.getElementById('massimo-detached-link').remove();
-
-    await new Promise((resolve) => setTimeout(resolve, 180));
-
-    const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
-    assert.equal(attempts, 1, 'network fallback must not depend on the original anchor staying connected');
-    assert.ok(proxy, 'the still-connected result root should receive the resolved proxy');
-    assert.equal(proxy.href, target);
-
-    h.close();
-});
-
-
 test('metadata mapping still resolves a result after Google replaces the original opaque link', async () => {
     const goto = '/goto?url=opaque-massimo-detached-metadata';
     const target = 'https://www.massimodutti.com/ca/men/jackets/leather-n1375';
@@ -583,57 +850,6 @@ test('metadata mapping still resolves a result after Google replaces the origina
     assert.ok(proxy, 'the still-connected result root should receive metadata resolution after anchor replacement');
     assert.equal(proxy.href, target);
 
-    h.close();
-});
-
-test('ordinary opaque fallback retries up to five total attempts', async () => {
-    const goto = '/goto?url=opaque-retry';
-    const target = 'https://www.reddit.com/r/worldnews/comments/retry/post/';
-    let attempts = 0;
-    const h = createHarness({
-        html:
-            '<div id="retry" class="Ww4FFb vt6azd">' +
-            `<a class="UBFage" href="${goto}">Reddit · r/worldnews</a>` +
-            '</div>',
-        gmRequest(details) {
-            attempts += 1;
-            const currentAttempt = attempts;
-            setTimeout(() => {
-                if (currentAttempt < 5) details.onerror({});
-                else details.onloadend({ responseURL: target, status: 200 });
-            }, 0);
-            return { abort() {} };
-        },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 950));
-
-    const proxy = h.document.querySelector('#retry > [data-ub-google-source-proxy] a');
-    assert.ok(proxy, 'fifth bounded attempt should still recover the result');
-    assert.equal(proxy.href, target);
-    assert.equal(attempts, 5);
-    h.close();
-});
-
-test('Violentmonkey response hash artifact is stripped from bridge proxy', async () => {
-    const goto = '/goto?url=opaque-vmxhr';
-    const clean = 'https://www.reddit.com/r/worldnews/comments/hash/post/';
-    const h = createHarness({
-        html:
-            '<div id="vmxhr" class="Ww4FFb vt6azd">' +
-            `<a class="UBFage" href="${goto}">Reddit · r/worldnews</a>` +
-            '</div>',
-        gmRequest(details) {
-            setTimeout(() => details.onload({ finalUrl: `${clean}#VMxhrAbCdEf`, status: 200 }), 0);
-            return { abort() {} };
-        },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 180));
-
-    const proxy = h.document.querySelector('#vmxhr > [data-ub-google-source-proxy] a');
-    assert.ok(proxy);
-    assert.equal(proxy.href, clean);
     h.close();
 });
 
@@ -747,7 +963,7 @@ test('mixed-domain direct result root is not collapsed into one proxy destinatio
     h.close();
 });
 
-test('ordinary multi-result root without nested result semantics does not fan out network fallbacks', async () => {
+test('ordinary multi-result root without nested result semantics makes no requests and adds no proxy', async () => {
     const requests = [];
     const h = createHarness({
         html:
