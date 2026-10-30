@@ -95,6 +95,8 @@ function createHarness({
     url = 'https://www.google.com/search?q=bridge-regression',
     userAgent = '',
     storage = createStorage(),
+    fakeTimers = false,
+    sizes = null,
 }) {
     const dom = new JSDOM(
         `<!doctype html><html><head></head><body>${html}</body></html>`,
@@ -138,6 +140,23 @@ function createHarness({
     window.GM_getValue = (key, fallback) => storage.get(key, fallback);
     window.GM_setValue = (key, value) => storage.set(key, value);
     window.GM_deleteValue = (key) => storage.delete(key);
+    // Fake window timers: the bridge's setTimeout calls wait for h.tick(ms).
+    const timers = [];
+    let now = 0;
+    if (fakeTimers) {
+        window.setTimeout = (fn, ms = 0, ...args) => {
+            timers.push({ at: now + ms, run: () => fn(...args) });
+            return timers.length;
+        };
+    }
+    // Element heights by id (others 20 px), all full-width, so the bridge's
+    // semantic-root search sees real card geometry.
+    if (sizes) {
+        window.HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+            const height = sizes[this.id] ?? 20;
+            return { x: 0, y: 0, top: 0, left: 0, width: window.innerWidth, height, right: window.innerWidth, bottom: height };
+        };
+    }
     window.eval(source);
 
     return {
@@ -146,6 +165,13 @@ function createHarness({
         api: window.__UB_GOOGLE_BRIDGE__,
         requests,
         storage,
+        tick(ms) {
+            now += ms;
+            for (const timer of timers.filter((item) => !item.done && item.at <= now).sort((a, b) => a.at - b.at)) {
+                timer.done = true;
+                timer.run();
+            }
+        },
         close() { window.close(); },
     };
 }
@@ -562,7 +588,7 @@ test('name-only result with no page-revealed destination is released to uBlackli
     const holder = h.document.createElement('div');
     holder.innerHTML = organicCard({ id: 'late', goto: '/goto?url=late-name-only', site: 'Serious Eats · Forum' });
     h.document.getElementById('rso').appendChild(holder.firstElementChild);
-    await settle(h);
+    await settleBatch(h);
 
     const root = h.document.getElementById('late');
     assert.equal(proxyOf(root), null, 'nothing on the page reveals this destination');
@@ -578,6 +604,80 @@ test('name-only result with no page-revealed destination is released to uBlackli
     root.setAttribute('data-ub-block', '1');
     assert.equal(h.window.getComputedStyle(root).display, 'none', 'uBlacklist can still hide it');
     assert.deepEqual(h.requests, []);
+    h.close();
+});
+
+// A thread card (probe2 in the code review): an outer firewall root 1200 px
+// tall whose post and answers each link through their own /goto token.
+const THREAD_CARD = '<div id="rso"><div id="outer" class="Ww4FFb vt6azd">' +
+    '<div id="post"><a href="/goto?url=thread-post"><div role="heading" aria-level="3">Which pan is best?</div>' +
+    '<div>Serious Eats&nbsp;·&nbsp;Forum</div></a><div>The original post asks about pans.</div></div>' +
+    '<div id="answer-1"><a href="/goto?url=thread-answer-1">First answer with enough text</a></div>' +
+    '<div id="answer-2"><a href="/goto?url=thread-answer-2">Second answer with enough text</a></div>' +
+    '</div></div>';
+const THREAD_SIZES = { outer: 1200, post: 200, 'answer-1': 100, 'answer-2': 100 };
+
+test('an unresolved thread card is released on the outer root that hides it, not only on its inner results', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: THREAD_CARD, sizes: THREAD_SIZES });
+    await settle(h);
+
+    const outer = h.document.getElementById('outer');
+    assert.equal(h.document.getElementById('post').getAttribute('data-ub-google-bridge-unresolved'), '1');
+    assert.notEqual(h.window.getComputedStyle(outer).display, 'none', 'the firewall root must not stay hidden for good');
+    h.close();
+});
+
+test('a later card waits for its batch: hidden until its inline data resolves it, never released first', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: '<div id="rso"></div>', fakeTimers: true });
+    await settle(h);
+
+    const rso = h.document.getElementById('rso');
+    const holder = h.document.createElement('div');
+    holder.innerHTML = capture.webRoot;
+    const card = holder.firstElementChild;
+    rso.appendChild(card);
+    await settle(h);
+    h.tick(500);
+    assert.equal(card.hasAttribute('data-ub-google-bridge-unresolved'), false, 'not released before its batch settles');
+    assert.equal(h.window.getComputedStyle(card).display, 'none');
+
+    const data = h.document.createElement('div');
+    data.innerHTML = inlineDataScript(capture.entries);
+    rso.appendChild(data);
+    await settle(h);
+    h.tick(1000);
+
+    assert.equal(proxyOf(card).href, 'https://reddit.com/r/castiron/');
+    assert.equal(proxyOf(card).parentElement.getAttribute('data-ub-google-bridge-inferred'), 'inline-data-path');
+    assert.equal(card.hasAttribute('data-ub-google-bridge-unresolved'), false);
+    assert.equal(h.window.getComputedStyle(card).display, 'none', 'resolved, so it waits for uBlacklist');
+    h.close();
+});
+
+test('a later card with no data is released within one second, and a later resolution sends it back to uBlacklist', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: '<div id="rso"></div>', fakeTimers: true });
+    await settle(h);
+
+    const rso = h.document.getElementById('rso');
+    const holder = h.document.createElement('div');
+    holder.innerHTML = organicCard({ id: 'late', goto: '/goto?url=bound-late', site: 'Serious Eats · Forum', meta: 'Pans' });
+    rso.appendChild(holder.firstElementChild);
+    await settle(h);
+    const card = h.document.getElementById('late');
+    h.tick(999);
+    assert.equal(h.window.getComputedStyle(card).display, 'none', 'still inside its batch bound');
+    h.tick(1);
+    assert.notEqual(h.window.getComputedStyle(card).display, 'none', 'released after the bound');
+
+    holder.innerHTML = organicCard({ id: 'cited', goto: '/goto?url=bound-cited', site: 'Serious Eats', meta: 'https://www.seriouseats.com › pans' });
+    rso.appendChild(holder.firstElementChild);
+    await settle(h);
+
+    assert.equal(proxyOf(card).href, 'https://seriouseats.com/');
+    assert.equal(card.hasAttribute('data-ub-google-bridge-unresolved'), false);
+    assert.equal(h.window.getComputedStyle(card).display, 'none', 'uBlacklist judges it again');
+    card.setAttribute('data-ub-result', '1');
+    assert.notEqual(h.window.getComputedStyle(card).display, 'none');
     h.close();
 });
 

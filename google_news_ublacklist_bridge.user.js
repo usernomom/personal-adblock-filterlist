@@ -65,12 +65,18 @@
  *      until uBlacklist has processed them, on desktop and mobile alike;
  *      attaching a bridge proxy never reveals a result on its own, and
  *      there is no timer that reveals an unprocessed result. A result that
- *      links only through /goto and has no source above once the page has
- *      been parsed (or, for results added later, at once) is released:
- *      marked data-ub-google-bridge-unresolved and shown without waiting
- *      for uBlacklist, on every tab including News and Top stories, since
- *      uBlacklist may never mark a root it cannot read a URL from. Results
- *      uBlacklist blocks are hidden when it hides blocked results.
+ *      links only through /goto and has no source above once its batch has
+ *      settled is released: marked data-ub-google-bridge-unresolved, on the
+ *      result and on the firewall root that holds it, and shown without
+ *      waiting for uBlacklist, on every tab including News and Top stories,
+ *      since uBlacklist may never mark a root it cannot read a URL from. The
+ *      initial page settles when it has been parsed; a later batch settles
+ *      when inline data arrives after it, or 1 s after it was added,
+ *      whichever comes first, so a card whose data follows it never shows
+ *      first. A released result that resolves later loses the mark and waits
+ *      for uBlacklist again; its firewall root keeps the mark unless the
+ *      proxy is on that root itself. Results uBlacklist blocks are hidden
+ *      when it hides blocked results.
  * UB-5 Gap collapse. When uBlacklist hides blocked results, result slots
  *      whose results are all blocked are hidden.
  * UB-6 No requests. The bridge itself requests nothing (no /goto
@@ -139,7 +145,11 @@
     const inlineHostByEntry = new Map();
     const inlineHostByGoto = new Map();
     const processedEntryKeys = new Set();
+    // Unresolved root -> { links, settled, generation, firewallRoots }.
     const unresolvedRoots = new Map();
+    const BATCH_SETTLE_MS = 1000;
+    let pageParsed = false;
+    let dataGeneration = 0;
     // Learned site name -> https://<registrable domain>, or '' when dropped.
     // Page memory only.
     const siteHosts = new Map();
@@ -546,6 +556,8 @@
             stats.inlineEntries += 1;
             fresh[key] = entry;
         }
+        if (!Object.keys(fresh).length) return;
+        dataGeneration += 1;
         captureInlineDomains(fresh);
         for (const entry of Object.values(fresh)) {
             try {
@@ -553,6 +565,7 @@
                 scanDataTree(entry);
             } catch (_) {}
         }
+        settleBatchesBefore(dataGeneration);
     }
 
     function installDirectWjdHook() {
@@ -1073,24 +1086,23 @@
     }
 
     // Order: result-bound page data (inline domain, inline plain host,
-    // thumbnail host); once the page has been parsed, KNOWN_SITES for its
+    // thumbnail host); once the root's batch has settled, KNOWN_SITES for its
     // names, else the name learned on this page. A qualifier adds a path only
     // where KNOWN_SITES says it is certainly a handle of that site.
-    function inferDestination(link, key, root) {
+    function inferDestination(link, key, root, settled) {
         if (!canInferForLink(link)) return null;
         const line = siteLine(root);
         const inline = inlineValue(root, key, inlineDomainByEntry, inlineDomainByGoto);
         const inlineHost = inline ? '' : inlineValue(root, key, inlineHostByEntry, inlineHostByGoto);
         const thumbnail = inline || inlineHost ? '' : thumbnailOrigin(root);
-        const parsed = document.readyState !== 'loading';
         const listed = line ? KNOWN_SITES.find((site) => site.name === line.name) : null;
         let origin = '';
         let source = '';
         if (inline) [origin, source] = [`https://${inline}`, 'inline-data'];
         else if (inlineHost) [origin, source] = [inlineHost, 'inline-host'];
         else if (thumbnail) [origin, source] = [thumbnail, 'page-host'];
-        else if (parsed && listed) [origin, source] = [siteOriginOf(`https://${listed.host}`), 'site-list'];
-        else if (parsed && line && siteHosts.get(line.name)) [origin, source] = [siteHosts.get(line.name), 'site-name'];
+        else if (settled && listed) [origin, source] = [siteOriginOf(`https://${listed.host}`), 'site-list'];
+        else if (settled && line && siteHosts.get(line.name)) [origin, source] = [siteHosts.get(line.name), 'site-name'];
         if (!origin) return null;
         const site = knownSiteFor(origin);
         const handle = site?.handle && line ? line.qualifier.match(site.handle) : null;
@@ -1100,10 +1112,21 @@
             : { url: `${origin}/`, source, learnFrom };
     }
 
-    function markUnresolved(root) {
-        if (document.readyState !== 'loading') root.setAttribute(UNRESOLVED_ATTRIBUTE, '1');
+    // Releases a root on itself and on each firewall root holding one of its
+    // links that has no proxy of its own (a thread card's outer root).
+    function release(root, record) {
+        root.setAttribute(UNRESOLVED_ATTRIBUTE, '1');
+        for (const link of record.links) {
+            const firewallRoot = link.closest(KNOWN_ROOT_SELECTOR);
+            if (!firewallRoot || firewallRoot === root || firewallRoot.querySelector(PROXY_WRAPPER_SELECTOR)) continue;
+            firewallRoot.setAttribute(UNRESOLVED_ATTRIBUTE, '1');
+            record.firewallRoots.add(firewallRoot);
+        }
     }
 
+    // A resolved root goes back to uBlacklist. An outer firewall root stays
+    // released: uBlacklist reads its URL from its own first link, which the
+    // inner proxy does not change, so it might never mark it.
     function forgetUnresolved(root) {
         unresolvedRoots.delete(root);
         root.removeAttribute(UNRESOLVED_ATTRIBUTE);
@@ -1115,7 +1138,8 @@
             forgetUnresolved(root);
             return true;
         }
-        const inferred = inferDestination(link, key, root);
+        const settled = unresolvedRoots.get(root)?.settled === true;
+        const inferred = inferDestination(link, key, root, settled);
         if (inferred && bridgeResolvedRoot(root, inferred.url, inferred.source)) {
             if (inferred.learnFrom) learnSiteHost(root, inferred.url);
             return true;
@@ -1123,20 +1147,49 @@
         return false;
     }
 
+    function resolveRoot(root, record) {
+        for (const link of record.links) {
+            if (!link.isConnected) continue;
+            const key = normalizeGoto(link.getAttribute('href') || link.href);
+            if (key && resolveWithoutRequest(link, key, root)) return true;
+        }
+        return false;
+    }
+
     function registerUnresolved(link, key, root) {
         if (!root || nativeReadableURL(root)) return;
         if (resolveWithoutRequest(link, key, root)) return;
-        let links = unresolvedRoots.get(root);
-        if (!links) {
-            links = new Set();
-            unresolvedRoots.set(root, links);
+        let record = unresolvedRoots.get(root);
+        if (!record) {
+            record = { links: new Set(), settled: false, generation: dataGeneration, firewallRoots: new Set() };
+            unresolvedRoots.set(root, record);
+            if (pageParsed) setTimeout(() => settleRoot(root), BATCH_SETTLE_MS);
         }
-        links.add(link);
-        markUnresolved(root);
+        record.links.add(link);
+        if (record.settled) release(root, record);
     }
 
-    // Runs whenever a new domain or site name is learned, and once when the
-    // document has been parsed, after which remaining roots are released.
+    // A settled root may use the site list and learned names; if nothing
+    // resolves it, it is released.
+    function settleRoot(root) {
+        const record = unresolvedRoots.get(root);
+        if (!record || record.settled) return;
+        record.settled = true;
+        if (!root.isConnected) {
+            unresolvedRoots.delete(root);
+            return;
+        }
+        if (!resolveRoot(root, record)) release(root, record);
+    }
+
+    function settleBatchesBefore(generation) {
+        if (!pageParsed) return;
+        for (const [root, record] of [...unresolvedRoots]) {
+            if (!record.settled && record.generation < generation) settleRoot(root);
+        }
+    }
+
+    // Runs whenever new data or a new site name arrives.
     function retryUnresolved() {
         if (retryingUnresolved) {
             retryUnresolvedAgain = true;
@@ -1146,16 +1199,12 @@
         try {
             do {
                 retryUnresolvedAgain = false;
-                for (const [root, links] of [...unresolvedRoots]) {
+                for (const [root, record] of [...unresolvedRoots]) {
                     if (!root.isConnected) {
                         unresolvedRoots.delete(root);
                         continue;
                     }
-                    for (const link of links) {
-                        if (!link.isConnected) continue;
-                        const key = normalizeGoto(link.getAttribute('href') || link.href);
-                        if (key && resolveWithoutRequest(link, key, root)) break;
-                    }
+                    resolveRoot(root, record);
                 }
             } while (retryUnresolvedAgain);
         } finally {
@@ -1163,11 +1212,9 @@
         }
     }
 
-    function releaseUnresolvedAfterParse() {
-        retryUnresolved();
-        for (const root of unresolvedRoots.keys()) {
-            if (root.isConnected) root.setAttribute(UNRESOLVED_ATTRIBUTE, '1');
-        }
+    function settleAfterParse() {
+        pageParsed = true;
+        for (const root of [...unresolvedRoots.keys()]) settleRoot(root);
     }
 
     function firewallRootSelector() {
@@ -1314,10 +1361,12 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         installDirectWjdHook();
         installWjdTrampoline();
         installGapCollapseStyle();
-        // Google's inline result data follows the result HTML, so unresolved
-        // roots are released only once the document has been parsed.
+        // Google's inline result data follows the result HTML, so the initial
+        // page's unresolved roots settle only once the document has been parsed.
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', releaseUnresolvedAfterParse, { once: true });
+            document.addEventListener('DOMContentLoaded', settleAfterParse, { once: true });
+        } else {
+            pageParsed = true;
         }
 
         const observer = new MutationObserver((records) => {
