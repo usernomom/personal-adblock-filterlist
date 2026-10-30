@@ -31,8 +31,9 @@ function createStorage(initial = {}) {
 // (q=cast iron seasoning reddit): a name-only organic card carries only the
 // "Site · qualifier" line, a comments/age line and the heading, all inside one
 // /goto anchor. A cited card shows its host in the same span.ob9lvb slot.
-function organicCard({ id, goto, site, meta = '30+ comments · 8 years ago', title = 'Result title', thumbAlt = null }) {
+function organicCard({ id, goto, site, meta = '30+ comments · 8 years ago', title = 'Result title', thumbAlt = null, entryKey = null }) {
     return `<div id="${id}" class="Ww4FFb vt6azd">` +
+        (entryKey === null ? '' : `<div jsdata="l7Bhpb;_;${entryKey}"></div>`) +
         `<a class="UBFage" href="${goto}" ping="/url?sa=t&amp;source=web&amp;url=${goto.split('url=')[1]}">` +
         '<div data-snf="tyjmbc"><div class="kb0PBd cvP2Ce">' +
         '<span class="fJCbT"><img class="XNo5Ab" src="data:image/png;base64,iVBORw0KGgo=" alt=""></span>' +
@@ -78,14 +79,102 @@ function proxyOf(root) {
 
 // A later result batch: long enough for the bridge's 1 s release bound.
 async function settleBatch(h) {
-    await settle(h, 1100);
+    await settle(h);
+    await settle(h);
 }
 
+async function frames(h, count = 2) {
+    for (let i = 0; i < count; i += 1) {
+        await new Promise((resolve) => h.frame(resolve));
+    }
+}
+
+// Real wait, then rounds of animation frames and 250 ms of the bridge's fake
+// timers, so verdict delays and load-based releases complete.
 async function settle(h, ms = 50) {
     await new Promise((resolve) => setTimeout(resolve, ms));
-    await new Promise((resolve) =>
-        h.window.requestAnimationFrame(() => h.window.requestAnimationFrame(resolve)),
-    );
+    for (let round = 0; round < 3; round += 1) {
+        await frames(h);
+        h.tick?.(250);
+    }
+    await frames(h);
+}
+
+// A model of uBlacklist 10.1.2's content script (src/scripts/content-script/
+// filter.ts at tag v10.1.2): it marks every matched root data-ub-result="1",
+// reads the URL from the first .UBFage / a[role=presentation] href (a relative
+// /goto href reads as no URL), sets data-ub-block="1" on a blocked URL, and
+// re-judges a marked root in the next animation frame after a childList or
+// href mutation inside it changes that URL. manual: judge only on flush().
+function installFakeUBlacklist(h, { blocked = [], manual = false, roots = '.Ww4FFb, .vt6azd' } = {}) {
+    const { window: w, document: d } = h;
+    d.documentElement.setAttribute('data-ub-hide-blocked-results', '1');
+    const urls = new Map();
+    const urlOf = (root) => {
+        const href = root.querySelector('.UBFage, a[role="presentation"]')?.getAttribute('href');
+        try { return href ? new URL(href).href : null; } catch { return null; }
+    };
+    const isBlocked = (url) => {
+        if (!url) return false;
+        const host = new URL(url).hostname;
+        return blocked.some((b) => host === b || host.endsWith(`.${b}`));
+    };
+    const judge = (root) => {
+        const url = urlOf(root);
+        urls.set(root, url);
+        root.setAttribute('data-ub-result', '1');
+        root.removeAttribute('data-ub-block');
+        if (isBlocked(url)) root.setAttribute('data-ub-block', '1');
+    };
+    const scan = () => {
+        for (const root of d.querySelectorAll(roots)) if (!root.hasAttribute('data-ub-result')) judge(root);
+    };
+    let pending = [];
+    let observer;
+    const observe = () => observer.observe(d.body, { childList: true, attributes: true, attributeFilter: ['href'], subtree: true });
+    const process = () => {
+        observer.disconnect();
+        try {
+            const changed = new Set();
+            for (const record of pending) {
+                const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+                for (let root = target?.closest('[data-ub-result]'); root; root = root.parentElement?.closest('[data-ub-result]') ?? null) {
+                    changed.add(root);
+                }
+            }
+            pending = [];
+            for (const root of changed) if (urlOf(root) !== urls.get(root)) judge(root);
+            scan();
+        } finally {
+            observe();
+        }
+    };
+    observer = new w.MutationObserver((records) => {
+        if (!pending.length && !manual) w.requestAnimationFrame(process);
+        pending.push(...records);
+    });
+    scan();
+    observe();
+    return { flush: process, stop: () => observer.disconnect() };
+}
+
+// Samples whether el is visible at every mutation checkpoint and every frame.
+function watchVisible(h, el) {
+    const seen = [];
+    const sample = () => seen.push(el.isConnected && h.window.getComputedStyle(el).display !== 'none');
+    const observer = new h.window.MutationObserver(sample);
+    observer.observe(h.document.documentElement, { attributes: true, childList: true, subtree: true });
+    let on = true;
+    const loop = () => {
+        if (!on) return;
+        sample();
+        h.window.requestAnimationFrame(loop);
+    };
+    h.window.requestAnimationFrame(loop);
+    return {
+        stop() { on = false; observer.disconnect(); },
+        everVisible() { return seen.some(Boolean); },
+    };
 }
 
 function createHarness({
@@ -95,8 +184,9 @@ function createHarness({
     url = 'https://www.google.com/search?q=bridge-regression',
     userAgent = '',
     storage = createStorage(),
-    fakeTimers = false,
+    fakeTimers = true,
     sizes = null,
+    visibility = 'checkVisibility',
 }) {
     const dom = new JSDOM(
         `<!doctype html><html><head></head><body>${html}</body></html>`,
@@ -157,6 +247,33 @@ function createHarness({
             return { x: 0, y: 0, top: 0, left: 0, width: window.innerWidth, height, right: window.innerWidth, bottom: height };
         };
     }
+    // jsdom has no layout. An element renders when it is connected and
+    // neither it nor an ancestor computes to display:none. 'checkVisibility'
+    // models Safari 17.4+; 'rects' models older engines, which give a box
+    // list only to a rendered element.
+    const rendered = (element) => {
+        if (!element.isConnected) return false;
+        for (let node = element; node; node = node.parentElement) {
+            if (window.getComputedStyle(node).display === 'none') return false;
+        }
+        return true;
+    };
+    if (visibility === 'checkVisibility') {
+        window.Element.prototype.checkVisibility = function checkVisibility() { return rendered(this); };
+    } else {
+        delete window.Element.prototype.checkVisibility;
+        window.Element.prototype.getClientRects = function getClientRects() {
+            return rendered(this) ? [this.getBoundingClientRect()] : [];
+        };
+    }
+    // Count the animation-frame callbacks the page schedules; the harness's
+    // own frame waits use the native function and are not counted.
+    const nativeFrame = window.requestAnimationFrame.bind(window);
+    let frameRequests = 0;
+    window.requestAnimationFrame = (callback) => {
+        frameRequests += 1;
+        return nativeFrame(callback);
+    };
     window.eval(source);
 
     return {
@@ -165,6 +282,8 @@ function createHarness({
         api: window.__UB_GOOGLE_BRIDGE__,
         requests,
         storage,
+        frame: nativeFrame,
+        get frameRequests() { return frameRequests; },
         tick(ms) {
             now += ms;
             for (const timer of timers.filter((item) => !item.done && item.at <= now).sort((a, b) => a.at - b.at)) {
@@ -185,8 +304,8 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.3\.1$/m);
-    assert.match(source, /const VERSION = '13\.3\.1';/);
+    assert.match(source, /^\/\/ @version\s+13\.3\.5$/m);
+    assert.match(source, /const VERSION = '13\.3\.5';/);
 });
 
 test('bridge has no network request path, no storage beyond deleting 13.3.0 data, and pinned metadata', () => {
@@ -202,7 +321,7 @@ test('bridge has no network request path, no storage beyond deleting 13.3.0 data
     }
 });
 
-test('protected ordinary result is quarantined until uBlacklist classifies it', () => {
+test('protected ordinary result is quarantined until uBlacklist classifies it', async () => {
     const goto = '/goto?url=opaque-yahoo';
     const target = 'https://finance.yahoo.com/article';
     const h = createHarness({
@@ -220,6 +339,9 @@ test('protected ordinary result is quarantined until uBlacklist classifies it', 
     assert.equal(proxy.href, target);
     assert.equal(h.api.resolveGoto(goto), target);
 
+    // The bridge's own quarantine lifts once uBlacklist can have judged the proxy.
+    await settle(h);
+    assert.equal(h.window.getComputedStyle(root).display, 'none');
     h.document.documentElement.setAttribute('data-ub-hide-blocked-results', '1');
     root.setAttribute('data-ub-result', '1');
     assert.notEqual(h.window.getComputedStyle(root).display, 'none');
@@ -360,6 +482,7 @@ test('mobile bridged result stays hidden until uBlacklist classifies it, then fo
         );
     }
 
+    await settle(h);
     direct.setAttribute('data-ub-result', '1');
     direct.setAttribute('data-ub-block', '1');
     assert.equal(h.window.getComputedStyle(direct).display, 'none');
@@ -617,18 +740,22 @@ const THREAD_CARD = '<div id="rso"><div id="outer" class="Ww4FFb vt6azd">' +
     '</div></div>';
 const THREAD_SIZES = { outer: 1200, post: 200, 'answer-1': 100, 'answer-2': 100 };
 
-test('an unresolved thread card is released on the outer root that hides it, not only on its inner results', async () => {
+test('a thread card\'s outer root stays quarantined after uBlacklist marks it, and is released with its inner results', async () => {
     const h = createHarness({ userAgent: MOBILE_UA, html: THREAD_CARD, sizes: THREAD_SIZES });
-    await settle(h);
-
     const outer = h.document.getElementById('outer');
+    installFakeUBlacklist(h, { roots: '.Ww4FFb' });
+    await frames(h);
+    assert.equal(outer.getAttribute('data-ub-result'), '1', 'uBlacklist marked the outer root on its /goto links');
+    assert.equal(h.window.getComputedStyle(outer).display, 'none', 'quarantined although uBlacklist marked it');
+
+    await settle(h);
     assert.equal(h.document.getElementById('post').getAttribute('data-ub-google-bridge-unresolved'), '1');
     assert.notEqual(h.window.getComputedStyle(outer).display, 'none', 'the firewall root must not stay hidden for good');
     h.close();
 });
 
-test('a later card waits for its batch: hidden until its inline data resolves it, never released first', async () => {
-    const h = createHarness({ userAgent: MOBILE_UA, html: '<div id="rso"></div>', fakeTimers: true });
+test('a later card stays quarantined until its inline data resolves it, never released first', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: '<div id="rso"></div>' });
     await settle(h);
 
     const rso = h.document.getElementById('rso');
@@ -636,16 +763,16 @@ test('a later card waits for its batch: hidden until its inline data resolves it
     holder.innerHTML = capture.webRoot;
     const card = holder.firstElementChild;
     rso.appendChild(card);
-    await settle(h);
-    h.tick(500);
-    assert.equal(card.hasAttribute('data-ub-google-bridge-unresolved'), false, 'not released before its batch settles');
+    await frames(h);
+    h.tick(3000);
+    assert.equal(card.hasAttribute('data-ub-google-bridge-unresolved'), false, 'its entry has not arrived');
+    assert.equal(card.getAttribute('data-ub-google-bridge-quarantine'), '1');
     assert.equal(h.window.getComputedStyle(card).display, 'none');
 
     const data = h.document.createElement('div');
     data.innerHTML = inlineDataScript(capture.entries);
     rso.appendChild(data);
     await settle(h);
-    h.tick(1000);
 
     assert.equal(proxyOf(card).href, 'https://reddit.com/r/castiron/');
     assert.equal(proxyOf(card).parentElement.getAttribute('data-ub-google-bridge-inferred'), 'inline-data-path');
@@ -654,30 +781,206 @@ test('a later card waits for its batch: hidden until its inline data resolves it
     h.close();
 });
 
-test('a later card with no data is released within one second, and a later resolution sends it back to uBlacklist', async () => {
-    const h = createHarness({ userAgent: MOBILE_UA, html: '<div id="rso"></div>', fakeTimers: true });
+test('an unresolvable card is released once no data can come for it, and by the 4 s cap', async () => {
+    // Its own entry processed with no destination: released at once.
+    const entry = new Array(33).fill(null);
+    entry[17] = '/goto?url=q3-entry';
+    entry[30] = ['Serious Eats', 'MSAF - SRP'];
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' +
+            organicCard({ id: 'with-entry', goto: '/goto?url=q3-entry', site: 'Serious Eats · Forum', meta: 'Pans', entryKey: 'q3' }) +
+            `</div>${inlineDataScript({ q3: entry })}`,
+    });
+    await frames(h, 3);
+    const withEntry = h.document.getElementById('with-entry');
+    assert.notEqual(h.window.getComputedStyle(withEntry).display, 'none', 'released as soon as its entry gave nothing');
+
+    // No entry key: released 500 ms after the later of load and first sight.
+    const rso = h.document.getElementById('rso');
+    const holder = h.document.createElement('div');
+    holder.innerHTML = organicCard({ id: 'no-entry', goto: '/goto?url=q3-no-entry', site: 'Serious Eats · Forum', meta: 'Pans' });
+    rso.appendChild(holder.firstElementChild);
+    await frames(h);
+    const noEntry = h.document.getElementById('no-entry');
+    h.tick(499);
+    assert.equal(h.window.getComputedStyle(noEntry).display, 'none');
+    h.tick(1);
+    assert.notEqual(h.window.getComputedStyle(noEntry).display, 'none', 'released 500 ms after first sight');
+
+    // An entry key whose entry never arrives: the 4 s cap.
+    holder.innerHTML = organicCard({ id: 'capped', goto: '/goto?url=q4-capped', site: 'Serious Eats · Forum', meta: 'Pans', entryKey: 'never' });
+    rso.appendChild(holder.firstElementChild);
+    await frames(h);
+    const capped = h.document.getElementById('capped');
+    h.tick(3999);
+    assert.equal(h.window.getComputedStyle(capped).display, 'none');
+    h.tick(1);
+    assert.notEqual(h.window.getComputedStyle(capped).display, 'none', 'nothing stays hidden for good');
+    h.close();
+});
+
+test('uBlacklist marks a /goto card first, then its data resolves it to a blocked host: the card is never visible', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: '<div id="rso"></div>' });
     await settle(h);
+    installFakeUBlacklist(h, { blocked: ['reddit.com'] });
+
+    const holder = h.document.createElement('div');
+    holder.innerHTML = capture.webRoot;
+    const card = holder.firstElementChild;
+    const watch = watchVisible(h, card);
+    const rso = h.document.getElementById('rso');
+    rso.appendChild(card);
+    await frames(h, 3);
+    assert.equal(card.getAttribute('data-ub-result'), '1', 'uBlacklist judged the /goto href (no URL)');
+
+    const data = h.document.createElement('div');
+    data.innerHTML = inlineDataScript(capture.entries);
+    rso.appendChild(data);
+    await settle(h);
+    h.tick(5000);
+    await frames(h, 3);
+    watch.stop();
+
+    assert.equal(proxyOf(card).href, 'https://reddit.com/r/castiron/');
+    assert.equal(card.getAttribute('data-ub-block'), '1');
+    assert.equal(watch.everVisible(), false, 'a blocked card must never show');
+    assert.equal(card.hasAttribute('data-ub-google-bridge-exposed'), false);
+    h.close();
+});
+
+test('a resolved card stays hidden until uBlacklist has re-judged its new destination', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: '<div id="rso"></div>' });
+    await settle(h);
+    const ub = installFakeUBlacklist(h, { manual: true });
 
     const rso = h.document.getElementById('rso');
     const holder = h.document.createElement('div');
-    holder.innerHTML = organicCard({ id: 'late', goto: '/goto?url=bound-late', site: 'Serious Eats · Forum', meta: 'Pans' });
+    holder.innerHTML = capture.webRoot;
+    const card = holder.firstElementChild;
+    rso.appendChild(card);
+    await frames(h);
+    ub.flush();
+    assert.equal(card.getAttribute('data-ub-result'), '1');
+    assert.equal(h.window.getComputedStyle(card).display, 'none', 'judged on its /goto href only');
+
+    const data = h.document.createElement('div');
+    data.innerHTML = inlineDataScript(capture.entries);
+    rso.appendChild(data);
+    await frames(h, 4);
+    h.tick(1000);
+    await frames(h, 2);
+    assert.ok(proxyOf(card), 'resolved');
+    assert.equal(h.window.getComputedStyle(card).display, 'none', 'uBlacklist has not re-judged yet');
+
+    ub.flush();
+    await frames(h, 3);
+    h.tick(1000);
+    await frames(h, 2);
+    assert.notEqual(h.window.getComputedStyle(card).display, 'none', 'shown once the new verdict is in');
+    h.close();
+});
+
+test('a released card that is later resolved and blocked is marked as exposed', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: '<div id="rso"></div>' });
+    await settle(h);
+    installFakeUBlacklist(h, { blocked: ['seriouseats.com'] });
+
+    const rso = h.document.getElementById('rso');
+    const holder = h.document.createElement('div');
+    holder.innerHTML = organicCard({ id: 'late', goto: '/goto?url=exposed-late', site: 'Serious Eats · Forum', meta: 'Pans' });
     rso.appendChild(holder.firstElementChild);
     await settle(h);
     const card = h.document.getElementById('late');
-    h.tick(999);
-    assert.equal(h.window.getComputedStyle(card).display, 'none', 'still inside its batch bound');
-    h.tick(1);
-    assert.notEqual(h.window.getComputedStyle(card).display, 'none', 'released after the bound');
+    assert.notEqual(h.window.getComputedStyle(card).display, 'none', 'released: nothing can resolve it yet');
 
-    holder.innerHTML = organicCard({ id: 'cited', goto: '/goto?url=bound-cited', site: 'Serious Eats', meta: 'https://www.seriouseats.com › pans' });
+    holder.innerHTML = organicCard({ id: 'cited', goto: '/goto?url=exposed-cited', site: 'Serious Eats', meta: 'https://www.seriouseats.com › pans' });
     rso.appendChild(holder.firstElementChild);
     await settle(h);
 
     assert.equal(proxyOf(card).href, 'https://seriouseats.com/');
-    assert.equal(card.hasAttribute('data-ub-google-bridge-unresolved'), false);
-    assert.equal(h.window.getComputedStyle(card).display, 'none', 'uBlacklist judges it again');
-    card.setAttribute('data-ub-result', '1');
-    assert.notEqual(h.window.getComputedStyle(card).display, 'none');
+    assert.equal(card.getAttribute('data-ub-block'), '1');
+    assert.equal(h.window.getComputedStyle(card).display, 'none');
+    assert.equal(card.getAttribute('data-ub-google-bridge-exposed'), '1');
+    assert.equal(h.document.getElementById('cited').hasAttribute('data-ub-google-bridge-exposed'), false, 'never visible while unresolved');
+    h.close();
+});
+
+// The repro-1333 F1 path: a card released unresolved inside a top-level block
+// the cleanup userscript hides (display:none), later resolved by a cited card
+// of the same site and blocked. unhide: the cleanup shows the block again
+// after the release, before the resolution.
+async function releasedThenBlocked({ visibility, hidden, unhide = false }) {
+    const h = createHarness({ userAgent: MOBILE_UA, html: '<div id="rso"></div>', visibility });
+    await settle(h);
+    installFakeUBlacklist(h, { blocked: ['seriouseats.com'] });
+
+    const rso = h.document.getElementById('rso');
+    const holder = h.document.createElement('div');
+    holder.innerHTML = '<div id="block" class="MjjYud">' +
+        organicCard({ id: 'late', goto: '/goto?url=exposed-late', site: 'Serious Eats · Forum', meta: 'Pans' }) + '</div>';
+    const block = holder.firstElementChild;
+    if (hidden) {
+        block.setAttribute('data-google-cleanup-hidden', 'unwanted-vertical');
+        block.style.display = 'none';
+    }
+    rso.appendChild(block);
+    await settle(h);
+    const card = h.document.getElementById('late');
+    assert.equal(card.getAttribute('data-ub-google-bridge-unresolved'), '1', 'released: nothing can resolve it yet');
+    assert.equal(shownThroughAncestors(h, card), !hidden);
+
+    if (unhide) {
+        block.removeAttribute('data-google-cleanup-hidden');
+        block.style.display = '';
+        await frames(h, 2);
+        assert.equal(shownThroughAncestors(h, card), true, 'the cleanup showed it while unresolved');
+    }
+
+    holder.innerHTML = organicCard({ id: 'cited', goto: '/goto?url=exposed-cited', site: 'Serious Eats', meta: 'https://www.seriouseats.com › pans' });
+    rso.appendChild(holder.firstElementChild);
+    await settle(h);
+    assert.equal(proxyOf(card).href, 'https://seriouseats.com/');
+    assert.equal(card.getAttribute('data-ub-block'), '1');
+    return { h, card };
+}
+
+for (const visibility of ['checkVisibility', 'rects']) {
+    test(`a released card under a cleanup-hidden block that is later blocked is never marked exposed (${visibility})`, async () => {
+        const { h, card } = await releasedThenBlocked({ visibility, hidden: true });
+        assert.equal(card.hasAttribute('data-ub-google-bridge-exposed'), false, 'it never rendered');
+        h.close();
+    });
+
+    test(`a released card rendered at release and later blocked is still marked exposed (${visibility})`, async () => {
+        const { h, card } = await releasedThenBlocked({ visibility, hidden: false });
+        assert.equal(card.getAttribute('data-ub-google-bridge-exposed'), '1');
+        h.close();
+    });
+
+    test(`a released card hidden at release, shown by a later DOM change and then blocked is marked exposed (${visibility})`, async () => {
+        const { h, card } = await releasedThenBlocked({ visibility, hidden: true, unhide: true });
+        assert.equal(card.getAttribute('data-ub-google-bridge-exposed'), '1');
+        h.close();
+    });
+}
+
+test('a released card that stays hidden schedules no animation frames once the page stops changing', async () => {
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso"><div class="MjjYud" data-google-cleanup-hidden="unwanted-vertical" style="display:none">' +
+            organicCard({ id: 'late', goto: '/goto?url=hidden-idle', site: 'Serious Eats · Forum', meta: 'Pans' }) +
+            '</div></div>',
+    });
+    await settle(h);
+    const card = h.document.getElementById('late');
+    assert.equal(card.getAttribute('data-ub-google-bridge-unresolved'), '1', 'released');
+    assert.equal(shownThroughAncestors(h, card), false);
+
+    await frames(h, 3);
+    const settled = h.frameRequests;
+    await frames(h, 10);
+    assert.equal(h.frameRequests, settled, 'no frame callbacks while nothing mutates');
     h.close();
 });
 
@@ -1322,5 +1625,458 @@ test('YouTube Music keeps its exact host when exposed to uBlacklist', () => {
     assert.equal(proxy.href, target);
     assert.equal(new URL(proxy.href).hostname, 'music.youtube.com');
     assert.equal(root.getAttribute('data-ub-google-bridge-root'), '1');
+    h.close();
+});
+
+// Shaped from the 2026-10-30 iPhone Safari capture (q=taylor swift,
+// overblock-capture/suite1 and skeleton1): one div.MjjYud.vt6azd holds an
+// image strip, the Wikipedia Overview (its links are /goto), and card 31,
+// div.MPG0Z.ycw3p.vt6azd, which holds an Instagram social-media post and a
+// YouTube VisualDigestVideoResult whose data-curl is the video's URL.
+const DIGEST_CONTAINER =
+    '<div id="rso"><div id="container" class="MjjYud vt6azd">' +
+    '<div class="pxiwBd"><div><div><div id="digest" class="A8fnoc">' +
+    '<div class="QejDDf"><div role="listitem"><div class="Wa1sKc PZPZlf" data-attrid="VisualDigestImageResult">' +
+    '<div role="button"><img alt="Image of Taylor Swift" src="data:image/gif;base64,AA=="></div></div></div></div>' +
+    '<div id="overview" class="ycw3p"><div class="w5mTAe"><div class="otSzTe">' +
+    '<div class="ISATce PZPZlf" data-attrid="VisualDigestDescription">' +
+    '<a class="Q7PwXb" href="/goto?url=wiki-overview"></a><div><span>Overview</span></div>' +
+    '<div><span>Taylor Alison Swift is an American singer-songwriter.</span>' +
+    '<a class="y171A" href="/goto?url=wiki-overview"><span>Wikipedia</span></a></div>' +
+    '</div></div></div></div>' +
+    '<div id="card31" class="MPG0Z ycw3p vt6azd">' +
+    '<div class="w5mTAe"><div class="otSzTe">' +
+    '<div id="social" class="LLmfxc PZPZlf" data-attrid="VisualDigestSocialMediaResult">' +
+    '<a id="social-link" class="eSSLee" href="/goto?url=insta-post"></a>' +
+    '<div><img alt="Social Media Result Image" src="data:image/gif;base64,AA==">' +
+    '<div><span>@taylorswift</span></div><div class="BAMmIc">Instagram</div>' +
+    '<div>A night at the museum I will never forget!</div><span>1 week ago</span></div>' +
+    '</div></div></div>' +
+    '<div class="w5mTAe"><div class="otSzTe">' +
+    '<div id="video" class="PZPZlf OEq5Le vt6azd" data-attrid="VisualDigestVideoResult">' +
+    '<div class="WVV5ke" data-curl="https://www.youtube.com/watch?v=49wwwfz59rc" ' +
+    'data-surl="https://www.youtube.com/watch?v=49wwwfz59rc"><div role="button"><span>56:23</span></div></div>' +
+    '<div class="ObbMBf"><a id="video-link" class="rIRoqf" href="/goto?url=yt-video">' +
+    '<span>Swiftologist</span><span>Taylor Swift Is Giving Us Everything</span></a></div>' +
+    '</div></div></div>' +
+    '</div>' +
+    '</div></div></div></div>' +
+    '</div></div>';
+
+// Shaped from the same run's web case (q=ipad review): a Videos carousel
+// div.vtSz8d.Ww4FFb.vt6azd holding three video results, each its own root.
+function videoCarousel(videos) {
+    return '<div id="rso"><div class="MjjYud"><div id="carousel" class="vtSz8d Ww4FFb vt6azd">' +
+        '<div id="carousel-header"><span>Videos</span></div>' +
+        videos.map(({ id, url, title }) =>
+            `<div id="${id}" class="vt6azd"><a class="zReHs" href="${url}">` +
+            `<div role="heading" aria-level="3">${title}</div></a><span>YouTube · Channel</span></div>`).join('') +
+        '</div></div></div>';
+}
+
+function shownThroughAncestors(h, el) {
+    for (let node = el; node; node = node.parentElement) {
+        if (h.window.getComputedStyle(node).display === 'none') return false;
+    }
+    return true;
+}
+
+// The toolkit's live over-broad check: every outermost uBlacklist-blocked
+// element holds at most one disjoint result.
+function overBroadBlocks(h) {
+    const RESULT_SEL = '.vt6azd,.Ww4FFb,[data-news-cluster-id],[data-ub-result],[data-ub-google-bridge-root]';
+    return [...h.document.querySelectorAll('[data-ub-block]')]
+        .filter((el) => !el.parentElement?.closest('[data-ub-block]'))
+        .filter((el) => [...el.querySelectorAll(RESULT_SEL)].filter((root) => {
+            const above = root.parentElement?.closest(RESULT_SEL);
+            return !above || above === el || !el.contains(above);
+        }).length > 1)
+        .map((el) => el.id || el.className);
+}
+
+async function settleAll(h) {
+    await settle(h);
+    h.tick(4500);
+    await settle(h);
+}
+
+const TAYLOR_URL = 'https://www.google.com/search?q=taylor+swift';
+
+test('a multi-result digest container never becomes a bridge root or proxy owner, so a blocked video hides only itself', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: DIGEST_CONTAINER, url: TAYLOR_URL });
+    installFakeUBlacklist(h, { blocked: ['youtube.com'] });
+    await settleAll(h);
+    const $ = (id) => h.document.getElementById(id);
+
+    for (const id of ['container', 'card31']) {
+        assert.equal($(id).querySelector(':scope > [data-ub-google-source-proxy]'), null, `${id} must not own a proxy`);
+        assert.equal($(id).hasAttribute('data-ub-google-bridge-root'), false, `${id} must not be a bridge root`);
+        assert.equal($(id).hasAttribute('data-ub-block'), false, `${id} must not be blocked`);
+    }
+    assert.equal($('video').getAttribute('data-ub-block'), '1', 'the YouTube video is blocked on its own root');
+    assert.equal(proxyOf($('video')).href, 'https://www.youtube.com/watch?v=49wwwfz59rc');
+    assert.equal(shownThroughAncestors(h, $('overview')), true, 'the Wikipedia Overview stays visible');
+    assert.equal(shownThroughAncestors(h, $('social')), true, 'the Instagram post stays visible');
+    assert.equal(shownThroughAncestors(h, $('video')), false);
+    assert.deepEqual(overBroadBlocks(h), []);
+    h.close();
+});
+
+test('card 31 Instagram post is judged on its own destination or released, never on the nested video URL', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: DIGEST_CONTAINER, url: TAYLOR_URL });
+    installFakeUBlacklist(h, { blocked: ['youtube.com'] });
+    await settleAll(h);
+
+    assert.notEqual(h.api.resolveGoto('/goto?url=insta-post'), 'https://www.youtube.com/watch?v=49wwwfz59rc');
+    assert.equal(h.api.resolveGoto('/goto?url=wiki-overview'), '');
+    for (const anchor of h.document.querySelectorAll('[data-ub-google-source-proxy] a')) {
+        const owner = anchor.closest('[data-ub-google-source-proxy]').parentElement;
+        if (owner.contains(h.document.getElementById('social-link'))) {
+            assert.notEqual(new URL(anchor.href).hostname, 'www.youtube.com', 'the Instagram post must not carry the video URL');
+        }
+        if (/youtube\.com/.test(anchor.href)) assert.equal(owner.id, 'video', 'only the video root carries the YouTube URL');
+    }
+    const social = h.document.getElementById('social-link')
+        .closest('[data-ub-google-bridge-root], [data-ub-google-bridge-unresolved]');
+    assert.ok(social, 'the Instagram post has its own root, resolved or released');
+    assert.notEqual(social.id, 'card31');
+    assert.ok(h.document.getElementById('card31').contains(social));
+    h.close();
+});
+
+test('a Videos carousel is never blocked on one of its videos: each video is judged alone', async () => {
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: videoCarousel([
+            { id: 'v1', url: 'https://www.youtube.com/watch?v=Wq3J6BY9H-E', title: 'I Tested EVERY iPad' },
+            { id: 'v2', url: 'https://www.dailymotion.com/video/x8ipad', title: 'iPad review' },
+            { id: 'v3', url: 'https://vimeo.com/123456', title: 'iPad Air' },
+        ]),
+        url: 'https://www.google.com/search?q=ipad+review',
+    });
+    installFakeUBlacklist(h, { blocked: ['youtube.com'] });
+    await settleAll(h);
+    const $ = (id) => h.document.getElementById(id);
+
+    assert.equal($('carousel').hasAttribute('data-ub-block'), false, 'the carousel must not be blocked');
+    assert.equal($('carousel').querySelector(':scope > [data-ub-google-source-proxy]'), null);
+    assert.equal($('v1').getAttribute('data-ub-block'), '1');
+    assert.equal(shownThroughAncestors(h, $('carousel-header')), true);
+    assert.equal(shownThroughAncestors(h, $('v2')), true);
+    assert.equal(shownThroughAncestors(h, $('v3')), true);
+    assert.deepEqual(overBroadBlocks(h), []);
+    h.close();
+});
+
+test('a multi-result container gets one invisible, inert container proxy that reads as no URL', async () => {
+    const h = createHarness({ userAgent: MOBILE_UA, html: DIGEST_CONTAINER, url: TAYLOR_URL });
+    installFakeUBlacklist(h, { blocked: ['youtube.com'] });
+    await settleAll(h);
+
+    for (const id of ['container', 'card31']) {
+        const root = h.document.getElementById(id);
+        const wrappers = root.querySelectorAll(':scope > [data-ub-google-container-proxy]');
+        assert.equal(wrappers.length, 1, `${id} has exactly one container proxy`);
+        const [wrapper] = wrappers;
+        assert.equal(root.firstElementChild, wrapper, 'it is the first child, so uBlacklist reads it first');
+        assert.equal(wrapper.hidden, true);
+        assert.equal(wrapper.getAttribute('aria-hidden'), 'true');
+        assert.equal(wrapper.textContent, '');
+        assert.equal(root.querySelector('.UBFage, a[role="presentation"]').closest('[data-ub-google-container-proxy]'), wrapper);
+        assert.equal(root.querySelector('.ob9lvb').closest('[data-ub-google-container-proxy]'), wrapper);
+        // Nothing the bridge, the cleanup script (a[href]) or the toolkit probe
+        // reads: no link target, image, page data or source-proxy marker.
+        assert.equal(wrapper.querySelectorAll('a[href], img, [data-curl], [data-surl], [data-ub-google-source-proxy]').length, 0);
+        assert.equal(wrapper.hasAttribute('data-ub-google-source-proxy'), false);
+    }
+
+    // Idempotent: later mutations inside the container add no second wrapper.
+    const extra = h.document.createElement('div');
+    extra.className = 'vt6azd';
+    extra.innerHTML = '<a class="zReHs" href="https://vimeo.com/987">Vimeo</a>';
+    h.document.getElementById('card31').appendChild(extra);
+    await settleAll(h);
+    for (const id of ['container', 'card31']) {
+        assert.equal(h.document.getElementById(id).querySelectorAll(':scope > [data-ub-google-container-proxy]').length, 1);
+    }
+    h.close();
+});
+
+test('a single-result root never gets a container proxy', async () => {
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso"><div class="MjjYud">' +
+            '<div id="single" class="Ww4FFb vt6azd">' +
+            '<a class="zReHs" href="https://www.youtube.com/watch?v=one"><div role="heading" aria-level="3">One</div></a>' +
+            '</div>' +
+            '<div id="wrapper" class="Ww4FFb vt6azd"><div id="only" class="PZPZlf" data-attrid="VisualDigestVideoResult">' +
+            '<div data-curl="https://vimeo.com/42"></div><a href="/goto?url=only-video">Only</a></div></div>' +
+            '</div></div>',
+    });
+    installFakeUBlacklist(h, { blocked: ['youtube.com'] });
+    await settleAll(h);
+    assert.equal(h.document.querySelector('[data-ub-google-container-proxy]'), null);
+    assert.equal(proxyOf(h.document.getElementById('single')).href, 'https://www.youtube.com/watch?v=one');
+    assert.equal(h.document.getElementById('single').getAttribute('data-ub-block'), '1');
+    assert.equal(proxyOf(h.document.getElementById('only')).href, 'https://vimeo.com/42');
+    h.close();
+});
+
+// ---- 13.3.5: /goto data tied by the url= token; faviconV2 sites ----
+// Trimmed from the 2026-10-30 16:05 iPhone capture (q=taylor swift,
+// diag-instagram-1334 load3). Google appends the page's gsessionid to every
+// /goto href in the DOM but not to the /goto strings in its inline data. A
+// news card's inline entry has an empty [22][12] domain field and names its
+// site only in a faviconV2 URL; the card's own favicon img is a data: URI
+// placeholder until Google loads it lazily.
+const GSESSIONID = 'kWWiinPldM_Hzt71giUlx2rvMJrTnCHXpn5K7dinnXrYFRCpNtbAOg';
+const NEWS_DOMAINLESS_BLOB = 'CtkBL2dvdG8_dXJsPUNBRVNsZ0VCNnpzd0ZUdmRkVTZuWUZDSmY4dzlEYWoyWEViU1J5TWNpMml5ZFVkM1BEeTRVdnY5bl9rTGdyX0pNTF9YTXJUclRsS3B2bDVkYWNtSmgxc0t4aE96UE95a201TFRTYndhdFhRZk5XTmJKcktJTWVNRGh6amNQaUZHa2lNSFB4N2hOek1NdDFkS3VaOTJHRldBa1JJSFlheTIxSFBFRFBpbVkxT2NmNVFyYndOOXpmSDdpWjIzT3AtamJZSEliaWJRQzl6anNUOBIICgASABoCCAAaACICEAFIAFgAaAA';
+const NEWS_URL = 'https://www.google.com/search?q=weather&tbm=nws';
+
+function faviconURL(site) {
+    return `https://encrypted-tbn3.gstatic.com/faviconV2?url=${site}&client=STREAM&size=16&type=FAVICON&fallback_opts=TYPE,SIZE,URL`;
+}
+
+// A news card's inline entry: [17] its /goto, [22][12] the domain-less blob,
+// [31] title, snippet, publisher and favicon URL, [32] the /goto again.
+function newsEntry(token, favicon, publisher = 'InStyle') {
+    const goto = `/goto?url=${token}`;
+    return [
+        ...Array(17).fill(null), goto, null, null, null, null,
+        [...Array(12).fill(null), NEWS_DOMAINLESS_BLOB], ...Array(8).fill(null),
+        ['Story title', 'Story snippet', publisher, favicon],
+        [null, 1, [null, null, 5, null, 'Story title', null, goto]],
+    ];
+}
+
+function newsCard({ id, token, entryKey = null, gsessionid = GSESSIONID, publisher = 'InStyle', inner = '' }) {
+    const href = `/goto?url=${token}${gsessionid ? `&amp;gsessionid=${gsessionid}` : ''}`;
+    return `<div id="${id}" class="JJJtgd" data-news-cluster-id="${id}">` +
+        (entryKey === null ? '' : `<div jsdata="l7Bhpb;_;${entryKey}"></div>`) +
+        `<a class="aJWbwf kv0Dj" href="${href}">` +
+        '<div class="T16mof"><img alt="" src="data:image/png;base64,iVBORw0KGgo="></div>' +
+        `<div class="eAaXgc">Story title of ${id}</div><div class="OSrXXb"><span>2 hours ago</span></div>` +
+        '<div class="xLCVmd"><img class="XNo5Ab" src="data:image/png;base64,iVBORw0KGgo=" alt="" data-deferred="3">' +
+        `<span>${publisher}</span></div>${inner}</a></div>`;
+}
+
+function newsPage(cards, entries) {
+    return `<div id="rso">${cards.join('')}</div>${inlineDataScript(entries)}`;
+}
+
+function released(card) {
+    return card.getAttribute('data-ub-google-bridge-unresolved') === '1';
+}
+
+test('a news card whose /goto href carries gsessionid resolves from its own inline entry\'s faviconV2 site', async () => {
+    for (const url of [TAYLOR_URL, NEWS_URL]) {
+        const h = createHarness({
+            userAgent: MOBILE_UA,
+            url,
+            html: newsPage(
+                [newsCard({ id: 'instyle', token: 'tok-instyle', entryKey: 'e41' })],
+                { e41: newsEntry('tok-instyle', faviconURL('https://www.instyle.com')) },
+            ),
+        });
+        await settle(h);
+        const card = h.document.getElementById('instyle');
+        assert.ok(proxyOf(card), `${url}: the card's own data names its site`);
+        assert.equal(proxyOf(card).getAttribute('href'), 'https://www.instyle.com/');
+        assert.equal(released(card), false);
+        assert.equal(h.window.getComputedStyle(card).display, 'none', 'bridged, so it waits for uBlacklist');
+        assert.deepEqual(h.requests, []);
+        h.close();
+    }
+});
+
+test('every /goto lookup ignores href parameters other than url=, such as gsessionid', async () => {
+    // Embedded destination data tied by token.
+    const mapped = createHarness({
+        userAgent: MOBILE_UA,
+        wjd: mapping('/goto?url=gs-mapped', 'https://finance.yahoo.com/article'),
+        html: '<div id="rso">' +
+            organicCard({ id: 'mapped', goto: `/goto?url=gs-mapped&amp;gsessionid=${GSESSIONID}`, site: 'Yahoo Finance', meta: 'Markets' }) +
+            '</div>',
+    });
+    await settle(mapped);
+    assert.equal(proxyOf(mapped.document.getElementById('mapped'))?.href, 'https://finance.yahoo.com/article');
+    assert.equal(mapped.api.resolveGoto(`/goto?url=gs-mapped&gsessionid=${GSESSIONID}`), 'https://finance.yahoo.com/article');
+    mapped.close();
+
+    // The inline [22][12] domain tied by token (no jsdata key on the card).
+    const entry = capture.entries[capture.webEntryKey];
+    const webRoot = capture.webRoot
+        .replace(/ jsdata="l7Bhpb;_;[^"]+"/, '')
+        .replace(/\/goto\?url=[A-Za-z0-9_-]+/g, `${entry[17]}&amp;gsessionid=${GSESSIONID}`);
+    const inline = createHarness({ userAgent: MOBILE_UA, html: `<div id="rso">${webRoot}</div>${inlineDataScript(capture.entries)}` });
+    await settle(inline);
+    assert.equal(proxyOf(inline.document.querySelector('#rso > .Ww4FFb'))?.href, 'https://reddit.com/r/castiron/');
+    inline.close();
+});
+
+test('a faviconV2 url= naming a Google-owned host never gives a destination', async () => {
+    const sites = ['https://lh3.googleusercontent.com/a/photo', 'https://www.google.com/s2', 'https://fonts.gstatic.com', 'https://www.googleapis.com'];
+    const cards = sites.map((_, i) => newsCard({ id: `g${i}`, token: `tok-g${i}`, entryKey: `eg${i}` }));
+    const entries = Object.fromEntries(sites.map((site, i) => [`eg${i}`, newsEntry(`tok-g${i}`, faviconURL(site))]));
+    const h = createHarness({ userAgent: MOBILE_UA, url: TAYLOR_URL, html: newsPage(cards, entries) });
+    await settleAll(h);
+    sites.forEach((site, i) => {
+        const card = h.document.getElementById(`g${i}`);
+        assert.equal(proxyOf(card), null, `${site} is not a destination`);
+        assert.equal(released(card), true, `${site}: released to uBlacklist`);
+    });
+    h.close();
+});
+
+test('a missing or malformed faviconV2 url=, or a favicon only in the DOM, gives no destination', async () => {
+    const favicons = [
+        'https://encrypted-tbn3.gstatic.com/faviconV2?client=STREAM&size=16&type=FAVICON',
+        faviconURL('not a url'),
+        faviconURL('javascript:alert(1)'),
+        faviconURL('ftp://files.example.com'),
+        faviconURL(''),
+    ];
+    const cards = favicons.map((_, i) => newsCard({ id: `m${i}`, token: `tok-m${i}`, entryKey: `em${i}` }));
+    const entries = Object.fromEntries(favicons.map((favicon, i) => [`em${i}`, newsEntry(`tok-m${i}`, favicon)]));
+    // A loaded favicon img in the card, with no entry for the card.
+    cards.push(newsCard({
+        id: 'dom-only', token: 'tok-dom-only',
+        inner: `<img class="XNo5Ab" alt="" src="${faviconURL('https://people.com').replace(/&/g, '&amp;')}">`,
+    }));
+    const h = createHarness({ userAgent: MOBILE_UA, url: TAYLOR_URL, html: newsPage(cards, entries) });
+    await settleAll(h);
+    for (const id of [...favicons.map((_, i) => `m${i}`), 'dom-only']) {
+        const card = h.document.getElementById(id);
+        assert.equal(proxyOf(card), null, `${id} gives no destination`);
+        assert.equal(released(card), true, `${id}: released to uBlacklist`);
+    }
+    h.close();
+});
+
+test('a faviconV2 host keeps its www. or m. exactly as Google gives it', async () => {
+    const sites = { www: 'https://www.instyle.com', m: 'https://m.timesofindia.com', bare: 'https://people.com' };
+    const ids = Object.keys(sites);
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        url: TAYLOR_URL,
+        html: newsPage(
+            ids.map((id) => newsCard({ id, token: `tok-${id}`, entryKey: `e-${id}` })),
+            Object.fromEntries(ids.map((id) => [`e-${id}`, newsEntry(`tok-${id}`, faviconURL(sites[id]))])),
+        ),
+    });
+    await settle(h);
+    for (const id of ids) assert.equal(proxyOf(h.document.getElementById(id))?.getAttribute('href'), `${sites[id]}/`);
+    assert.ok(matchesUBlacklistPattern('*://*.timesofindia.com/*', proxyOf(h.document.getElementById('m')).href));
+    h.close();
+});
+
+test('a card takes a faviconV2 site only from data tied to its own /goto token', async () => {
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        url: TAYLOR_URL,
+        html: newsPage(
+            [
+                newsCard({ id: 'own', token: 'tok-own', entryKey: 'e-own' }),
+                newsCard({ id: 'other', token: 'tok-other', entryKey: 'e-other' }),
+                // Its jsdata names the entry of the first card; its own token has no data.
+                newsCard({ id: 'mis-keyed', token: 'tok-mis-keyed', entryKey: 'e-own' }),
+            ],
+            {
+                'e-own': newsEntry('tok-own', faviconURL('https://www.instyle.com')),
+                'e-other': newsEntry('tok-other', faviconURL('https://pagesix.com'), 'Page Six'),
+            },
+        ),
+    });
+    await settleAll(h);
+    assert.equal(proxyOf(h.document.getElementById('own'))?.getAttribute('href'), 'https://www.instyle.com/');
+    assert.equal(proxyOf(h.document.getElementById('other'))?.getAttribute('href'), 'https://pagesix.com/');
+    assert.equal(proxyOf(h.document.getElementById('mis-keyed')), null, 'another card\'s entry never resolves it');
+    assert.equal(released(h.document.getElementById('mis-keyed')), true);
+    h.close();
+});
+
+test('data listing several cards gives a faviconV2 site only to the one card it belongs to', async () => {
+    const entryA = newsEntry('tok-a', faviconURL('https://people.com'), 'People');
+    const entryB = newsEntry('tok-b', faviconURL('https://www.vice.com'), 'VICE');
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        url: TAYLOR_URL,
+        html: '<div id="rso"><div id="box" class="vt6azd">' +
+            ['a', 'b', 'c', 'd'].map((x) => newsCard({ id: x, token: `tok-${x}` })).join('') +
+            '</div></div>' +
+            inlineDataScript({
+                // Two cards in one module entry, each in its own record.
+                module: [null, [entryA, entryB]],
+                // Two cards' tokens and one site in one record: whose site is unknown.
+                ambiguous: [null, '/goto?url=tok-c', '/goto?url=tok-d', faviconURL('https://brobible.com')],
+            }),
+    });
+    installFakeUBlacklist(h, { blocked: ['people.com'], roots: '.vt6azd, [data-news-cluster-id]' });
+    await settleAll(h);
+    const $ = (id) => h.document.getElementById(id);
+    assert.equal(proxyOf($('a'))?.getAttribute('href'), 'https://people.com/');
+    assert.equal(proxyOf($('b'))?.getAttribute('href'), 'https://www.vice.com/');
+    for (const id of ['c', 'd']) {
+        assert.equal(proxyOf($(id)), null, `${id}: a record naming two cards gives neither one its site`);
+        assert.equal(released($(id)), true);
+    }
+    assert.equal($('box').querySelector(':scope > [data-ub-google-source-proxy]'), null, 'the module is never judged on one card');
+    assert.equal($('a').getAttribute('data-ub-block'), '1');
+    assert.equal($('box').hasAttribute('data-ub-block'), false);
+    assert.deepEqual(overBroadBlocks(h), []);
+    h.close();
+});
+
+test('a card\'s real destination URL beats the host-only faviconV2 site', async () => {
+    const deep = 'https://www.instyle.com/tim-mcgraw-rumor-taylor-swift-11834560';
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        url: TAYLOR_URL,
+        html: newsPage(
+            [
+                newsCard({ id: 'displayed', token: 'tok-displayed', entryKey: 'e-displayed', inner: `<span>${deep}</span>` }),
+                newsCard({ id: 'in-data', token: 'tok-in-data', entryKey: 'e-in-data' }),
+            ],
+            {
+                'e-displayed': newsEntry('tok-displayed', faviconURL('https://www.instyle.com')),
+                'e-in-data': [...newsEntry('tok-in-data', faviconURL('https://www.instyle.com')), [deep]],
+            },
+        ),
+    });
+    await settle(h);
+    assert.equal(proxyOf(h.document.getElementById('displayed'))?.href, deep, 'the displayed URL wins');
+    assert.equal(proxyOf(h.document.getElementById('in-data'))?.href, deep, 'a destination URL in the data wins');
+    h.close();
+});
+
+test('news cards of a blocked site, one per card, are all blocked and never shown or exposed', async () => {
+    const ids = ['p1', 'p2', 'p3'];
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        url: TAYLOR_URL,
+        html: newsPage(
+            [...ids.map((id) => newsCard({ id, token: `tok-${id}`, entryKey: `e-${id}`, publisher: 'People.com' })),
+                newsCard({ id: 'allowed', token: 'tok-allowed', entryKey: 'e-allowed', publisher: 'VICE' })],
+            {
+                ...Object.fromEntries(ids.map((id) => [`e-${id}`, newsEntry(`tok-${id}`, faviconURL('https://people.com'), 'People.com')])),
+                'e-allowed': newsEntry('tok-allowed', faviconURL('https://www.vice.com'), 'VICE'),
+            },
+        ),
+    });
+    const watchers = [...ids, 'allowed'].map((id) => watchVisible(h, h.document.getElementById(id)));
+    installFakeUBlacklist(h, { blocked: ['people.com'], roots: '[data-news-cluster-id]' });
+    await settleAll(h);
+    watchers.forEach((w) => w.stop());
+    ids.forEach((id, i) => {
+        const card = h.document.getElementById(id);
+        assert.equal(proxyOf(card)?.getAttribute('href'), 'https://people.com/');
+        assert.equal(card.getAttribute('data-ub-block'), '1');
+        assert.equal(watchers[i].everVisible(), false, `${id} is never visible`);
+        assert.equal(card.hasAttribute('data-ub-google-bridge-exposed'), false);
+    });
+    assert.equal(h.document.getElementById('allowed').hasAttribute('data-ub-block'), false);
+    assert.equal(shownThroughAncestors(h, h.document.getElementById('allowed')), true);
+    assert.deepEqual(learned(h), {});
+    assert.deepEqual(h.requests, []);
     h.close();
 });

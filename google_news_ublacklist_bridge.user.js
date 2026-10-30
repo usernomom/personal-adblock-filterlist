@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.3.1
+// @version      13.3.5
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -27,7 +27,8 @@
  *      the result, so uBlacklist can match the destination. Sources, in
  *      order, all bound to the result itself: a destination URL in Google's
  *      embedded result data, a destination URL displayed in the result or
- *      held in its data-curl or data-surl attribute (one URL per result);
+ *      held in its data-curl or data-surl attribute (one URL per result; it
+ *      replaces a host-only URL from the data when it has a path or query);
  *      then, for a single-result root or the primary or nested link of a
  *      multi-result module, the result's inline entry (tied by its jsdata
  *      key, else its /goto token): its [22][12] domain, else the one plain
@@ -55,6 +56,23 @@
  *      when a path was added). Whole-site rules (*://*.<domain>/*) and
  *      handle or subreddit rules therefore match name-only results; exact-host
  *      rules for www. or m. and other exact-path rules do not.
+ *      Embedded data is tied to a /goto link by its url= token alone; other
+ *      parameters, such as the gsessionid Google has appended to result
+ *      hrefs but not to its data since 2026-10-30, are ignored. A URL on a
+ *      Google host (google.*, gstatic, googleapis, googleusercontent) is
+ *      never a destination; its url, q or imgrefurl parameter is read
+ *      instead, and gives nothing unless it is an http(s) URL off those
+ *      hosts. When that names only a site, as the faviconV2 URL in a news
+ *      card's inline entry does (owner-approved 2026-10-30), it is a site
+ *      address: it gives that origin, host exactly as Google wrote it (www.
+ *      and m. kept), and only to a data record that holds a single /goto
+ *      token; a record naming two or more results gives none of them a site
+ *      address, and any deeper URL for the result wins over it. The favicon
+ *      img in the page is never read (Google fills it in lazily).
+ *      Accepted limit (owner 2026-10-30): Google's separate News tab
+ *      (tbm=nws) names no site for its cards, only the publisher's display
+ *      name, so its cards from unlisted publishers are released unresolved
+ *      and uBlacklist cannot block them there; the All tab is unaffected.
  * UB-2 Direct results. A result whose external links all point to one host
  *      gets a proxy with the best of those URLs, unless uBlacklist's own
  *      readable URL is already as good.
@@ -63,33 +81,67 @@
  * UB-4 Result firewall. On the Web, News, Videos and Forums tabs (never
  *      Images or other tabs), results uBlacklist classifies stay hidden
  *      until uBlacklist has processed them, on desktop and mobile alike;
- *      attaching a bridge proxy never reveals a result on its own, and
- *      there is no timer that reveals an unprocessed result. A result that
- *      links only through /goto and has no source above once its batch has
- *      settled is released: marked data-ub-google-bridge-unresolved, on the
- *      result and on the firewall root that holds it, and shown without
- *      waiting for uBlacklist, on every tab including News and Top stories,
- *      since uBlacklist may never mark a root it cannot read a URL from. The
- *      initial page settles when it has been parsed; a later batch settles
- *      when inline data arrives after it, or 1 s after it was added,
- *      whichever comes first, so a card whose data follows it never shows
- *      first. A released result that resolves later loses the mark and waits
- *      for uBlacklist again; its firewall root keeps the mark unless the
- *      proxy is on that root itself. Results uBlacklist blocks are hidden
- *      when it hides blocked results.
+ *      attaching a bridge proxy never reveals a result on its own. Every
+ *      result that links through /goto without a uBlacklist-readable link is
+ *      also quarantined (data-ub-google-bridge-quarantine, on the result and
+ *      on the firewall root holding it) when the bridge first sees it,
+ *      before it can paint, on every tab but Images, whatever uBlacklist has
+ *      marked: uBlacklist 10.1.2 marks every matched root data-ub-result and
+ *      judges a /goto href as no URL, so its mark alone would show the
+ *      result before its destination is known. When a proxy is written the
+ *      result stays quarantined until uBlacklist has re-judged it: if
+ *      uBlacklist had marked it, until uBlacklist writes data-ub-result on
+ *      it again (its re-judgement, made in the animation frame after the
+ *      change); otherwise for two animation frames plus 100 ms, after which
+ *      the firewall hides it until uBlacklist marks it. A result with no destination is released (marked
+ *      data-ub-google-bridge-unresolved, which the firewall exempts, on the
+ *      result and on its firewall root) only once no more data can come for
+ *      it: its inline entry (jsdata key) has been processed and neither
+ *      KNOWN_SITES nor a learned name gives a host; or, without an entry
+ *      key, 500 ms after the later of the window load event and first
+ *      sight. At the latest it is released 4 s after first sight, so nothing
+ *      stays hidden for good. A released result that resolves later is
+ *      quarantined again until uBlacklist has re-judged it; if uBlacklist
+ *      then blocks a result that was visible while unresolved, it is marked
+ *      data-ub-google-bridge-exposed="1". Visible means rendered, not under
+ *      a display:none ancestor (checkVisibility(), else a non-empty client
+ *      rect list), checked at its release, on the next animation frame, and
+ *      then in the frame after any DOM change (child list, or style, class,
+ *      hidden, data-google-cleanup-hidden or quarantine attributes; at most
+ *      once per frame, never while nothing changes), while it is still
+ *      released and not blocked; a result hidden for that whole time, such
+ *      as one inside a block another script hides, is never marked. A
+ *      firewall root whose results
+ *      resolve inside it, without a proxy of its own, is released when none
+ *      of them is quarantined. Results uBlacklist blocks are hidden when it
+ *      hides blocked results.
  * UB-5 Gap collapse. When uBlacklist hides blocked results, result slots
  *      whose results are all blocked are hidden.
  * UB-6 No requests. The bridge itself requests nothing (no /goto
  *      resolution) and stores nothing: it reads only the page, and on load
  *      deletes the learned-site key 13.3.0 stored. (Its page-context W_jd
  *      hook could make the page's CSP report an inline script; untested.)
+ * UB-7 One result per root. An element holding more than one result (two
+ *      disjoint result units - uBlacklist or bridge roots, nested .xYkm8c
+ *      results, Google visual-digest *Result blocks - or one unit plus links
+ *      of its own outside it; decided by structure, never layout) is never a
+ *      bridge root or proxy owner: a link inside it is bridged on the
+ *      innermost unit holding it, else on the largest subtree around it that
+ *      holds no unit, and that root's destination comes only from its own
+ *      content. When uBlacklist would judge such a container on an inner
+ *      result's URL (its first .UBFage / a[role=presentation] with an
+ *      absolute href, else its first .ob9lvb, lies inside an inner unit),
+ *      the bridge prepends one hidden, empty span[data-ub-google-container-proxy]
+ *      holding an a.UBFage without href, an empty span.ob9lvb and an empty
+ *      cite, which uBlacklist reads as no URL; so blocking one result never
+ *      hides the others.
  * Test marker: html[data-ub-google-bridge-version] = @version.
  */
 
 (() => {
     'use strict';
 
-    const VERSION = '13.3.1';
+    const VERSION = '13.3.5';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const SEARCH_PARAMS = new URLSearchParams(location.search);
     const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
@@ -116,6 +168,20 @@
     const BRIDGE_ROOT_ATTRIBUTE = 'data-ub-google-bridge-root';
     const UNRESOLVED_ATTRIBUTE = 'data-ub-google-bridge-unresolved';
     const INFERRED_ATTRIBUTE = 'data-ub-google-bridge-inferred';
+    const QUARANTINE_ATTRIBUTE = 'data-ub-google-bridge-quarantine';
+    const EXPOSED_ATTRIBUTE = 'data-ub-google-bridge-exposed';
+    // One result each: uBlacklist and bridge roots, nested results, and the
+    // results of Google's visual digest (social post, video, image).
+    const RESULT_UNIT_SELECTOR =
+        `${KNOWN_ROOT_SELECTOR}, ${NESTED_RESULT_SELECTOR}, [${BRIDGE_ROOT_ATTRIBUTE}], ` +
+        '[data-attrid^="VisualDigest"][data-attrid$="Result"]';
+    const RESULT_LINK_SELECTOR = `${OPAQUE_LINK_SELECTOR}, ${DIRECT_OR_WRAPPED_LINK_SELECTOR}`;
+    const CONTAINER_PROXY_ATTRIBUTE = 'data-ub-google-container-proxy';
+    // uBlacklist re-judges a changed result in the next animation frame; the
+    // quarantine waits two frames plus this margin.
+    const VERDICT_MARGIN_MS = 100;
+    const NO_ENTRY_RELEASE_MS = 500;
+    const QUARANTINE_CAP_MS = 4000;
     // Each result root holds Google's "About this result" control, whose
     // jsdata names the result's inline data entry.
     const RESULT_ENTRY_JSDATA_PREFIX = 'l7Bhpb;_;';
@@ -145,11 +211,24 @@
     const inlineHostByEntry = new Map();
     const inlineHostByGoto = new Map();
     const processedEntryKeys = new Set();
-    // Unresolved root -> { links, settled, generation, firewallRoots }.
+    // Unresolved root -> { links, settled, entryKeys }.
     const unresolvedRoots = new Map();
-    const BATCH_SETTLE_MS = 1000;
-    let pageParsed = false;
-    let dataGeneration = 0;
+    const quarantinedOnce = new WeakSet();
+    const verdictScheduled = new WeakSet();
+    // Root -> observer epoch when its proxy was written while uBlacklist had
+    // already judged it; the next data-ub-result write on it is the verdict.
+    const awaitingVerdict = new Map();
+    let observerEpoch = 0;
+    const exposedRoots = new WeakSet();
+    // Released roots not rendered yet; see noteExposure.
+    const unseenReleased = new Set();
+    let unseenFrame = 0;
+    // Attribute changes that can show a hidden root: inline style, classes,
+    // hidden, the cleanup userscript's hide marker, and the bridge's own
+    // quarantine (its firewall rule hides a quarantined ancestor).
+    const VISIBILITY_ATTRIBUTES = ['style', 'class', 'hidden', 'data-google-cleanup-hidden', QUARANTINE_ATTRIBUTE];
+    const waitingForLoad = new Set();
+    let windowLoaded = false;
     // Learned site name -> https://<registrable domain>, or '' when dropped.
     // Page memory only.
     const siteHosts = new Map();
@@ -173,7 +252,8 @@
         const host = String(hostname || '').toLowerCase();
         return /(^|\.)google\.[a-z.]+$/.test(host) ||
             host === 'gstatic.com' || host.endsWith('.gstatic.com') ||
-            host === 'googleapis.com' || host.endsWith('.googleapis.com');
+            host === 'googleapis.com' || host.endsWith('.googleapis.com') ||
+            host === 'googleusercontent.com' || host.endsWith('.googleusercontent.com');
     }
 
     function cleanEscapes(value) {
@@ -227,6 +307,15 @@
         }
     }
 
+    // A /goto link's key is its url= token alone: Google appends other
+    // parameters, such as the page's gsessionid (2026-10-30), to result hrefs
+    // but not to the /goto strings of its data. The token is kept raw, so a
+    // '+' in it is not read as a space.
+    function gotoKey(search) {
+        const token = /[?&]url=([^&#]*)/.exec(search);
+        return token ? `/goto?url=${token[1]}` : `/goto${search}`;
+    }
+
     function normalizeGoto(raw) {
         let value = cleanEscapes(raw).trim();
         if (!value) return '';
@@ -236,9 +325,9 @@
         try {
             const url = new URL(value, location.href);
             if (!isGoogleHost(url.hostname) || url.pathname !== '/goto') return '';
-            return `${url.pathname}${url.search}`;
+            return gotoKey(url.search);
         } catch (_) {
-            return value.startsWith('/goto?') ? value.split('#')[0] : '';
+            return value.startsWith('/goto?') ? gotoKey(value.slice(5).split('#')[0]) : '';
         }
     }
 
@@ -340,6 +429,18 @@
         }
     }
 
+    // A site address is a URL on a Google host whose url, q or imgrefurl
+    // parameter names only a site, such as the faviconV2 favicon URL in a
+    // news card's inline entry: it says which site a record is about, not
+    // where one of its links goes.
+    function isSiteAddress(raw, target) {
+        try {
+            return isGoogleHost(new URL(cleanEscapes(raw).trim(), location.href).hostname) && !isDeepURL(target);
+        } catch (_) {
+            return false;
+        }
+    }
+
     function collectTree(node, out, depth = 0) {
         if (!node || depth > 18 || out.count >= 512) return;
         if (typeof node === 'string') {
@@ -352,7 +453,7 @@
             }
             const target = externalURL(value);
             if (target) {
-                out.urls.push(target);
+                (isSiteAddress(value, target) ? out.sites : out.urls).push(target);
                 return;
             }
             if (value.includes('/search/about-this-result') && value.includes('req=')) {
@@ -369,11 +470,12 @@
     }
 
     function mapContainer(node) {
-        const out = { gotos: new Set(), urls: [], abouts: [], count: 0 };
+        const out = { gotos: new Set(), urls: [], sites: [], abouts: [], count: 0 };
         collectTree(node, out);
         if (!out.gotos.size) return false;
 
-        let best = pickBestURL(out.urls);
+        // A site address binds only a record that holds one /goto token.
+        let best = pickBestURL(out.gotos.size === 1 ? [...out.urls, ...out.sites] : out.urls);
         if (!best) {
             for (const about of out.abouts) {
                 best = targetFromAboutURL(about);
@@ -557,7 +659,6 @@
             fresh[key] = entry;
         }
         if (!Object.keys(fresh).length) return;
-        dataGeneration += 1;
         captureInlineDomains(fresh);
         for (const entry of Object.values(fresh)) {
             try {
@@ -565,7 +666,7 @@
                 scanDataTree(entry);
             } catch (_) {}
         }
-        settleBatchesBefore(dataGeneration);
+        settleRootsWithProcessedEntries();
     }
 
     function installDirectWjdHook() {
@@ -747,6 +848,86 @@
         return true;
     }
 
+    // ---- Multi-result containers ----
+    // An element holds more than one result when it holds two disjoint result
+    // units, or one unit plus links of its own outside it. Structure only:
+    // layout is unreadable while the firewall hides a root.
+    function isMultiResult(element) {
+        if (!isElement(element)) return false;
+        let units = 0;
+        for (const unit of element.querySelectorAll(RESULT_UNIT_SELECTOR)) {
+            const above = unit.parentElement.closest(RESULT_UNIT_SELECTOR);
+            if (above && above !== element && element.contains(above)) continue;
+            units += 1;
+            if (units > 1) return true;
+        }
+        if (!units) return false;
+        for (const link of element.querySelectorAll(RESULT_LINK_SELECTOR)) {
+            if (link.closest('[data-ub-google-source-proxy]')) continue;
+            const unit = link.closest(RESULT_UNIT_SELECTOR);
+            if (!unit || unit === element || !element.contains(unit)) return true;
+        }
+        return false;
+    }
+
+    // The root of the one result a link belongs to inside candidate: the
+    // innermost result unit holding the link, else the largest subtree around
+    // the link that holds no result unit.
+    function singleResultRoot(link, candidate) {
+        if (!isElement(candidate) || !isMultiResult(candidate)) return candidate || null;
+        const unit = link.closest(RESULT_UNIT_SELECTOR);
+        if (unit && unit !== candidate && candidate.contains(unit)) return singleResultRoot(link, unit);
+        let own = null;
+        for (let node = link; node && node !== candidate; node = node.parentElement) {
+            if (node.querySelector(RESULT_UNIT_SELECTOR)) break;
+            own = node;
+        }
+        return own;
+    }
+
+    // The node uBlacklist's mobile Web rule reads a root's URL from: the
+    // first .UBFage / a[role=presentation] when its href is absolute, else
+    // the first .ob9lvb.
+    function uBlacklistURLNode(root) {
+        const anchor = root.querySelector(UBLACKLIST_NATIVE_URL_SELECTOR);
+        if (anchor && /^https?:\/\//i.test(anchor.getAttribute('href') || '')) return anchor;
+        return root.querySelector('.ob9lvb');
+    }
+
+    // A multi-result container that uBlacklist would judge on one inner
+    // result's URL gets an inert first child it reads as no URL, so blocking
+    // that result never hides the others.
+    function neutralizeContainer(container) {
+        if (container.querySelector(`:scope > [${CONTAINER_PROXY_ATTRIBUTE}]`) || !isMultiResult(container)) return;
+        const node = uBlacklistURLNode(container);
+        if (!node) return;
+        const unit = node.closest(RESULT_UNIT_SELECTOR);
+        if (!unit || unit === container || !container.contains(unit)) return;
+        const wrapper = document.createElement('span');
+        wrapper.hidden = true;
+        wrapper.setAttribute('aria-hidden', 'true');
+        wrapper.setAttribute(CONTAINER_PROXY_ATTRIBUTE, '1');
+        wrapper.className = 'yuRUbf';
+        const anchor = document.createElement('a');
+        anchor.className = 'UBFage';
+        anchor.tabIndex = -1;
+        anchor.setAttribute('aria-hidden', 'true');
+        const domain = document.createElement('span');
+        domain.className = 'ob9lvb';
+        wrapper.append(anchor, domain, document.createElement('cite'));
+        container.prepend(wrapper);
+    }
+
+    function neutralizeContainersAround(element) {
+        for (
+            let node = element?.closest?.(KNOWN_ROOT_SELECTOR);
+            node;
+            node = node.parentElement?.closest(KNOWN_ROOT_SELECTOR)
+        ) {
+            neutralizeContainer(node);
+        }
+    }
+
     // inferredSource names how a destination was inferred rather than read
     // ('inline-data', 'site-name', with '-path' when a subreddit path was added).
     function addProxyOnce(root, sourceURL, kind = 'default', inferredSource = '') {
@@ -755,7 +936,7 @@
         if (!source) return false;
 
         const existing = root.querySelector(PROXY_WRAPPER_SELECTOR);
-        if (existing) return false;
+        if (existing || isMultiResult(root)) return false;
 
         ensureUBlacklistRoot(root);
 
@@ -779,6 +960,7 @@
         wrapper.appendChild(proxy);
         root.prepend(wrapper);
         stats.proxyAdds += 1;
+        neutralizeContainersAround(root.parentElement);
         return true;
     }
 
@@ -824,6 +1006,10 @@
 
     function rootForOpaqueLink(link) {
         const known = link.closest(KNOWN_ROOT_SELECTOR);
+        if (isMultiResult(known)) {
+            neutralizeContainersAround(known);
+            return singleResultRoot(link, known);
+        }
         if (known && uniqueGotoCount(known) > 1) {
             const nested = link.closest(NESTED_RESULT_SELECTOR);
             if (nested && nested !== known && known.contains(nested)) {
@@ -834,16 +1020,20 @@
                 return semantic;
             }
         }
-        return known || semanticResultRoot(link);
+        return known || singleResultRoot(link, semanticResultRoot(link));
     }
 
     function rootForDirectLink(link) {
         const known = link.closest(KNOWN_ROOT_SELECTOR);
+        if (isMultiResult(known)) {
+            neutralizeContainersAround(known);
+            return singleResultRoot(link, known);
+        }
         const nested = link.closest(NESTED_RESULT_SELECTOR);
         if (nested && nested !== known && (!known || known.contains(nested))) {
             return nested;
         }
-        return known || semanticResultRoot(link);
+        return known || singleResultRoot(link, semanticResultRoot(link));
     }
 
     function nativeReadableURL(root) {
@@ -1073,11 +1263,16 @@
 
     // The value a result's inline entry gives: tied by the root's single
     // jsdata entry key first, else by the link's /goto token.
-    function inlineValue(root, key, byEntry, byGoto) {
+    function entryKeysOf(root) {
         const entryKeys = new Set();
         for (const node of root.querySelectorAll(`[jsdata^="${RESULT_ENTRY_JSDATA_PREFIX}"]`)) {
             entryKeys.add(node.getAttribute('jsdata').slice(RESULT_ENTRY_JSDATA_PREFIX.length));
         }
+        return entryKeys;
+    }
+
+    function inlineValue(root, key, byEntry, byGoto) {
+        const entryKeys = entryKeysOf(root);
         if (entryKeys.size === 1) {
             const value = byEntry.get([...entryKeys][0]);
             if (value) return value;
@@ -1086,8 +1281,8 @@
     }
 
     // Order: result-bound page data (inline domain, inline plain host,
-    // thumbnail host); once the root's batch has settled, KNOWN_SITES for its
-    // names, else the name learned on this page. A qualifier adds a path only
+    // thumbnail host); once no more data can come for the root (settled),
+    // KNOWN_SITES for its names, else the name learned on this page. A qualifier adds a path only
     // where KNOWN_SITES says it is certainly a handle of that site.
     function inferDestination(link, key, root, settled) {
         if (!canInferForLink(link)) return null;
@@ -1112,30 +1307,129 @@
             : { url: `${origin}/`, source, learnFrom };
     }
 
-    // Releases a root on itself and on each firewall root holding one of its
-    // links that has no proxy of its own (a thread card's outer root).
-    function release(root, record) {
-        root.setAttribute(UNRESOLVED_ATTRIBUTE, '1');
-        for (const link of record.links) {
-            const firewallRoot = link.closest(KNOWN_ROOT_SELECTOR);
-            if (!firewallRoot || firewallRoot === root || firewallRoot.querySelector(PROXY_WRAPPER_SELECTOR)) continue;
-            firewallRoot.setAttribute(UNRESOLVED_ATTRIBUTE, '1');
-            record.firewallRoots.add(firewallRoot);
+    // ---- Quarantine (UB-4) ----
+
+    function firewallRootOf(element) {
+        return element.parentElement?.closest(KNOWN_ROOT_SELECTOR) || null;
+    }
+
+    function quarantineElement(element) {
+        if (IS_IMAGES_TAB || element.hasAttribute(UNRESOLVED_ATTRIBUTE) || quarantinedOnce.has(element)) return;
+        quarantinedOnce.add(element);
+        element.setAttribute(QUARANTINE_ATTRIBUTE, '1');
+        setTimeout(() => capQuarantine(element), QUARANTINE_CAP_MS);
+    }
+
+    // At first sight of an opaque link: its result and the firewall root
+    // holding it, unless already resolved or released.
+    function quarantine(root, link) {
+        if (!root.querySelector(PROXY_WRAPPER_SELECTOR)) quarantineElement(root);
+        const firewallRoot = link.closest(KNOWN_ROOT_SELECTOR);
+        if (firewallRoot && firewallRoot !== root && !firewallRoot.querySelector(PROXY_WRAPPER_SELECTOR)) {
+            quarantineElement(firewallRoot);
         }
     }
 
-    // A resolved root goes back to uBlacklist. An outer firewall root stays
-    // released: uBlacklist reads its URL from its own first link, which the
-    // inner proxy does not change, so it might never mark it.
+    // Rendered: not under a display:none ancestor. checkVisibility() is
+    // Safari 17.4+; older engines give a box list only to a rendered element.
+    function isRendered(element) {
+        if (typeof element.checkVisibility === 'function') return element.checkVisibility();
+        return element.getClientRects().length > 0;
+    }
+
+    // A released root counts as exposed once it renders while still released
+    // and not blocked. Returns true when it no longer needs watching.
+    function noteExposure(element) {
+        if (!element.isConnected || !element.hasAttribute(UNRESOLVED_ATTRIBUTE)) return true;
+        if (element.hasAttribute('data-ub-block')) return true;
+        if (!isRendered(element)) return false;
+        exposedRoots.add(element);
+        return true;
+    }
+
+    function checkUnseenReleased() {
+        unseenFrame = 0;
+        for (const element of unseenReleased) if (noteExposure(element)) unseenReleased.delete(element);
+    }
+
+    // A released root not rendered at release is checked on the next frame,
+    // then only in the frame after a DOM mutation (a cleanup script may show
+    // its hidden block later), at most once per frame. No mutation, no frame
+    // callback: a page left open with a hidden root stays idle.
+    function scheduleUnseenCheck() {
+        if (unseenReleased.size && !unseenFrame) unseenFrame = requestAnimationFrame(checkUnseenReleased);
+    }
+
+    function markReleased(element) {
+        element.setAttribute(UNRESOLVED_ATTRIBUTE, '1');
+        element.removeAttribute(QUARANTINE_ATTRIBUTE);
+        if (noteExposure(element)) return;
+        unseenReleased.add(element);
+        scheduleUnseenCheck();
+    }
+
+    // An outer firewall root without a proxy of its own is released once
+    // none of the results inside it is quarantined.
+    function liftFirewallRoot(firewallRoot) {
+        if (!firewallRoot || !firewallRoot.hasAttribute(QUARANTINE_ATTRIBUTE)) return;
+        if (firewallRoot.querySelector(PROXY_WRAPPER_SELECTOR)) return;
+        if (firewallRoot.querySelector(`[${QUARANTINE_ATTRIBUTE}]`)) return;
+        markReleased(firewallRoot);
+    }
+
+    function capQuarantine(element) {
+        if (!element.isConnected || !element.hasAttribute(QUARANTINE_ATTRIBUTE)) return;
+        if (unresolvedRoots.has(element)) settleRoot(element);
+        if (!element.hasAttribute(QUARANTINE_ATTRIBUTE)) return;
+        awaitingVerdict.delete(element);
+        if (element.querySelector(PROXY_WRAPPER_SELECTOR)) element.removeAttribute(QUARANTINE_ATTRIBUTE);
+        else markReleased(element);
+    }
+
+    function liftAfterVerdict(root) {
+        awaitingVerdict.delete(root);
+        root.removeAttribute(QUARANTINE_ATTRIBUTE);
+        liftFirewallRoot(firewallRootOf(root));
+    }
+
+    // A proxy was written: the root stays quarantined until uBlacklist has
+    // re-judged it. uBlacklist 10.1.2 re-judges a marked root whose URL
+    // changed by removing and setting data-ub-result again, with data-ub-block,
+    // in one animation-frame callback; that write is the signal. A root it
+    // has not marked yet is judged with the proxy when first marked, and the
+    // firewall hides it until then, so it waits two frames plus a margin.
+    function awaitVerdict(root) {
+        forgetUnresolved(root);
+        if (!quarantinedOnce.has(root) || verdictScheduled.has(root)) return;
+        verdictScheduled.add(root);
+        root.setAttribute(QUARANTINE_ATTRIBUTE, '1');
+        if (root.hasAttribute('data-ub-result')) {
+            awaitingVerdict.set(root, observerEpoch);
+            return;
+        }
+        requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => liftAfterVerdict(root), VERDICT_MARGIN_MS)));
+    }
+
+    // Releases a root on itself and on each firewall root holding one of its
+    // links that has no proxy of its own (a thread card's outer root).
+    function release(root, record) {
+        markReleased(root);
+        for (const link of record.links) {
+            const firewallRoot = link.closest(KNOWN_ROOT_SELECTOR);
+            if (firewallRoot && firewallRoot !== root) liftFirewallRoot(firewallRoot);
+        }
+    }
+
     function forgetUnresolved(root) {
         unresolvedRoots.delete(root);
+        waitingForLoad.delete(root);
         root.removeAttribute(UNRESOLVED_ATTRIBUTE);
     }
 
     // Returns true once the root has a proxy.
     function resolveWithoutRequest(link, key, root) {
         if (root.querySelector(PROXY_WRAPPER_SELECTOR)) {
-            forgetUnresolved(root);
+            awaitVerdict(root);
             return true;
         }
         const settled = unresolvedRoots.get(root)?.settled === true;
@@ -1156,25 +1450,40 @@
         return false;
     }
 
+    function entriesProcessed(record) {
+        return record.entryKeys.size > 0 && [...record.entryKeys].every((key) => processedEntryKeys.has(key));
+    }
+
     function registerUnresolved(link, key, root) {
         if (!root || nativeReadableURL(root)) return;
         if (resolveWithoutRequest(link, key, root)) return;
         let record = unresolvedRoots.get(root);
-        if (!record) {
-            record = { links: new Set(), settled: false, generation: dataGeneration, firewallRoots: new Set() };
+        const isNew = !record;
+        if (isNew) {
+            record = { links: new Set(), settled: false, entryKeys: entryKeysOf(root) };
             unresolvedRoots.set(root, record);
-            if (pageParsed) setTimeout(() => settleRoot(root), BATCH_SETTLE_MS);
         }
         record.links.add(link);
-        if (record.settled) release(root, record);
+        if (record.settled) {
+            release(root, record);
+            return;
+        }
+        if (!isNew) return;
+        if (record.entryKeys.size === 0) {
+            if (windowLoaded) setTimeout(() => settleRoot(root), NO_ENTRY_RELEASE_MS);
+            else waitingForLoad.add(root);
+        } else if (entriesProcessed(record)) {
+            settleRoot(root);
+        }
     }
 
-    // A settled root may use the site list and learned names; if nothing
-    // resolves it, it is released.
+    // No more data can come for the root: it may use the site list and
+    // learned names; if nothing resolves it, it is released.
     function settleRoot(root) {
         const record = unresolvedRoots.get(root);
         if (!record || record.settled) return;
         record.settled = true;
+        waitingForLoad.delete(root);
         if (!root.isConnected) {
             unresolvedRoots.delete(root);
             return;
@@ -1182,10 +1491,9 @@
         if (!resolveRoot(root, record)) release(root, record);
     }
 
-    function settleBatchesBefore(generation) {
-        if (!pageParsed) return;
+    function settleRootsWithProcessedEntries() {
         for (const [root, record] of [...unresolvedRoots]) {
-            if (!record.settled && record.generation < generation) settleRoot(root);
+            if (!record.settled && entriesProcessed(record)) settleRoot(root);
         }
     }
 
@@ -1212,9 +1520,10 @@
         }
     }
 
-    function settleAfterParse() {
-        pageParsed = true;
-        for (const root of [...unresolvedRoots.keys()]) settleRoot(root);
+    function onWindowLoad() {
+        windowLoaded = true;
+        for (const root of [...waitingForLoad]) setTimeout(() => settleRoot(root), NO_ENTRY_RELEASE_MS);
+        waitingForLoad.clear();
     }
 
     function firewallRootSelector() {
@@ -1248,11 +1557,16 @@
         style.setAttribute('data-ub-google-result-firewall-style', VERSION);
         // A root whose destination the page does not reveal is released
         // (data-ub-google-bridge-unresolved) and left to uBlacklist's own reading.
-        style.textContent = roots ? `
+        // A quarantined root is hidden whatever uBlacklist has marked.
+        style.textContent = IS_IMAGES_TAB ? '' : (roots ? `
+[${QUARANTINE_ATTRIBUTE}],
 :is(${roots}):not([data-ub-result]):not([${UNRESOLVED_ATTRIBUTE}]),
 [data-ub-hide-blocked-results] :is(${roots})[data-ub-block] {
     display: none !important;
-}` : '';
+}` : `
+[${QUARANTINE_ATTRIBUTE}] {
+    display: none !important;
+}`);
         (document.head || document.documentElement).appendChild(style);
     }
 
@@ -1275,7 +1589,7 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             : (root.matches(VISUAL_DIGEST_VIDEO_SELECTOR) ? 'visual-digest-video' : 'default');
         addProxyOnce(root, sourceURL, kind, inferredSource);
         const hasProxy = Boolean(root.querySelector(PROXY_WRAPPER_SELECTOR));
-        if (hasProxy) forgetUnresolved(root);
+        if (hasProxy) awaitVerdict(root);
         return hasProxy;
     }
 
@@ -1293,8 +1607,15 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         const key = normalizeGoto(link.getAttribute('href') || link.href);
         if (!key) return;
 
+        // A URL the result displays or holds in data-curl/data-surl may be
+        // deeper than the host-only site its data named: it competes first.
+        const bridgeRoot = rootForOpaqueLink(link);
+        const displayed = displayedResultURL(link, bridgeRoot) || pageDataURL(bridgeRoot);
+        if (displayed && gotoMap.has(key)) maybeSetGoto(key, displayed);
+
         const mapped = gotoMap.get(key);
         if (mapped) {
+            if (bridgeRoot && !nativeReadableURL(bridgeRoot)) quarantine(bridgeRoot, link);
             bridgeResolvedLink(link, mapped);
             return;
         }
@@ -1304,11 +1625,10 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
             links = new Set();
             pendingByGoto.set(key, links);
         }
-        const bridgeRoot = rootForOpaqueLink(link);
         links.add(link);
         if (bridgeRoot) pendingRootByLink.set(link, bridgeRoot);
+        if (bridgeRoot && !nativeReadableURL(bridgeRoot)) quarantine(bridgeRoot, link);
 
-        const displayed = displayedResultURL(link, bridgeRoot) || pageDataURL(bridgeRoot);
         if (displayed) {
             maybeSetGoto(key, displayed);
             return;
@@ -1361,19 +1681,33 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
         installDirectWjdHook();
         installWjdTrampoline();
         installGapCollapseStyle();
-        // Google's inline result data follows the result HTML, so the initial
-        // page's unresolved roots settle only once the document has been parsed.
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', settleAfterParse, { once: true });
-        } else {
-            pageParsed = true;
-        }
+        // A result without an inline entry key can still be resolved by data
+        // loaded with the page; it is released 500 ms after the load event.
+        if (document.readyState === 'complete') windowLoaded = true;
+        else window.addEventListener('load', onWindowLoad, { once: true });
 
         const observer = new MutationObserver((records) => {
             stats.observerCallbacks += 1;
+            observerEpoch += 1;
             for (const record of records) {
                 if (record.type === 'attributes') {
                     const target = record.target;
+                    if (record.attributeName === 'data-ub-result') {
+                        // UB-4: uBlacklist's verdict on a proxy written earlier.
+                        if (target.hasAttribute('data-ub-result') && awaitingVerdict.get(target) < observerEpoch) {
+                            liftAfterVerdict(target);
+                        }
+                        continue;
+                    }
+                    if (record.attributeName === 'data-ub-block') {
+                        // UB-4: a result shown while unresolved and later blocked.
+                        if (target.hasAttribute('data-ub-block') && exposedRoots.has(target)) {
+                            target.setAttribute(EXPOSED_ATTRIBUTE, '1');
+                        }
+                        continue;
+                    }
+                    // Observed only to re-check unseen released roots below.
+                    if (VISIBILITY_ATTRIBUTES.includes(record.attributeName)) continue;
                     if (isElement(target) && !target.closest('[data-ub-google-source-proxy]')) {
                         bridgeSubtree(target);
                     }
@@ -1394,12 +1728,13 @@ html[data-ub-hide-blocked-results] :is(${COLLAPSIBLE_SLOT_SELECTOR}):has([data-u
                 }
             }
             prunePendingLinks();
+            scheduleUnseenCheck();
         });
 
         observer.observe(document.documentElement, {
             childList: true,
             attributes: true,
-            attributeFilter: ['href'],
+            attributeFilter: ['href', 'data-ub-result', 'data-ub-block', ...VISIBILITY_ATTRIBUTES],
             subtree: true,
         });
 
