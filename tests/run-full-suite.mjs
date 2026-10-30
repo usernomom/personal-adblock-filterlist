@@ -18,7 +18,7 @@
  * Environment: IPHONE_TOOLKIT (default ../iphone-safari-toolkit), PYTHON
  * (default python), NEON_DEBUG_HOST (default http://127.0.0.1:9223).
  */
-import { runScriptBatch, verifyNeonScript } from './full-suite-support.mjs';
+import { clickInstallButton, runScriptBatch, verifyNeonScript } from './full-suite-support.mjs';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
@@ -103,7 +103,11 @@ async function cdp(target) {
       if (message.id !== id) return;
       ws.removeEventListener('message', handler);
       clearTimeout(timer);
-      if (message.error || message.result?.exceptionDetails) reject(new Error('DevTools evaluation threw'));
+      if (message.error || message.result?.exceptionDetails) {
+        const details = message.result?.exceptionDetails;
+        const text = details?.exception?.description || details?.text || message.error?.message || '';
+        reject(new Error(`DevTools evaluation threw${text ? `: ${text}` : ''}`));
+      }
       else resolve(message.result?.result?.value);
     });
     ws.send(JSON.stringify({ id, method: 'Runtime.evaluate',
@@ -157,19 +161,7 @@ async function installIntoNeon(script) {
     const page = await cdp(confirm);
     try {
       const expected = `${script.name}, ${script.version}`;
-      let clicked = null;
-      for (let attempt = 0; attempt < 60 && !clicked; attempt += 1) {
-        clicked = await page.evaluate(`(() => {
-          if (!document.body.innerText.includes(${JSON.stringify(expected)})) return null;
-          const button = [...document.querySelectorAll('button')].find(b => !b.disabled &&
-            /^(Install|Reinstall|Re-install|Update)$/i.test(b.innerText.trim()));
-          if (!button) return null;
-          button.click();
-          return button.innerText.trim();
-        })()`);
-        if (!clicked) await sleep(250);
-      }
-      if (!clicked) throw new Error(`Violentmonkey install page never offered ${expected}`);
+      const clicked = await clickInstallButton(page.evaluate, expected);
       await sleep(2000);
       return clicked;
     } finally {

@@ -1,4 +1,5 @@
 import { createSuite } from './suite-runner.mjs';
+import { youtubeMusicDelegation } from './smoke-checks.mjs';
 const DEBUG_HOST = 'http://127.0.0.1:9223';
 const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
 const MOBILE_VIEWPORT = { width: 390, height: 844, deviceScaleFactor: 3, mobile: true };
@@ -357,6 +358,7 @@ try {
   };
 
   const linkedInQuery = 'https://www.google.com/search?q=LinkedIn+senior+software+engineer';
+  const mixedJobsQuery = 'https://www.google.com/search?q=senior+software+engineer+jobs+toronto';
 
   const addTemporaryLinkedInBlock = async () => {
     await navigate(client, linkedInQuery);
@@ -723,21 +725,17 @@ try {
       const proxy = root.querySelector(':scope > [data-ub-google-source-proxy] a');
       return {
         source: source.href,
+        nativeLink: source.matches('.UBFage, a[role="presentation"]'),
         proxy: proxy?.href || null,
         cleanupReason: root.getAttribute('data-google-cleanup-hidden'),
         bridgeRoot: root.getAttribute('data-ub-google-bridge-root'),
         uBlacklistProcessed: root.getAttribute('data-ub-result')
       };
     })()`,
-    result => {
-      if (!result) fail('YouTube Music result was not found');
-      if (result.cleanupReason) fail('Google Cleanup must not domain-filter YouTube Music', result);
-      if (result.bridgeRoot !== '1') fail('Bridge did not claim the YouTube Music result root', result);
-      if (!result.proxy || new URL(result.proxy).hostname !== 'music.youtube.com') {
-        fail('Bridge did not expose the exact YouTube Music destination to uBlacklist', result);
-      }
-      if (result.uBlacklistProcessed !== '1') fail('uBlacklist did not process the bridged result root', result);
-    },
+    // Google may serve a native a.UBFage link (uBlacklist reads it; the
+    // bridge leaves it alone by design, UB-2) or an unsupported anchor the
+    // bridge proxies; either must carry music.youtube.com.
+    result => console.log(`YouTube Music reaches uBlacklist through its ${youtubeMusicDelegation(result)} link`),
   );
   await assertInstalledVersion();
   return youtubeAll;
@@ -772,7 +770,8 @@ try {
     'mobile People also search for removal on Videos tab',
     'https://www.google.com/search?q=funny+cats&udm=7',
     RELATED_SEARCHES_AUDIT,
-    result => assertRelatedSearchesGone(result, 'Mobile Videos tab'),
+    // Google does not always serve related searches here (none on 2026-10-30).
+    result => assertRelatedSearchesGone(result, 'Mobile Videos tab', { requireModule: false }),
   );
   await assertInstalledVersion();
   return mobileVideosRelated;
@@ -854,6 +853,40 @@ try {
   return {dynamicBlockedCount:dynamicBlockedResults.length,visibleLeaks:dynamicBlockedLeaks.length};
   });
 
+  await checks.run("Mobile bridged result hidden until uBlacklist judges it", async () => {
+  // Regression: on iPhone, uBlacklist can take seconds to judge results. The
+  // firewall used to reveal a mobile result as soon as the bridge attached its
+  // proxy, so blocked sites showed and then vanished. Read the style
+  // synchronously, before uBlacklist's next-frame scan can classify the probe.
+  await emulate(client, { userAgent: MOBILE_UA, viewport: MOBILE_VIEWPORT });
+  await navigate(client, linkedInQuery);
+  await assertInstalledVersion();
+  await assertBridgeInstalledVersion();
+  const bridgedProbe = await evaluate(client, `(() => {
+    const host = document.createElement('div');
+    host.innerHTML =
+      '<div class="Ww4FFb vt6azd" data-ub-google-bridge-root="1">' +
+      '<span hidden data-ub-google-source-proxy="default"><a class="UBFage" href="https://bridged-probe.example/">x</a></span>' +
+      'bridged probe</div>';
+    document.body.appendChild(host);
+    const display = getComputedStyle(host.firstElementChild).display;
+    host.remove();
+    return {display};
+  })()`);
+  if (bridgedProbe.display !== 'none') {
+    fail('Mobile bridged result was visible before uBlacklist classified it', bridgedProbe);
+  }
+  console.log('PASS mobile bridged result stays hidden until uBlacklist classification');
+  return bridgedProbe;
+  });
+
+  // No Neon case checks that the bridge never requests /goto: the signed-in
+  // Neon profile is served direct result links (0 opaque /goto links on the
+  // page, 2026-10-30), so it can never exercise the bridge's /goto handling,
+  // and the extension's own requests are not on the page's CDP target. The
+  // deterministic suite enforces the rule instead: the static source test and
+  // the request recorder in google-ublacklist-bridge.test.js.
+
   await checks.run("Desktop ordinary web results", async () => {
   await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
   const webResult = await runCase(
@@ -886,13 +919,26 @@ try {
 
   await checks.run("Desktop blocked/allowed result timing", async () => {
   await emulate(client, { userAgent: desktopUa, viewport: DESKTOP_VIEWPORT });
-  await navigate(client, linkedInQuery);
+  // The LinkedIn query can return only LinkedIn results, leaving no allowed
+  // result to time. This one mixes LinkedIn with other job sites.
+  await navigate(client, mixedJobsQuery);
   await assertInstalledVersion();
   await assertBridgeInstalledVersion();
   await waitFor(
     client,
     `window.__UB_FIREWALL_AUDIT__?.events?.some(event => event.block === '1')`,
     'uBlacklist to classify at least one live blocked result',
+  );
+  // Allowed results can be classified after the first blocked one, so wait for
+  // one to be released before auditing instead of sampling the first frames.
+  await waitFor(
+    client,
+    `(() => {
+      const events = window.__UB_FIREWALL_AUDIT__?.events || [];
+      const allowed = new Set(events.filter(event => event.result === '1' && event.block !== '1').map(event => event.id));
+      return events.some(event => event.visible && allowed.has(event.id));
+    })()`,
+    'uBlacklist to release at least one live allowed result',
   );
   const firewallEvents = await evaluate(
     client,
@@ -909,7 +955,15 @@ try {
   if (!firewallAudit.allowed.length) {
     fail('Live firewall audit found no independently classified visible allowed result', firewallEvents.slice(-30));
   }
-  const slowAllowed = firewallAudit.allowed.filter(entry => entry.deltaFrames > 1);
+  // Opaque /goto results wait for the bridge's page-data sources or are
+  // released unresolved when their batch settles (UB-1, UB-4), not on
+  // uBlacklist's classification, so release timing applies to direct results only.
+  const directAllowed = firewallAudit.allowed.filter(entry =>
+    !entry.history.some(event => /\/goto\?/.test(event.href || '')));
+  if (!directAllowed.length) {
+    fail('Live firewall audit found no directly linked allowed result to time', firewallAudit.allowed);
+  }
+  const slowAllowed = directAllowed.filter(entry => entry.deltaFrames > 1);
   if (slowAllowed.length) {
     fail('Allowed Google result was released more than one animation frame after uBlacklist classification', slowAllowed);
   }

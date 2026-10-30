@@ -22,3 +22,33 @@ export async function runScriptBatch(scripts, task) {
   }
   return report.cases.map(item => item.value);
 }
+
+/** In-page probe for Violentmonkey's confirm page: clicks Install/Reinstall once `expected` is shown. */
+export const installPageExpression = expected => `(() => {
+  if (!document.body || !document.body.innerText.includes(${JSON.stringify(expected)})) return null;
+  const button = [...document.querySelectorAll('button')].find(b => !b.disabled &&
+    /^(Install|Reinstall|Re-install|Update)$/i.test(b.innerText.trim()));
+  if (!button) return null;
+  button.click();
+  return button.innerText.trim();
+})()`;
+
+/**
+ * Poll the confirm page until the install button is clicked. A thrown evaluation
+ * (for example a page that has no body yet) counts as "not ready" and is retried
+ * until the deadline; the last real error text is kept for the final failure.
+ */
+export async function clickInstallButton(evaluate, expected,
+  { attempts = 60, delayMs = 250, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const clicked = await evaluate(installPageExpression(expected));
+      if (clicked) return clicked;
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < attempts - 1) await sleep(delayMs);
+  }
+  throw new Error(`Violentmonkey install page never offered ${expected}${lastError ? ` (last error: ${lastError.message})` : ''}`);
+}
