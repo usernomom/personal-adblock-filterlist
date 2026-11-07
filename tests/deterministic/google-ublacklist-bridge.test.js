@@ -304,8 +304,8 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.3\.5$/m);
-    assert.match(source, /const VERSION = '13\.3\.5';/);
+    assert.match(source, /^\/\/ @version\s+13\.3\.6$/m);
+    assert.match(source, /const VERSION = '13\.3\.6';/);
 });
 
 test('bridge has no network request path, no storage beyond deleting 13.3.0 data, and pinned metadata', () => {
@@ -1353,6 +1353,68 @@ test('the built-in site list resolves listed social sites as a last resort, with
     }
     assert.notEqual(h.window.getComputedStyle(h.document.getElementById('unlisted')).display, 'none');
     assert.deepEqual(learned(h), {}, 'list hosts are not learned');
+    assert.deepEqual(h.requests, []);
+    h.close();
+});
+
+// One card of the mobile "Discussions and forums" module, as served to the
+// signed-out iPhone on 2026-11-07 (q=breaking bad; classes and structure kept,
+// tokens masked). The card names its site only; the page holds no URL for it.
+function discussionsCard({ id, token, site, meta }) {
+    return `<div id="${id}" class="xYkm8c uRG8ge sjVJQd dya7x"><div class="KsV9Jb cS7M8 roMIYb h373nd">` +
+        '<div><div class="dnXCYb"><div class="JlqpRe"><span class="JGD2rd JCzEY tNxQIb"><div>' +
+        `<a class="KYg7td" href="/goto?url=${token}" ping="/url?sa=t&amp;source=web&amp;url=${token}">` +
+        '<div class="vxfsIc tNxQIb"><div class="j29v2b" aria-level="3" role="heading">' +
+        '<div class="hyYc0c" role="link">Result title</div></div>' +
+        '<div class="K4ETW"><div><div class="iDBaYb"><div class="d6R6kf"><div><div class="oRVWZ Vwoesf" aria-hidden="true">' +
+        '<img class="XNo5Ab" src="data:image/png;base64,iVBORw0KGgo=" alt=""></div></div></div>' +
+        `<div class="LbKnXb J0EDnf DMUiif"><div class="R8BTeb q8U8x LJEGod">${site}<span class="B2BpC">&nbsp;·&nbsp;</span></div>` +
+        `<div class="xuPcX yUTMj OSrXXb al4kQ"><span class="WUQ0De">${meta}</span></div></div>` +
+        '</div></div></div></div></a></div></span></div></div></div>' +
+        '<div class="w9zMP XNfAUb" jsdata="M2v9If;_;masked-module-entry"></div>' +
+        '</div></div>';
+}
+
+test('a name-only Quora card in Discussions and forums takes quora.com from the built-in list', async () => {
+    // Regression 2026-11-07: the card was released with no destination, so the
+    // owner's uBlacklist rule for Quora could not hide it.
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso"><div id="forums" class="Ww4FFb vt6azd">' +
+            discussionsCard({ id: 'reddit-card', token: 'discussions-reddit', site: 'Reddit', meta: 'r/AskReddit' }) +
+            discussionsCard({ id: 'quora-card', token: 'discussions-quora', site: 'Quora', meta: '60+ answers' }) +
+            '</div></div>',
+    });
+    await settle(h);
+
+    const quora = proxyOf(h.document.getElementById('quora-card'));
+    assert.ok(quora, 'the Quora card gets a proxy');
+    assert.equal(quora.href, 'https://quora.com/');
+    assert.equal(quora.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-list');
+    assert.ok(matchesUBlacklistPattern('*://*.quora.com/*', quora.href), 'a whole-site Quora rule matches it');
+    assert.equal(h.document.getElementById('quora-card').hasAttribute('data-ub-google-bridge-unresolved'), false);
+    assert.equal(proxyOf(h.document.getElementById('reddit-card')).href, 'https://reddit.com/');
+    assert.deepEqual(learned(h), {}, 'list hosts are not learned');
+    assert.deepEqual(h.requests, []);
+    h.close();
+});
+
+test('a name-only Substack web result takes substack.com from the built-in list', async () => {
+    // Regression 2026-11-07 (q=intel 14a pdk 0.9 substack): five
+    // "Substack · <publication>" results were released with no destination.
+    const h = createHarness({
+        userAgent: MOBILE_UA,
+        html: '<div id="rso">' +
+            organicCard({ id: 'substack', goto: '/goto?url=substack-name-only', site: 'Substack · Musings from BluBird Capital', meta: '3 likes · 1 month ago' }) +
+            '</div>',
+    });
+    await settle(h);
+
+    const proxy = proxyOf(h.document.getElementById('substack'));
+    assert.ok(proxy, 'the Substack card gets a proxy');
+    assert.equal(proxy.href, 'https://substack.com/');
+    assert.equal(proxy.parentElement.getAttribute('data-ub-google-bridge-inferred'), 'site-list');
+    assert.ok(matchesUBlacklistPattern('*://*.substack.com/*', proxy.href), 'a whole-site Substack rule matches it');
     assert.deepEqual(h.requests, []);
     h.close();
 });
