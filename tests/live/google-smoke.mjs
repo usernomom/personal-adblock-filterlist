@@ -880,6 +880,61 @@ try {
   return bridgedProbe;
   });
 
+  await checks.run("Mobile grouped results stay visible when pressed", async () => {
+  // Regression 2026-11-07: Google writes a result's href again when it is
+  // pressed. Bridge 13.3.6 then gave a site's grouped results a new root and
+  // quarantined it under the finger, so the tap opened the result below.
+  await emulate(client, { userAgent: MOBILE_UA, viewport: MOBILE_VIEWPORT });
+  await navigate(client, 'https://www.google.com/search?q=Intel+14a');
+  await assertInstalledVersion();
+  await assertBridgeInstalledVersion();
+  const pressTarget = await evaluate(client, `(() => {
+    const heading = '[role="heading"][aria-level="3"], h3';
+    const cardOf = a => a.closest('.Ww4FFb, .vt6azd');
+    const rendered = el => el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0;
+    const grouped = a => {
+      const card = cardOf(a);
+      const href = a.getAttribute('href') || '';
+      return card && card.querySelector(heading) && !a.querySelector(heading) && !a.closest(heading) &&
+        !a.closest('[data-ub-google-source-proxy]') && /^(\\/goto\\?|https?:)/.test(href) &&
+        (a.innerText || '').trim().length >= 20 && rendered(a);
+    };
+    const links = Array.from(document.querySelectorAll('.Ww4FFb a[href], .vt6azd a[href]')).filter(grouped);
+    const link = links.find(a => links.filter(b => cardOf(b) === cardOf(a)).length >= 2);
+    if (!link) return null;
+    link.scrollIntoView({ block: 'center' });
+    const report = { label: (link.innerText || '').trim().slice(0, 80), hrefWrites: 0, hidden: null };
+    const check = () => {
+      if (report.hidden || rendered(link)) return;
+      let el = link;
+      while (el && getComputedStyle(el).display !== 'none') el = el.parentElement;
+      report.hidden = el ? [el.tagName + '.' + Array.from(el.classList).join('.'),
+        ...Array.from(el.attributes).filter(x => x.name.startsWith('data-')).map(x => x.name)].join(' ') : '(link removed)';
+    };
+    const observer = new MutationObserver(records => {
+      for (const r of records) if (r.target === link && r.attributeName === 'href') report.hrefWrites += 1;
+      check();
+    });
+    observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
+    setTimeout(() => observer.disconnect(), 5000);
+    window.__GROUPED_PRESS__ = report;
+    const r = link.getBoundingClientRect();
+    return { label: report.label, x: r.left + Math.min(10, r.width / 2), y: r.top + r.height / 2 };
+  })()`);
+  if (!pressTarget) fail('Google served no grouped results from one site to press');
+  // A real press; it is released away from every link so it never becomes a click on a result.
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: pressTarget.x, y: pressTarget.y, button: 'left', clickCount: 1,
+  });
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  const pressed = await evaluate(client, 'window.__GROUPED_PRESS__');
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2, button: 'left' });
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 2, y: 2, button: 'left', clickCount: 1 });
+  if (pressed?.hidden) fail('Pressing a grouped result hid it, so a tap opens the result below', pressed);
+  console.log(`PASS grouped result stays visible when pressed (${pressed?.hrefWrites ?? 0} href writes by Google)`);
+  return pressed;
+  });
+
   // No Neon case checks that the bridge never requests /goto: the signed-in
   // Neon profile is served direct result links (0 opaque /goto links on the
   // page, 2026-10-30), so it can never exercise the bridge's /goto handling,

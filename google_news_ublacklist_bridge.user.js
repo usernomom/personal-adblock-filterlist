@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.3.6
+// @version      13.3.7
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -79,7 +79,13 @@
  *      gets a proxy with the best of those URLs, unless uBlacklist's own
  *      readable URL is already as good.
  * UB-3 One proxy per result. Result hrefs are never rewritten, and the
- *      bridge ignores its own proxies and uBlacklist's changes.
+ *      bridge ignores its own proxies and uBlacklist's changes. A link keeps
+ *      the result root it got when the bridge first saw it, while that root
+ *      still holds it and is a single result (UB-7): a later href write on
+ *      the same link, such as Google's when the result is tapped, or a later
+ *      layout never gives it another root, so a result already shown is not
+ *      quarantined again (13.3.7: tapping a site's grouped results hid them
+ *      under the finger and opened the next result).
  * UB-4 Result firewall. On the Web, News, Videos and Forums tabs (never
  *      Images or other tabs), results uBlacklist classifies stay hidden
  *      until uBlacklist has processed them, on desktop and mobile alike;
@@ -143,7 +149,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.3.6';
+    const VERSION = '13.3.7';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const SEARCH_PARAMS = new URLSearchParams(location.search);
     const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
@@ -214,6 +220,8 @@
     const gotoMap = new Map();
     const pendingByGoto = new Map();
     const pendingRootByLink = new WeakMap();
+    // Link -> the result root it got at first sight (UB-3).
+    const rootByLink = new WeakMap();
     const inlineDomainByEntry = new Map();
     const inlineDomainByGoto = new Map();
     const inlineHostByEntry = new Map();
@@ -1012,7 +1020,28 @@
         );
     }
 
+    // A link keeps the root it got at first sight while that root still holds
+    // it and is a single result. The semantic root depends on layout, which
+    // exists only after first sight; Google writes a tapped result's href
+    // again, and recomputing then gave grouped results a new root that was
+    // quarantined under the finger (13.3.7).
+    function firstSightRoot(link, findRoot) {
+        const kept = rootByLink.get(link);
+        if (kept && kept.isConnected && kept.contains(link) && !isMultiResult(kept)) return kept;
+        const root = findRoot(link);
+        if (root) rootByLink.set(link, root);
+        return root;
+    }
+
     function rootForOpaqueLink(link) {
+        return firstSightRoot(link, findRootForOpaqueLink);
+    }
+
+    function rootForDirectLink(link) {
+        return firstSightRoot(link, findRootForDirectLink);
+    }
+
+    function findRootForOpaqueLink(link) {
         const known = link.closest(KNOWN_ROOT_SELECTOR);
         if (isMultiResult(known)) {
             neutralizeContainersAround(known);
@@ -1031,7 +1060,7 @@
         return known || singleResultRoot(link, semanticResultRoot(link));
     }
 
-    function rootForDirectLink(link) {
+    function findRootForDirectLink(link) {
         const known = link.closest(KNOWN_ROOT_SELECTOR);
         if (isMultiResult(known)) {
             neutralizeContainersAround(known);
