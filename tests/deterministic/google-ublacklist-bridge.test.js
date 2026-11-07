@@ -304,8 +304,8 @@ test('bridge userscript package is installable and valid JavaScript', () => {
     const sentinel = Buffer.from('// ==UserScript==', 'utf8');
     assert.equal(bytes.subarray(0, sentinel.length).compare(sentinel), 0);
     assert.doesNotThrow(() => new vm.Script(source, { filename: scriptPath }));
-    assert.match(source, /^\/\/ @version\s+13\.3\.6$/m);
-    assert.match(source, /const VERSION = '13\.3\.6';/);
+    assert.match(source, /^\/\/ @version\s+13\.3\.7$/m);
+    assert.match(source, /const VERSION = '13\.3\.7';/);
 });
 
 test('bridge has no network request path, no storage beyond deleting 13.3.0 data, and pinned metadata', () => {
@@ -1584,6 +1584,55 @@ test('late href mutation in a mixed-domain discussion module bridges only the ne
     assert.equal(proxy.href, target);
     assert.equal(item.getAttribute('data-ub-google-bridge-root'), '1');
     assert.equal(group.querySelector(':scope > [data-ub-google-source-proxy]'), null);
+    h.close();
+});
+
+// 2026-11-07 iPhone Safari (q=Intel 14a): Google groups more results from one
+// site under the first one. Tapping a grouped result makes Google write its
+// /goto href again; the bridge must keep the root it gave that link at first
+// sight (the card, chosen before layout), not quarantine the grouped results'
+// block, which moved the page under the finger and opened the next result.
+test('a tap that rewrites a grouped result\'s href never hides the grouped results', async () => {
+    const h = createHarness({
+        html:
+            '<div id="card" class="Ww4FFb vt6azd">' +
+            '<a class="UBFage" href="/goto?url=grouped-main">' +
+            '<div role="heading" aria-level="3">Intel expects 14A to be within 5%</div></a>' +
+            '<div id="grouped" class="kb0PBd cvP2Ce">' +
+            '<a id="grouped-one" class="ngTNl ggLgoc" href="/goto?url=grouped-one">' +
+            '<div>Intel 14A Yields Hit Impressive Milestone</div><span>r/hardware · 30+ comments · 4mo</span></a>' +
+            '<a id="grouped-two" class="ngTNl ggLgoc" href="/goto?url=grouped-two">' +
+            '<div>Intel 14A Node Trials Signal Confidence</div><span>r/hardware · 60+ comments · 11mo</span></a>' +
+            '</div></div>' +
+            '<div id="next" class="Ww4FFb vt6azd">' +
+            '<a class="UBFage" href="https://hwbusters.com/cpu/intel-14a"><h3>Hardware Busters</h3></a></div>',
+        wjd: mapping('/goto?url=grouped-main', 'https://www.reddit.com/r/hardware/comments/abc/intel_14a/'),
+        userAgent: MOBILE_UA,
+    });
+    installFakeUBlacklist(h);
+    await settle(h);
+    const grouped = h.document.getElementById('grouped');
+    const link = h.document.getElementById('grouped-one');
+    assert.equal(link.checkVisibility(), true, 'grouped results are shown before the tap');
+
+    // Layout now exists: the grouped block alone is a plausible result root.
+    const sizes = { card: 800, grouped: 150 };
+    h.window.HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+        const height = sizes[this.id] ?? 20;
+        return { x: 0, y: 0, top: 0, left: 0, width: h.window.innerWidth, height, right: h.window.innerWidth, bottom: height };
+    };
+    const seen = [];
+    const sample = () => seen.push(link.checkVisibility());
+    const observer = new h.window.MutationObserver(sample);
+    observer.observe(h.document.documentElement, { attributes: true, childList: true, subtree: true });
+
+    link.setAttribute('href', link.getAttribute('href'));
+    await settle(h);
+    observer.disconnect();
+
+    assert.ok(seen.length > 0);
+    assert.deepEqual(seen.filter((visible) => !visible), [], 'a grouped result must never be hidden by its own tap');
+    assert.equal(grouped.hasAttribute('data-ub-google-bridge-quarantine'), false);
     h.close();
 });
 
