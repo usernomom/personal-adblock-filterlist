@@ -4,7 +4,7 @@
 // @author       nobody
 // @description  Restore real Google result destinations so uBlacklist can filter opaque /goto results reliably, including Safari/iOS layouts.
 // @license      MIT
-// @version      13.3.5
+// @version      13.3.6
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_news_ublacklist_bridge.user.js
 // @match        https://*.google.com/search*
@@ -36,8 +36,10 @@
  *      "<q> <word> <host>", where <q> is the page's query. Once the page has
  *      been parsed: the built-in site list KNOWN_SITES (Instagram, Facebook,
  *      X, YouTube, TikTok, LinkedIn, Pinterest, Threads, Reddit;
- *      owner-approved 2026-10-30) for those names; for other names, the
- *      domain learned on this page; else the result is released (UB-4). A
+ *      owner-approved 2026-10-30; Quora and Substack added 2026-11-07, as
+ *      their name-only cards leaked past the owner's rules) for those names;
+ *      for other names, the domain learned on this page; else the result is
+ *      released (UB-4). A
  *      name is learned, in page memory only, from a result resolved by one
  *      of the result-bound sources above (embedded data, displayed or
  *      data-curl URL, inline domain or host, thumbnail host) whose site line
@@ -141,7 +143,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '13.3.5';
+    const VERSION = '13.3.6';
     const WJD_EVENT = '__UB_GOOGLE_WJD_UPDATE__';
     const SEARCH_PARAMS = new URLSearchParams(location.search);
     const IS_NEWS_TAB = SEARCH_PARAMS.get('tbm') === 'nws';
@@ -202,6 +204,12 @@
         { name: 'pinterest', host: 'www.pinterest.com' },
         { name: 'threads', host: 'www.threads.com' },
         { name: 'reddit', host: 'www.reddit.com', handle: /^r\/([A-Za-z0-9_]{2,21})(?:\s|$)/, path: (h) => `/r/${h}/` },
+        // Added 2026-11-07: Quora cards in Discussions and forums and Substack
+        // web results name only the site, and the page holds no URL for them.
+        // Hosts as Google writes them on those sites' other results (quora.com
+        // answers scripts with a bot check).
+        { name: 'quora', host: 'quora.com' },
+        { name: 'substack', host: 'substack.com' },
     ];
     const gotoMap = new Map();
     const pendingByGoto = new Map();
