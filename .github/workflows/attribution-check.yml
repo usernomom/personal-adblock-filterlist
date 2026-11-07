@@ -1,0 +1,103 @@
+# Copy of usernomom/agent-setup/.github/workflows/attribution-check.yml, because a public repository cannot call a
+# workflow in a private one. Fails a pull request or a push to main whose title, description or commit messages carry AI
+# attribution: any Co-authored-by line, Claude-Session lines, footers crediting Claude Code or Claude session links.
+name: Attribution check
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  attribution:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Reject AI attribution
+        shell: pwsh
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: |
+          $check = Join-Path $env:RUNNER_TEMP 'check-attribution.ps1'
+          Set-Content -LiteralPath $check -Encoding utf8 -Value @'
+          # Rejects AI attribution in commit messages and pull requests: any Co-authored-by line, whoever it names,
+          # Claude-Session lines, "Generated with Claude Code" footers and Claude session links.
+          #   check-attribution.ps1 commit-msg <message-file>   Git commit-msg hook
+          #   check-attribution.ps1 pre-push                     Git pre-push hook; reads the pushed refs on stdin
+          #   check-attribution.ps1 ci                           GitHub Actions; reads the event from environment variables
+          # Prints every offending line and exits 1 when anything matches, else exits 0.
+          # scripts/install-attribution-hook.ps1 registers the hooks. .github/workflows/attribution-check.yml carries a copy of
+          # this file, which scripts/tests/test-check-attribution.ps1 keeps identical.
+          param(
+            [Parameter(Mandatory = $true)][ValidateSet('commit-msg', 'pre-push', 'ci')][string]$Mode,
+            [Parameter(ValueFromRemainingArguments = $true)][string[]]$HookArgs
+          )
+          $ErrorActionPreference = 'Continue'
+          $Pattern = '(?im)^[ \t]*(co-authored-by|claude-session)[ \t]*:.*$|^.*generated (with|by) \[?claude code.*$|^.*claude\.ai/code/session.*$'
+          $script:rejected = $false
+
+          function Test-Text([string]$Label, [string]$Text) {
+            $hits = @([regex]::Matches($Text, $Pattern) | ForEach-Object { $_.Value.Trim() })
+            if ($hits.Count) {
+              [Console]::Error.WriteLine("Rejected: $Label contains AI attribution:")
+              foreach ($hit in $hits) { [Console]::Error.WriteLine("  $hit") }
+              $script:rejected = $true
+            }
+          }
+
+          function Test-Commits([string[]]$RevList) {
+            $commits = @(& git rev-list @RevList)
+            if ($LASTEXITCODE -ne 0) { throw "git rev-list $RevList failed." }
+            foreach ($commit in $commits) {
+              $message = (& git log -1 --format=%B $commit) -join "`n"
+              if ($LASTEXITCODE -ne 0) { throw "git log $commit failed." }
+              Test-Text "commit $commit" $message
+            }
+          }
+
+          switch ($Mode) {
+            'commit-msg' {
+              # git commit -v puts the diff below a scissors line, which Git drops after this hook runs.
+              $message = ([IO.File]::ReadAllText($HookArgs[0]) -split '(?m)^\S+ -{24} >8 -{24}\r?$')[0]
+              Test-Text 'the commit message' $message
+            }
+            'pre-push' {
+              foreach ($line in ([Console]::In.ReadToEnd() -split "`r?`n")) {
+                $fields = $line -split ' '
+                if ($fields.Count -lt 4 -or $fields[1] -match '^0+$') { continue }
+                $remoteKnown = $false
+                if ($fields[3] -notmatch '^0+$') {
+                  & git cat-file -e "$($fields[3])^{commit}" 2>$null
+                  $remoteKnown = $LASTEXITCODE -eq 0
+                }
+                if ($remoteKnown) { Test-Commits @("$($fields[3])..$($fields[1])") }
+                else { Test-Commits @($fields[1], '--not', '--remotes') }
+              }
+            }
+            'ci' {
+              if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+                Test-Text 'the pull request title' $env:PR_TITLE
+                Test-Text 'the pull request description' $env:PR_BODY
+                Test-Commits @("$($env:PR_BASE)..$($env:PR_HEAD)")
+              }
+              elseif ($env:PUSH_BEFORE -match '[1-9a-f]') { Test-Commits @("$($env:PUSH_BEFORE)..$($env:PUSH_AFTER)") }
+            }
+          }
+          if ($script:rejected) { exit 1 }
+          exit 0
+          '@
+          & $check ci
+          exit $LASTEXITCODE
