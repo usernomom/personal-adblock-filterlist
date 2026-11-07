@@ -2,13 +2,15 @@
 // @name         Google/Reddit reCAPTCHA audio solver
 // @namespace    https://github.com/usernomom/personal-adblock-filterlist
 // @author       nobody
-// @description  Solves reCAPTCHA audio challenges on Google Search unusual-traffic pages and Reddit, with iOS-safe submission, diagnostics, bounded retries, and transcriber failover.
+// @description  Solves reCAPTCHA audio challenges on Google Search unusual-traffic pages and Reddit, with iOS-safe submission, diagnostics, bounded retries, and transcriber failover, and taps Continue on Google Search's "Verifying your request" check.
 // @license      MIT
-// @version      11
+// @version      12
 // @downloadURL  https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_recaptcha_audio_solver.user.js
 // @updateURL    https://raw.githubusercontent.com/usernomom/personal-adblock-filterlist/main/google_recaptcha_audio_solver.user.js
 // @match        https://*.google.com/sorry/*
 // @match        https://*.google.ca/sorry/*
+// @match        https://*.google.com/search*
+// @match        https://*.google.ca/search*
 // @match        https://reddit.com/*
 // @match        https://*.reddit.com/*
 // @match        https://www.google.com/recaptcha/*
@@ -45,8 +47,16 @@
  *      reCAPTCHA has disabled audio.
  * RC-5 Status. The challenge frame shows the last 7 status lines in an
  *      overlay (#recaptcha-audio-solver-status).
+ * RC-6 Search check. On Google Search pages (google.com, google.ca), when
+ *      the "Verifying your request" check shows, tap its Continue button
+ *      once it has shown for 2 s, then every 2 s while it still shows, at
+ *      most 15 taps, for up to 60 s after the page loads. The check is found
+ *      by its English text, as Google's class names change; other Continue
+ *      buttons are left alone. html[data-google-verify-continue-clicks]
+ *      counts the taps.
  * End state: the challenge is solved and the page continues.
- * Test marker: html[data-recaptcha-audio-solver-version] = @version on the
+ * Test marker: html[data-recaptcha-audio-solver-version] = @version on
+ * Google Search pages, the
  * activating page and in reCAPTCHA frames.
  */
 
@@ -54,7 +64,7 @@
     'use strict';
 
     const TAG = '[RecaptchaAudio]';
-    const VERSION = '11';
+    const VERSION = '12';
     const ACTIVE_KEY = 'recaptcha-audio-active-v7';
     const SERVER_KEY = 'recaptcha-audio-transcriber-v7';
     const TTL = 10 * 60 * 1000;
@@ -64,6 +74,10 @@
     const VERIFY_TIMEOUT = 9000;
     const MAX_REJECTIONS = 5;
     const MAX_NO_RECOGNITION_RETRIES = 1;
+    const CONTINUE_POLL = 500;
+    const CONTINUE_INTERVAL = 2000;
+    const MAX_CONTINUE_CLICKS = 15;
+    const CONTINUE_WINDOW = 60 * 1000;
     const SERVERS = [
         'https://engageub.pythonanywhere.com',
         'https://engageub1.pythonanywhere.com'
@@ -138,6 +152,44 @@
         if (isRedditHost(location.hostname)) return true;
         try { return isGoogleSorryUrl(new URL(location.href)); }
         catch (_) { return false; }
+    }
+
+    function isGoogleSearchPage() {
+        return /(^|\.)google\.(com|ca)$/i.test(location.hostname) &&
+            location.pathname === '/search';
+    }
+
+    // RC-6: the Continue button sits beside the "Verifying your request" text.
+    function verifyContinueButton() {
+        for (const button of document.querySelectorAll('[role="button"], button')) {
+            if (button.textContent.trim() !== 'Continue' || !visible(button)) continue;
+            const box = button.parentElement;
+            if (box && [...box.children].some(el =>
+                el.textContent.trim() === 'Verifying your request')) return button;
+        }
+        return null;
+    }
+
+    function continueSearchCheck() {
+        const started = Date.now();
+        let seen = 0;
+        let clicks = 0;
+        const tick = () => {
+            const now = Date.now();
+            const button = verifyContinueButton();
+            if (!button) seen = 0;
+            else if (!seen) seen = now;
+            else if (now - seen >= CONTINUE_INTERVAL) {
+                button.click();
+                clicks += 1;
+                seen = now;
+                document.documentElement.setAttribute('data-google-verify-continue-clicks', String(clicks));
+            }
+            if (clicks < MAX_CONTINUE_CLICKS && now - started < CONTINUE_WINDOW) {
+                setTimeout(tick, CONTINUE_POLL);
+            }
+        };
+        tick();
     }
 
     function recaptchaFrame() {
@@ -543,6 +595,16 @@
     // reCAPTCHA frames; it does not affect challenge handling.
     function publishVersion() {
         document.documentElement?.setAttribute('data-recaptcha-audio-solver-version', VERSION);
+    }
+
+    if (isGoogleSearchPage()) {
+        publishVersion();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', continueSearchCheck, { once: true });
+        } else {
+            continueSearchCheck();
+        }
+        return;
     }
 
     if (supportedTopPage()) {
